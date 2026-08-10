@@ -140,6 +140,13 @@ jobs:
         working-directory: HomelabSwift
     steps:
       - uses: actions/checkout@v5
+      - name: Create CI signing config
+        run: |
+          mkdir -p Config
+          cat > Config/Signing.xcconfig <<'EOF'
+          DEVELOPMENT_TEAM =
+          PRODUCT_BUNDLE_IDENTIFIER = homelab.foreverhomelab
+          EOF
       - name: Run iOS unit tests
         run: |
           xcodebuild test \
@@ -156,4 +163,4 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Validate foundation
-        run: ./scripts/phase0-audit.sh
+        run: bash ./scripts/phase0-audit.sh
