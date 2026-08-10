@@ -2,6 +2,10 @@ package com.homelab.app.data.repository
 
 import com.homelab.app.data.remote.TlsClientSelector
 import com.homelab.app.data.remote.api.UptimeKumaApi
+import com.homelab.app.domain.provider.ProviderHealth
+import com.homelab.app.domain.provider.ProviderHealthState
+import com.homelab.app.domain.provider.ProviderRegistry
+import com.homelab.app.util.ServiceType
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -64,6 +68,34 @@ class UptimeKumaRepository @Inject constructor(
     private val api: UptimeKumaApi,
     private val tlsClientSelector: TlsClientSelector
 ) {
+    val providerDescriptor = requireNotNull(ProviderRegistry.descriptor(ServiceType.UPTIME_KUMA))
+
+    suspend fun getNormalizedHealth(instanceId: String): ProviderHealth = runCatching {
+        val summary = getSummary(instanceId)
+        val state = when {
+            summary.totalCount == 0 -> ProviderHealthState.UNKNOWN
+            summary.upCount == summary.totalCount -> ProviderHealthState.HEALTHY
+            summary.upCount > 0 -> ProviderHealthState.DEGRADED
+            else -> ProviderHealthState.UNAVAILABLE
+        }
+        ProviderHealth(
+            providerId = providerDescriptor.id,
+            instanceId = instanceId,
+            state = state,
+            message = "${summary.upCount}/${summary.totalCount} monitors up",
+            attributes = mapOf(
+                "up" to summary.upCount.toString(),
+                "total" to summary.totalCount.toString()
+            )
+        )
+    }.getOrElse { error ->
+        ProviderHealth(
+            providerId = providerDescriptor.id,
+            instanceId = instanceId,
+            state = ProviderHealthState.UNAVAILABLE,
+            message = error.message ?: "Uptime Kuma unavailable"
+        )
+    }
 
     suspend fun authenticate(
         url: String,

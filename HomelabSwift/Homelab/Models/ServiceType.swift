@@ -424,6 +424,92 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
     }
 }
 
+enum ProviderCapability: String, Codable, CaseIterable, Hashable, Sendable {
+    case health
+    case resources
+    case events
+    case metrics
+    case readActions = "read_actions"
+    case writeActions = "write_actions"
+}
+
+enum ProviderHealthState: String, Codable, Hashable, Sendable {
+    case healthy
+    case degraded
+    case unavailable
+    case unknown
+}
+
+struct ProviderHealth: Codable, Equatable, Sendable {
+    let providerId: String
+    let instanceId: UUID
+    let state: ProviderHealthState
+    let message: String?
+    let observedAt: Date
+    let attributes: [String: String]
+}
+
+struct ProviderResource: Codable, Equatable, Sendable {
+    let providerId: String
+    let instanceId: UUID
+    let resourceType: String
+    let resourceId: String
+    let name: String
+    let state: String?
+    let attributes: [String: String]
+}
+
+struct ProviderEvent: Codable, Equatable, Sendable {
+    let providerId: String
+    let instanceId: UUID
+    let eventId: String
+    let severity: String
+    let message: String
+    let occurredAt: Date
+    let resourceId: String?
+}
+
+struct ProviderDescriptor: Equatable, Sendable {
+    let id: String
+    let serviceType: ServiceType
+    let displayName: String
+    let capabilities: Set<ProviderCapability>
+}
+
+enum ProviderRegistry {
+    private static let descriptors: [ServiceType: ProviderDescriptor] = Dictionary(
+        uniqueKeysWithValues: ServiceType.allCases.map { type in
+            let capabilities: Set<ProviderCapability>
+            switch type {
+            case .proxmox:
+                capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
+            case .uptimeKuma:
+                capabilities = [.health, .resources, .events, .metrics]
+            default:
+                capabilities = [.health]
+            }
+            return (
+                type,
+                ProviderDescriptor(
+                    id: type.rawValue.replacingOccurrences(of: "_", with: "-"),
+                    serviceType: type,
+                    displayName: type.displayName,
+                    capabilities: capabilities
+                )
+            )
+        }
+    )
+
+    static func descriptor(for type: ServiceType) -> ProviderDescriptor {
+        precondition(descriptors[type] != nil, "Every ServiceType must be registered")
+        return descriptors[type]!
+    }
+
+    static var registeredProviders: [ProviderDescriptor] {
+        descriptors.values.sorted { $0.id < $1.id }
+    }
+}
+
 public struct ServiceColorSet {
     public let primary: Color
     public let dark: Color

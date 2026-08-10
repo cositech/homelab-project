@@ -1,0 +1,23 @@
+name: Phase 1 Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase1-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-invariants:
+    name: Phase 1 security invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate secure credential, TLS, and provider invariants
+        run: bash ./scripts/phase1-security-audit.sh

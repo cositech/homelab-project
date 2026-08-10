@@ -104,7 +104,7 @@ fun ServiceLoginScreen(
     var proxmoxOtp by remember { mutableStateOf("") }
     var proxmoxUseApiToken by remember { mutableStateOf(false) }
     var fallbackUrl by remember { mutableStateOf("") }
-    var allowSelfSigned by remember { mutableStateOf(true) }
+    var allowSelfSigned by remember { mutableStateOf(false) }
     var showSecret by remember { mutableStateOf(false) }
     var hasSubmitted by remember { mutableStateOf(false) }
 

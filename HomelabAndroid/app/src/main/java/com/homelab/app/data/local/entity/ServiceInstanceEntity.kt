@@ -10,15 +10,11 @@ data class ServiceInstanceEntity(
     val type: String,
     val label: String,
     val url: String,
-    val token: String,
-    val proxmoxCsrfToken: String? = null,
-    val proxmoxOtp: String? = null,
+    val credentialRef: String? = null,
     val username: String?,
-    val apiKey: String?,
-    val piholePassword: String?,
     val piholeAuthMode: String?,
     val fallbackUrl: String?,
-    @ColumnInfo(defaultValue = "0")
-    val allowSelfSigned: Boolean,
-    val password: String? = null
+    @ColumnInfo(defaultValue = "'SYSTEM'")
+    val tlsMode: String,
+    val certificatePin: String? = null
 )

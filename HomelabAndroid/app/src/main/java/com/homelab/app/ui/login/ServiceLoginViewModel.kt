@@ -108,7 +108,7 @@ class ServiceLoginViewModel @Inject constructor(
         apiKey: String = "",
         fallbackUrl: String = "",
         mfaCode: String = "",
-        allowSelfSigned: Boolean = true,
+        allowSelfSigned: Boolean = false,
         proxmoxRealm: String = "pam",
         proxmoxOtp: String = "",
         proxmoxUseApiToken: Boolean = false

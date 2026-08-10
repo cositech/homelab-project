@@ -15,6 +15,22 @@ enum UniFiAuthMode: String, Codable, Equatable {
     case localNetwork = "local_network"
 }
 
+enum TLSMode: String, Codable, Equatable, Hashable, Sendable {
+    case system = "SYSTEM"
+    case customCA = "CUSTOM_CA"
+    case certificatePin = "CERTIFICATE_PIN"
+    case insecureCompatibility = "INSECURE_COMPATIBILITY"
+}
+
+struct TLSPolicy: Codable, Equatable, Hashable, Sendable {
+    var mode: TLSMode
+    var customCAPEM: String?
+    var certificatePin: String?
+
+    static let system = TLSPolicy(mode: .system)
+    static let insecureCompatibility = TLSPolicy(mode: .insecureCompatibility)
+}
+
 struct ProxmoxAPITokenParts: Equatable, Hashable {
     let user: String
     let realm: String
@@ -128,6 +144,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
     var fallbackUrl: String?
     var allowSelfSigned: Bool
     var password: String?
+    var credentialRef: String
+    var tlsPolicy: TLSPolicy
 
     init(
         id: UUID = UUID(),
@@ -145,7 +163,9 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         unifiAuthMode: UniFiAuthMode? = nil,
         fallbackUrl: String? = nil,
         allowSelfSigned: Bool = false,
-        password: String? = nil
+        password: String? = nil,
+        credentialRef: String? = nil,
+        tlsPolicy: TLSPolicy? = nil
     ) {
         self.id = id
         self.type = type
@@ -161,8 +181,11 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         self.proxmoxOTP = proxmoxOTP?.trimmedNilIfEmpty
         self.unifiAuthMode = unifiAuthMode
         self.fallbackUrl = type == .unifiNetwork ? Self.cleanOptionalUniFiURL(fallbackUrl) : Self.cleanOptionalURL(fallbackUrl)
-        self.allowSelfSigned = allowSelfSigned
+        let resolvedTLSPolicy = tlsPolicy ?? (allowSelfSigned ? .insecureCompatibility : .system)
+        self.allowSelfSigned = resolvedTLSPolicy.mode == .insecureCompatibility
         self.password = password?.trimmedNilIfEmpty
+        self.credentialRef = credentialRef ?? "credential:v1:\(id.uuidString.lowercased())"
+        self.tlsPolicy = resolvedTLSPolicy
     }
 
     var displayLabel: String {
@@ -197,7 +220,9 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
             unifiAuthMode: unifiAuthMode,
             fallbackUrl: fallbackUrl,
             allowSelfSigned: allowSelfSigned,
-            password: password
+            password: password,
+            credentialRef: credentialRef,
+            tlsPolicy: tlsPolicy
         )
     }
 
@@ -215,7 +240,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         unifiAuthMode: UniFiAuthMode? = nil,
         fallbackUrl: String? = nil,
         allowSelfSigned: Bool? = nil,
-        password: String? = nil
+        password: String? = nil,
+        tlsPolicy: TLSPolicy? = nil
     ) -> ServiceInstance {
         ServiceInstance(
             id: id,
@@ -233,7 +259,9 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
             unifiAuthMode: unifiAuthMode ?? self.unifiAuthMode,
             fallbackUrl: fallbackUrl ?? self.fallbackUrl,
             allowSelfSigned: allowSelfSigned ?? self.allowSelfSigned,
-            password: password ?? self.password
+            password: password ?? self.password,
+            credentialRef: credentialRef,
+            tlsPolicy: tlsPolicy ?? self.tlsPolicy
         )
     }
 
@@ -299,12 +327,16 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         case fallbackUrl
         case allowSelfSigned
         case password
+        case credentialRef
+        case tlsPolicy
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let id = try container.decode(UUID.self, forKey: .id)
+        let legacyAllowSelfSigned = try container.decodeIfPresent(Bool.self, forKey: .allowSelfSigned) ?? false
         self.init(
-            id: try container.decode(UUID.self, forKey: .id),
+            id: id,
             type: try container.decode(ServiceType.self, forKey: .type),
             label: try container.decode(String.self, forKey: .label),
             url: try container.decode(String.self, forKey: .url),
@@ -318,8 +350,10 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
             proxmoxOTP: try container.decodeIfPresent(String.self, forKey: .proxmoxOTP),
             unifiAuthMode: try container.decodeIfPresent(UniFiAuthMode.self, forKey: .unifiAuthMode),
             fallbackUrl: try container.decodeIfPresent(String.self, forKey: .fallbackUrl),
-            allowSelfSigned: try container.decodeIfPresent(Bool.self, forKey: .allowSelfSigned) ?? false,
-            password: try container.decodeIfPresent(String.self, forKey: .password)
+            allowSelfSigned: legacyAllowSelfSigned,
+            password: try container.decodeIfPresent(String.self, forKey: .password),
+            credentialRef: try container.decodeIfPresent(String.self, forKey: .credentialRef),
+            tlsPolicy: try container.decodeIfPresent(TLSPolicy.self, forKey: .tlsPolicy)
         )
     }
 }
@@ -329,6 +363,89 @@ struct ServiceStateV2: Codable, Equatable {
     var preferredInstanceIdByType: [ServiceType: UUID]
 
     static let empty = ServiceStateV2(instances: [], preferredInstanceIdByType: [:])
+}
+
+struct ServiceCredentialEnvelope: Codable, Equatable {
+    var token: String?
+    var apiKey: String?
+    var piholePassword: String?
+    var proxmoxOTP: String?
+    var password: String?
+    var customCAPEM: String?
+
+    init(instance: ServiceInstance) {
+        token = instance.token.nilIfEmpty
+        apiKey = instance.apiKey?.nilIfEmpty
+        piholePassword = instance.piholePassword?.nilIfEmpty
+        proxmoxOTP = instance.proxmoxOTP?.nilIfEmpty
+        password = instance.password?.nilIfEmpty
+        customCAPEM = instance.tlsPolicy.customCAPEM?.nilIfEmpty
+    }
+}
+
+struct ServiceInstanceMetadata: Codable, Equatable {
+    let id: UUID
+    let type: ServiceType
+    var label: String
+    var url: String
+    var username: String?
+    var piholeAuthMode: PiHoleAuthMode?
+    var proxmoxAuthMode: ProxmoxAuthMode?
+    var proxmoxRealm: String?
+    var unifiAuthMode: UniFiAuthMode?
+    var fallbackUrl: String?
+    var credentialRef: String
+    var tlsMode: TLSMode
+    var certificatePin: String?
+
+    init(instance: ServiceInstance) {
+        id = instance.id
+        type = instance.type
+        label = instance.displayLabel
+        url = instance.url
+        username = instance.username
+        piholeAuthMode = instance.piholeAuthMode
+        proxmoxAuthMode = instance.proxmoxAuthMode
+        proxmoxRealm = instance.proxmoxRealm
+        unifiAuthMode = instance.unifiAuthMode
+        fallbackUrl = instance.fallbackUrl
+        credentialRef = instance.credentialRef
+        tlsMode = instance.tlsPolicy.mode
+        certificatePin = instance.tlsPolicy.certificatePin
+    }
+
+    func hydrated(with credentials: ServiceCredentialEnvelope?) -> ServiceInstance {
+        let credentials = credentials ?? ServiceCredentialEnvelope.empty
+        return ServiceInstance(
+            id: id,
+            type: type,
+            label: label,
+            url: url,
+            token: credentials.token ?? "",
+            username: username,
+            apiKey: credentials.apiKey,
+            piholePassword: credentials.piholePassword,
+            piholeAuthMode: piholeAuthMode,
+            proxmoxAuthMode: proxmoxAuthMode,
+            proxmoxRealm: proxmoxRealm,
+            proxmoxOTP: credentials.proxmoxOTP,
+            unifiAuthMode: unifiAuthMode,
+            fallbackUrl: fallbackUrl,
+            allowSelfSigned: tlsMode == .insecureCompatibility,
+            password: credentials.password,
+            credentialRef: credentialRef,
+            tlsPolicy: TLSPolicy(
+                mode: tlsMode,
+                customCAPEM: credentials.customCAPEM,
+                certificatePin: certificatePin
+            )
+        )
+    }
+}
+
+struct ServiceStateV3: Codable, Equatable {
+    var instances: [ServiceInstanceMetadata]
+    var preferredInstanceIdByType: [ServiceType: UUID]
 }
 
 struct ServiceConnection: Codable, Identifiable, Equatable {
@@ -449,9 +566,40 @@ struct ServiceConnection: Codable, Identifiable, Equatable {
 }
 
 private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+
     var trimmedNilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private extension ServiceCredentialEnvelope {
+    static let empty = ServiceCredentialEnvelope(
+        token: nil,
+        apiKey: nil,
+        piholePassword: nil,
+        proxmoxOTP: nil,
+        password: nil,
+        customCAPEM: nil
+    )
+
+    init(
+        token: String?,
+        apiKey: String?,
+        piholePassword: String?,
+        proxmoxOTP: String?,
+        password: String?,
+        customCAPEM: String?
+    ) {
+        self.token = token
+        self.apiKey = apiKey
+        self.piholePassword = piholePassword
+        self.proxmoxOTP = proxmoxOTP
+        self.password = password
+        self.customCAPEM = customCAPEM
     }
 }
 

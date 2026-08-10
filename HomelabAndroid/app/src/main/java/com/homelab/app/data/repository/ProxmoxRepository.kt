@@ -2,6 +2,10 @@ package com.homelab.app.data.repository
 
 import com.homelab.app.data.remote.api.ProxmoxApi
 import com.homelab.app.data.remote.dto.proxmox.*
+import com.homelab.app.domain.provider.ProviderHealth
+import com.homelab.app.domain.provider.ProviderHealthState
+import com.homelab.app.domain.provider.ProviderRegistry
+import com.homelab.app.util.ServiceType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -13,6 +17,30 @@ import javax.inject.Singleton
 class ProxmoxRepository @Inject constructor(
     private val api: ProxmoxApi
 ) {
+    val providerDescriptor = requireNotNull(ProviderRegistry.descriptor(ServiceType.PROXMOX))
+
+    suspend fun getNormalizedHealth(instanceId: String): ProviderHealth = runCatching {
+        val version = getVersion(instanceId)
+        ProviderHealth(
+            providerId = providerDescriptor.id,
+            instanceId = instanceId,
+            state = ProviderHealthState.HEALTHY,
+            message = "Proxmox VE API reachable",
+            attributes = mapOf(
+                "version" to version.version.orEmpty(),
+                "release" to version.release.orEmpty(),
+                "repository" to version.repoid.orEmpty()
+            ).filterValues { it.isNotEmpty() }
+        )
+    }.getOrElse { error ->
+        ProviderHealth(
+            providerId = providerDescriptor.id,
+            instanceId = instanceId,
+            state = ProviderHealthState.UNAVAILABLE,
+            message = error.message ?: "Proxmox VE API unavailable"
+        )
+    }
+
     suspend fun refreshTicket(
         url: String,
         username: String,

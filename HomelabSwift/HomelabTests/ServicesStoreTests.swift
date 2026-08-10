@@ -169,8 +169,10 @@ final class ServicesStoreTests: XCTestCase {
 private final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendable {
     private var storage: [String: Data] = [:]
 
-    func save(data: Data, service: String, account: String) {
+    @discardableResult
+    func save(data: Data, service: String, account: String) -> Bool {
         storage[key(service: service, account: account)] = data
+        return true
     }
 
     func load(service: String, account: String) -> Data? {

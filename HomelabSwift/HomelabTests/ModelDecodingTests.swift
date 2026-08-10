@@ -2,6 +2,72 @@ import XCTest
 @testable import Homelab
 
 final class ModelDecodingTests: XCTestCase {
+    func testProviderRequestRejectsCleartextBeforeCredentialsAreAttached() throws {
+        let url = try XCTUnwrap(URL(string: "http://homelab.internal/api"))
+        XCTAssertThrowsError(
+            try BaseNetworkEngine.makeSecureRequest(
+                url: url,
+                method: "POST",
+                headers: ["Authorization": "Bearer secret"],
+                body: Data("password=secret".utf8)
+            )
+        )
+    }
+
+    func testProviderRequestAcceptsHTTPSAndPreservesRequestData() throws {
+        let url = try XCTUnwrap(URL(string: "https://homelab.internal/api"))
+        let request = try BaseNetworkEngine.makeSecureRequest(
+            url: url,
+            method: "POST",
+            headers: ["Authorization": "Bearer secret"],
+            body: Data("payload".utf8),
+            timeout: 12
+        )
+
+        XCTAssertEqual(request.url, url)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+        XCTAssertEqual(request.httpBody, Data("payload".utf8))
+        XCTAssertEqual(request.timeoutInterval, 12)
+    }
+
+    func testProviderURLRejectsCleartextBeforeCombiningSensitivePath() {
+        XCTAssertThrowsError(
+            try BaseNetworkEngine.makeSecureURL(
+                baseURL: "http://pihole.internal",
+                path: "/admin/api.php?auth=legacy-secret"
+            )
+        )
+    }
+
+    func testProviderURLBuildsHTTPSLegacyQueryWithoutEmbeddedAuthorityCredentials() throws {
+        let url = try BaseNetworkEngine.makeSecureURL(
+            baseURL: "https://pihole.internal/base/",
+            path: "/admin/api.php?summaryRaw&auth=legacy-secret"
+        )
+
+        XCTAssertEqual(url.scheme, "https")
+        XCTAssertEqual(url.host, "pihole.internal")
+        XCTAssertEqual(url.path, "/base/admin/api.php")
+        XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.last?.value, "legacy-secret")
+    }
+
+    func testProviderURLLoggingRedactsSensitiveQueryValues() throws {
+        let url = try XCTUnwrap(URL(string: "https://pihole.internal/api?auth=secret&limit=10"))
+        let logged = BaseNetworkEngine.redactedURLForLogging(url)
+
+        XCTAssertFalse(logged.contains("secret"))
+        XCTAssertTrue(logged.contains("auth=%3Credacted%3E"))
+        XCTAssertTrue(logged.contains("limit=10"))
+    }
+
+    func testProviderRegistryCoversAllServiceTypesAndReferenceCapabilities() {
+        XCTAssertEqual(ProviderRegistry.registeredProviders.count, ServiceType.allCases.count)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmox).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.metrics))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.writeActions))
+    }
+
 
     // MARK: - Portainer
 

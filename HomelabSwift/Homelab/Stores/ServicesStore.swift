@@ -550,8 +550,13 @@ final class ServicesStore {
         refreshPiHoleAuth: Bool = false,
         triggerReachabilityCheck: Bool = true
     ) async {
-        let normalized = normalizedInstance(instance)
+        var normalized = normalizedInstance(instance)
         let previous = instancesById[normalized.id]
+        if let previous,
+           [.customCA, .certificatePin].contains(previous.tlsPolicy.mode),
+           normalized.tlsPolicy.mode == .system {
+            normalized.tlsPolicy = previous.tlsPolicy
+        }
         instancesById[normalized.id] = normalized
 
         if previous?.type != normalized.type {
@@ -1153,7 +1158,8 @@ final class ServicesStore {
                 fallbackUrl: instance.fallbackUrl,
                 username: instance.username,
                 password: instance.password,
-                allowSelfSigned: instance.allowSelfSigned
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
             )
 
         case .craftyController:
@@ -1311,7 +1317,8 @@ final class ServicesStore {
                 password: instance.password,
                 otp: instance.proxmoxOTP,
                 realm: instance.proxmoxRealm,
-                allowSelfSigned: instance.allowSelfSigned
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
             )
             let instanceId = instance.id
             await client.setTokenRefreshCallback { [weak self] newTicket, newCsrf in

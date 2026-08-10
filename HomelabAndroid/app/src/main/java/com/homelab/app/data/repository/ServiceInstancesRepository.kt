@@ -5,6 +5,9 @@ import com.homelab.app.data.local.dao.ServiceInstanceDao
 import com.homelab.app.data.local.entity.ServiceInstanceEntity
 import com.homelab.app.domain.model.PiHoleAuthMode
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.TlsMode
+import com.homelab.app.security.CredentialEnvelope
+import com.homelab.app.security.SecureCredentialStore
 import com.homelab.app.util.ServiceType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -18,10 +21,11 @@ import javax.inject.Singleton
 @Singleton
 class ServiceInstancesRepository @Inject constructor(
     private val dao: ServiceInstanceDao,
-    private val settingsManager: SettingsManager
+    private val settingsManager: SettingsManager,
+    private val credentialStore: SecureCredentialStore
 ) {
     val allInstances: Flow<List<ServiceInstance>> = dao.observeAll().map { entities ->
-        entities.map { it.toDomain() }
+        entities.map { it.toDomain(credentialStore) }
     }
 
     val instancesByType: Flow<Map<ServiceType, List<ServiceInstance>>> = allInstances.map { instances ->
@@ -51,15 +55,15 @@ class ServiceInstancesRepository @Inject constructor(
         repairAllPreferredInstances()
     }
 
-    suspend fun getInstance(id: String): ServiceInstance? = dao.getById(id)?.toDomain()
+    suspend fun getInstance(id: String): ServiceInstance? = dao.getById(id)?.toDomain(credentialStore)
 
     suspend fun getAllInstances(): List<ServiceInstance> {
-        return dao.getAll().map { it.toDomain() }
+        return dao.getAll().map { it.toDomain(credentialStore) }
     }
 
     suspend fun getInstances(type: ServiceType): List<ServiceInstance> {
         val entities = dao.getByType(type.name)
-        return entities.map { it.toDomain() }
+        return entities.map { it.toDomain(credentialStore) }
     }
 
     suspend fun getPreferredInstance(type: ServiceType): ServiceInstance? {
@@ -73,8 +77,46 @@ class ServiceInstancesRepository @Inject constructor(
     }
 
     suspend fun saveInstance(instance: ServiceInstance) {
-        val normalized = normalizeInstance(instance)
-        dao.upsert(normalized.toEntity())
+        val previousEntity = dao.getById(instance.id)
+        val previous = previousEntity?.toDomain(credentialStore)
+        val candidate = normalizeInstance(instance)
+        val normalized = if (
+            previous?.effectiveTlsMode in setOf(TlsMode.CUSTOM_CA, TlsMode.CERTIFICATE_PIN) &&
+            candidate.effectiveTlsMode == TlsMode.SYSTEM
+        ) {
+            candidate.copy(
+                tlsMode = previous!!.tlsMode,
+                customCaPem = previous.customCaPem,
+                certificatePin = previous.certificatePin
+            )
+        } else {
+            candidate
+        }
+        val previousCredentialRef = previousEntity?.credentialRef
+        val envelope = CredentialEnvelope.from(normalized)
+        val newCredentialRef = if (envelope.isEmpty) {
+            null
+        } else {
+            credentialStore.newReference(normalized.id).also { reference ->
+                check(credentialStore.put(reference, envelope)) {
+                    "Unable to persist credentials for service instance ${normalized.id}"
+                }
+                check(credentialStore.get(reference) == envelope) {
+                    credentialStore.delete(reference)
+                    "Unable to verify credentials for service instance ${normalized.id}"
+                }
+            }
+        }
+
+        try {
+            dao.upsert(normalized.toEntity(newCredentialRef))
+        } catch (error: Throwable) {
+            newCredentialRef?.let(credentialStore::delete)
+            throw error
+        }
+        if (previousCredentialRef != null && previousCredentialRef != newCredentialRef) {
+            credentialStore.delete(previousCredentialRef)
+        }
         val currentPreferred = settingsManager.preferredInstanceId(normalized.type).first()
         if (currentPreferred.isNullOrBlank()) {
             settingsManager.setPreferredInstanceId(normalized.type, normalized.id)
@@ -82,8 +124,10 @@ class ServiceInstancesRepository @Inject constructor(
     }
 
     suspend fun deleteInstance(id: String) {
-        val instance = getInstance(id) ?: return
+        val entity = dao.getById(id) ?: return
+        val instance = entity.toDomain(credentialStore)
         dao.deleteById(id)
+        entity.credentialRef?.let(credentialStore::delete)
         repairPreferredInstance(instance.type)
     }
 
@@ -112,7 +156,7 @@ class ServiceInstancesRepository @Inject constructor(
 
                 if (legacy != null && existing.isEmpty()) {
                     val migrated = normalizeInstance(legacy.migratedInstance(UUID.randomUUID().toString()))
-                    dao.upsert(migrated.toEntity())
+                    saveInstance(migrated)
                     settingsManager.setPreferredInstanceId(type, migrated.id)
                 } else if (existing.isNotEmpty()) {
                     val currentPreferred = settingsManager.preferredInstanceId(type).first()
@@ -170,41 +214,43 @@ class ServiceInstancesRepository @Inject constructor(
     }
 }
 
-private fun ServiceInstanceEntity.toDomain(): ServiceInstance {
+private fun ServiceInstanceEntity.toDomain(credentialStore: SecureCredentialStore): ServiceInstance {
+    val credentials = credentialRef?.let(credentialStore::get) ?: CredentialEnvelope()
+    val storedTlsMode = runCatching { TlsMode.valueOf(tlsMode) }.getOrDefault(TlsMode.SYSTEM)
     return ServiceInstance(
         id = id,
         type = ServiceType.fromStoredName(type),
         label = label,
         url = url,
-        token = token,
-        proxmoxCsrfToken = proxmoxCsrfToken,
-        proxmoxOtp = proxmoxOtp,
+        token = credentials.token.orEmpty(),
+        proxmoxCsrfToken = credentials.proxmoxCsrfToken,
+        proxmoxOtp = credentials.proxmoxOtp,
         username = username,
-        apiKey = apiKey,
-        piholePassword = piholePassword,
+        apiKey = credentials.apiKey,
+        piholePassword = credentials.piholePassword,
         piholeAuthMode = piholeAuthMode?.let(PiHoleAuthMode::valueOf),
         fallbackUrl = fallbackUrl,
-        allowSelfSigned = allowSelfSigned,
-        password = password
+        allowSelfSigned = storedTlsMode == TlsMode.INSECURE_COMPATIBILITY,
+        password = credentials.password,
+        credentialRef = credentialRef,
+        tlsMode = storedTlsMode,
+        customCaPem = credentials.customCaPem,
+        certificatePin = certificatePin
     )
 }
 
-private fun ServiceInstance.toEntity(): ServiceInstanceEntity {
+private fun ServiceInstance.toEntity(credentialRef: String?): ServiceInstanceEntity {
     return ServiceInstanceEntity(
         id = id,
         type = type.name,
         label = label.ifBlank { type.displayName },
         url = url,
-        token = token,
-        proxmoxCsrfToken = proxmoxCsrfToken,
-        proxmoxOtp = proxmoxOtp,
+        credentialRef = credentialRef,
         username = username,
-        apiKey = apiKey,
-        piholePassword = piholePassword,
         piholeAuthMode = piholeAuthMode?.name,
         fallbackUrl = fallbackUrl,
-        allowSelfSigned = allowSelfSigned,
-        password = password
+        tlsMode = effectiveTlsMode.name,
+        certificatePin = certificatePin
     )
 }
 
