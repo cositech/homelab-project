@@ -12,11 +12,13 @@ Exit gate: static audit passes and GitHub Actions prove Android/iOS tests and bu
 
 ## Phase 1 — Secure capability core
 
-1. Android Keystore-backed credential store and Room migration to `credentialRef`.
-2. iOS credential envelopes in Keychain with metadata separated from secrets.
-3. Explicit TLS modes: `SYSTEM`, `CUSTOM_CA`, `CERTIFICATE_PIN`, `INSECURE_COMPATIBILITY`.
-4. Provider registry, capability discovery, normalized health/resource/event models.
-5. Proxmox VE and Uptime Kuma reference migrations without feature regression.
+- [x] Android Keystore-backed credential store and Room migration to `credentialRef`
+- [x] iOS credential envelopes in Keychain with metadata separated from secrets
+- [x] Explicit TLS modes: `SYSTEM`, `CUSTOM_CA`, `CERTIFICATE_PIN`, `INSECURE_COMPATIBILITY`
+- [x] Provider registry, capability discovery, normalized health/resource/event models
+- [x] Proxmox VE and Uptime Kuma reference migrations without feature regression
+
+Exit gate: Phase 1 security invariants, Android/iOS compilation and unit tests, CodeQL, and dependency review pass on the delivery pull request.
 
 ## Phase 2 — Operations views
 
