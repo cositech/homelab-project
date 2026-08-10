@@ -18,13 +18,18 @@ actor UptimeKumaAPIClient {
         fallbackUrl: String? = nil,
         username: String? = nil,
         password: String? = nil,
-        allowSelfSigned: Bool = true
+        allowSelfSigned: Bool = false,
+        tlsPolicy: TLSPolicy? = nil
     ) async {
         self.baseURL = Self.normalizeURL(url)
         self.fallbackURL = Self.normalizeURL(fallbackUrl ?? "")
         self.username = Self.clean(username)
         self.password = Self.clean(password)
-        self.engine = BaseNetworkEngine(serviceType: .uptimeKuma, instanceId: instanceId, allowSelfSigned: allowSelfSigned)
+        self.engine = BaseNetworkEngine(
+            serviceType: .uptimeKuma,
+            instanceId: instanceId,
+            tlsPolicy: tlsPolicy ?? (allowSelfSigned ? .insecureCompatibility : .system)
+        )
     }
 
     func authenticate(url: String, username: String?, password: String?, fallbackUrl: String?) async throws {
@@ -70,6 +75,44 @@ actor UptimeKumaAPIClient {
     func getSummary() async throws -> UptimeKumaSummary {
         let dashboard = try await getDashboard()
         return UptimeKumaSummary(up: dashboard.up, total: dashboard.total, down: dashboard.down)
+    }
+
+    func getNormalizedHealth() async -> ProviderHealth {
+        let descriptor = ProviderRegistry.descriptor(for: .uptimeKuma)
+        do {
+            let summary = try await getSummary()
+            let state: ProviderHealthState
+            if summary.total == 0 {
+                state = .unknown
+            } else if summary.up == summary.total {
+                state = .healthy
+            } else if summary.up > 0 {
+                state = .degraded
+            } else {
+                state = .unavailable
+            }
+            return ProviderHealth(
+                providerId: descriptor.id,
+                instanceId: instanceId,
+                state: state,
+                message: "\(summary.up)/\(summary.total) monitors up",
+                observedAt: Date(),
+                attributes: [
+                    "up": String(summary.up),
+                    "down": String(summary.down),
+                    "total": String(summary.total)
+                ]
+            )
+        } catch {
+            return ProviderHealth(
+                providerId: descriptor.id,
+                instanceId: instanceId,
+                state: .unavailable,
+                message: error.localizedDescription,
+                observedAt: Date(),
+                attributes: [:]
+            )
+        }
     }
 
     private func getMetricsText() async throws -> String {

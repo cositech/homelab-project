@@ -2,6 +2,13 @@ import XCTest
 @testable import Homelab
 
 final class ModelDecodingTests: XCTestCase {
+    func testProviderRegistryCoversAllServiceTypesAndReferenceCapabilities() {
+        XCTAssertEqual(ProviderRegistry.registeredProviders.count, ServiceType.allCases.count)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmox).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.metrics))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.writeActions))
+    }
+
 
     // MARK: - Portainer
 

@@ -5,6 +5,8 @@ import com.homelab.app.data.local.dao.ServiceInstanceDao
 import com.homelab.app.data.local.entity.ServiceInstanceEntity
 import com.homelab.app.domain.model.ServiceConnection
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.security.CredentialEnvelope
+import com.homelab.app.security.InMemorySecureCredentialStore
 import com.homelab.app.util.ServiceType
 import io.mockk.coEvery
 import io.mockk.every
@@ -35,7 +37,8 @@ class ServiceInstancesRepositoryTest {
                 )
             )
         )
-        val repository = ServiceInstancesRepository(dao, settingsManager(state))
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(state), credentials)
 
         repository.migrateLegacyDataIfNeeded()
         repository.migrateLegacyDataIfNeeded()
@@ -43,6 +46,11 @@ class ServiceInstancesRepositoryTest {
         val migrated = dao.getByType(ServiceType.PIHOLE.name)
         assertEquals(1, migrated.size)
         assertEquals(ServiceType.PIHOLE.displayName, migrated.single().label)
+        assertEquals(
+            CredentialEnvelope(token = "sid123", piholePassword = "secret"),
+            credentials.get(migrated.single().credentialRef!!)
+        )
+        assertEquals("sid123", repository.getInstance(migrated.single().id)?.token)
         assertEquals(migrated.single().id, state.preferred.value[ServiceType.PIHOLE])
         assertNull(state.legacy[ServiceType.PIHOLE])
         assertTrue(state.migrated.value)
@@ -52,7 +60,8 @@ class ServiceInstancesRepositoryTest {
     fun `two instances of same type coexist and preferred repairs after delete`() = runTest {
         val dao = FakeServiceInstanceDao()
         val state = SettingsState()
-        val repository = ServiceInstancesRepository(dao, settingsManager(state))
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(state), credentials)
         val first = ServiceInstance(
             id = "instance-1",
             type = ServiceType.GITEA,
@@ -70,6 +79,8 @@ class ServiceInstancesRepositoryTest {
 
         repository.saveInstance(first)
         repository.saveInstance(second)
+        val secondCredentialRef = dao.getById(second.id)?.credentialRef!!
+        assertTrue(credentials.contains(secondCredentialRef))
         assertEquals(2, dao.getByType(ServiceType.GITEA.name).size)
         repository.setPreferredInstance(ServiceType.GITEA, second.id)
         repository.deleteInstance(second.id)
@@ -78,6 +89,7 @@ class ServiceInstancesRepositoryTest {
         assertEquals(first.id, state.preferred.value[ServiceType.GITEA])
         assertEquals(first.id, repository.getPreferredInstance(ServiceType.GITEA)?.id)
         assertNull(repository.getInstance(second.id))
+        assertTrue(!credentials.contains(secondCredentialRef))
     }
 
     private fun settingsManager(state: SettingsState): SettingsManager {
@@ -141,21 +153,4 @@ private class FakeServiceInstanceDao : ServiceInstanceDao {
     override suspend fun deleteAll() {
         state.value = emptyList()
     }
-}
-
-private fun ServiceInstance.toEntity(): ServiceInstanceEntity {
-    return ServiceInstanceEntity(
-        id = id,
-        type = type.name,
-        label = label,
-        url = url,
-        token = token,
-        username = username,
-        apiKey = apiKey,
-        piholePassword = piholePassword,
-        piholeAuthMode = piholeAuthMode?.name,
-        fallbackUrl = fallbackUrl,
-        allowSelfSigned = allowSelfSigned,
-        password = password
-    )
 }

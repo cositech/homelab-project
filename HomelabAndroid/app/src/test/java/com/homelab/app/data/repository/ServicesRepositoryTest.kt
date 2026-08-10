@@ -6,6 +6,7 @@ import com.homelab.app.data.local.entity.ServiceInstanceEntity
 import com.homelab.app.data.remote.TlsClientSelector
 import com.homelab.app.domain.model.ServiceConnection
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.security.InMemorySecureCredentialStore
 import com.homelab.app.util.GlobalEventBus
 import com.homelab.app.util.ServiceType
 import io.mockk.coEvery
@@ -35,7 +36,7 @@ class ServicesRepositoryTest {
     fun `reachability state stays scoped to requested instance id`() = runTest {
         val dao = ReachabilityFakeDao()
         val state = ReachabilitySettingsState()
-        val instanceRepository = ServiceInstancesRepository(dao, settingsManager(state))
+        val instanceRepository = ServiceInstancesRepository(dao, settingsManager(state), InMemorySecureCredentialStore())
         val tlsClientSelector = mockk<TlsClientSelector>()
         every { tlsClientSelector.forAllowSelfSigned(any()) } returns OkHttpClient()
         val repository = ServicesRepository(
@@ -72,7 +73,7 @@ class ServicesRepositoryTest {
     fun `reachability probe includes instance id header`() = runTest {
         val dao = ReachabilityFakeDao()
         val state = ReachabilitySettingsState(migrated = MutableStateFlow(true))
-        val instanceRepository = ServiceInstancesRepository(dao, settingsManager(state))
+        val instanceRepository = ServiceInstancesRepository(dao, settingsManager(state), InMemorySecureCredentialStore())
         val captured = mutableListOf<Request>()
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->
@@ -114,7 +115,7 @@ class ServicesRepositoryTest {
     fun `bulk reachability refresh is throttled when called twice back to back`() = runTest {
         val dao = ReachabilityFakeDao()
         val state = ReachabilitySettingsState(migrated = MutableStateFlow(true))
-        val instanceRepository = ServiceInstancesRepository(dao, settingsManager(state))
+        val instanceRepository = ServiceInstancesRepository(dao, settingsManager(state), InMemorySecureCredentialStore())
         val captured = mutableListOf<Request>()
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->

@@ -20,7 +20,7 @@ struct ServiceLoginView: View {
     @State private var errorMessage: String?
     @State private var shakeOffset: CGFloat = 0
     @State private var didPrefill = false
-    @State private var allowSelfSigned = true
+    @State private var allowSelfSigned = false
     @State private var proxmoxAuthMode: Int = 0 // 0 = Credentials, 1 = API Token
     @State private var proxmoxRealm = "pam"
     @State private var proxmoxApiTokenEntryMode = 0 // 0 = Guided, 1 = Raw

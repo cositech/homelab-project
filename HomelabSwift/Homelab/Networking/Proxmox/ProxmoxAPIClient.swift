@@ -13,7 +13,8 @@ actor ProxmoxAPIClient {
     private var engine: BaseNetworkEngine
     private var baseURL: String = ""
     private var fallbackURL: String = ""
-    private var storedAllowSelfSigned = true
+    private var storedAllowSelfSigned = false
+    private var storedTLSPolicy: TLSPolicy = .system
 
     // Ticket-based auth
     private var ticket: String = ""
@@ -49,7 +50,8 @@ actor ProxmoxAPIClient {
         password: String? = nil,
         otp: String? = nil,
         realm: String? = nil,
-        allowSelfSigned: Bool? = nil
+        allowSelfSigned: Bool? = nil,
+        tlsPolicy: TLSPolicy? = nil
     ) {
         self.baseURL = Self.cleanURL(url)
         self.fallbackURL = Self.cleanURL(fallbackUrl ?? "")
@@ -60,10 +62,18 @@ actor ProxmoxAPIClient {
         self.storedPassword = password ?? ""
         self.storedOTP = otp?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true ? nil : otp
         self.storedRealm = (realm?.isEmpty == false ? realm : nil) ?? "pam"
-        if let allowSelfSigned {
+        if let tlsPolicy {
+            storedTLSPolicy = tlsPolicy
+            storedAllowSelfSigned = tlsPolicy.mode == .insecureCompatibility
+        } else if let allowSelfSigned {
             storedAllowSelfSigned = allowSelfSigned
+            storedTLSPolicy = allowSelfSigned ? .insecureCompatibility : .system
         }
-        engine = BaseNetworkEngine(serviceType: .proxmox, instanceId: instanceId, allowSelfSigned: storedAllowSelfSigned)
+        engine = BaseNetworkEngine(
+            serviceType: .proxmox,
+            instanceId: instanceId,
+            tlsPolicy: storedTLSPolicy
+        )
         ticketIssuedAt = Self.ticketIssuedAt(from: self.ticket)
     }
 
@@ -100,7 +110,7 @@ actor ProxmoxAPIClient {
     }
 
     private func authenticationSession() -> URLSession {
-        BaseNetworkEngine.authSession(allowSelfSigned: storedAllowSelfSigned, timeout: 10)
+        BaseNetworkEngine.authSession(tlsPolicy: storedTLSPolicy, timeout: 10)
     }
 
     private func markAuthenticated(ticket: String, csrf: String) {
@@ -516,6 +526,34 @@ actor ProxmoxAPIClient {
     func getVersion() async throws -> ProxmoxVersion {
         let response: ProxmoxAPIResponse<ProxmoxVersion> = try await authenticatedRequest(path: "/api2/json/version")
         return response.data
+    }
+
+    func getNormalizedHealth() async -> ProviderHealth {
+        let descriptor = ProviderRegistry.descriptor(for: .proxmox)
+        do {
+            let version = try await getVersion()
+            return ProviderHealth(
+                providerId: descriptor.id,
+                instanceId: instanceId,
+                state: .healthy,
+                message: "Proxmox VE API reachable",
+                observedAt: Date(),
+                attributes: [
+                    "version": version.version,
+                    "release": version.release,
+                    "repository": version.repoid
+                ].compactMapValues { $0 }
+            )
+        } catch {
+            return ProviderHealth(
+                providerId: descriptor.id,
+                instanceId: instanceId,
+                state: .unavailable,
+                message: error.localizedDescription,
+                observedAt: Date(),
+                attributes: [:]
+            )
+        }
     }
 
     // MARK: - Nodes

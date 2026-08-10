@@ -1,4 +1,6 @@
 import Foundation
+import CryptoKit
+import Security
 
 // MARK: - Notifications for 401 interception
 
@@ -13,7 +15,7 @@ extension Notification.Name {
 final class BaseNetworkEngine: Sendable {
     let serviceType: ServiceType
     let instanceId: UUID
-    private let allowSelfSigned: Bool
+    private let tlsPolicy: TLSPolicy
     private let timeoutInterval: TimeInterval = 8
     private let pingTimeout: TimeInterval = 3
 
@@ -24,7 +26,7 @@ final class BaseNetworkEngine: Sendable {
 
     static let insecureDelegateForPortainerAuth: URLSessionDelegate = insecureDelegate
 
-    // Insecure sessions (self-signed certs allowed — default for homelab)
+    // Compatibility sessions are retained only for explicitly selected instances.
     private static let insecureRequestSession: URLSession = {
         makeSession(delegate: insecureDelegate, timeout: 8)
     }()
@@ -61,27 +63,58 @@ final class BaseNetworkEngine: Sendable {
     }
 
     static func authSession(allowSelfSigned: Bool, timeout: TimeInterval) -> URLSession {
-        makeSession(delegate: allowSelfSigned ? insecureDelegate : secureDelegate, timeout: timeout)
+        authSession(
+            tlsPolicy: allowSelfSigned ? .insecureCompatibility : .system,
+            timeout: timeout
+        )
     }
 
-    init(serviceType: ServiceType, instanceId: UUID, allowSelfSigned: Bool = true) {
+    static func authSession(tlsPolicy: TLSPolicy, timeout: TimeInterval) -> URLSession {
+        makeSession(delegate: trustDelegate(for: tlsPolicy), timeout: timeout)
+    }
+
+    init(
+        serviceType: ServiceType,
+        instanceId: UUID,
+        allowSelfSigned: Bool = false,
+        tlsPolicy: TLSPolicy? = nil
+    ) {
         self.serviceType = serviceType
         self.instanceId = instanceId
-        self.allowSelfSigned = allowSelfSigned
+        self.tlsPolicy = tlsPolicy ?? (allowSelfSigned ? .insecureCompatibility : .system)
     }
 
     // MARK: - Session selection
 
     private var requestSession: URLSession {
-        allowSelfSigned ? Self.insecureRequestSession : Self.secureRequestSession
+        switch tlsPolicy.mode {
+        case .system: Self.secureRequestSession
+        case .insecureCompatibility: Self.insecureRequestSession
+        case .customCA, .certificatePin:
+            Self.makeSession(delegate: Self.trustDelegate(for: tlsPolicy), timeout: 8)
+        }
     }
 
     private var pingSession: URLSession {
-        allowSelfSigned ? Self.insecurePingSession : Self.securePingSession
+        switch tlsPolicy.mode {
+        case .system: Self.securePingSession
+        case .insecureCompatibility: Self.insecurePingSession
+        case .customCA, .certificatePin:
+            Self.makeSession(delegate: Self.trustDelegate(for: tlsPolicy), timeout: 3)
+        }
     }
 
     private var imageSession: URLSession {
-        allowSelfSigned ? Self.insecureImageSession : Self.secureImageSession
+        switch tlsPolicy.mode {
+        case .system: Self.secureImageSession
+        case .insecureCompatibility: Self.insecureImageSession
+        case .customCA, .certificatePin:
+            Self.makeSession(
+                delegate: Self.trustDelegate(for: tlsPolicy),
+                timeout: 8,
+                cachePolicy: .returnCacheDataElseLoad
+            )
+        }
     }
 
     static func imageData(from url: URL, headers: [String: String] = [:]) async throws -> Data {
@@ -90,7 +123,7 @@ final class BaseNetworkEngine: Sendable {
         headers.forEach { key, value in
             request.setValue(value, forHTTPHeaderField: key)
         }
-        let (data, response) = try await Self.insecureImageSession.data(for: request)
+        let (data, response) = try await Self.secureImageSession.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw APIError.custom("Invalid image response")
         }
@@ -98,6 +131,17 @@ final class BaseNetworkEngine: Sendable {
             throw APIError.httpError(statusCode: http.statusCode, body: "")
         }
         return data
+    }
+
+    private static func trustDelegate(for policy: TLSPolicy) -> URLSessionDelegate {
+        switch policy.mode {
+        case .system:
+            return secureDelegate
+        case .insecureCompatibility:
+            return insecureDelegate
+        case .customCA, .certificatePin:
+            return PolicyTrustDelegate(policy: policy)
+        }
     }
 
     // MARK: - Core Request (primary → fallback)
@@ -412,6 +456,84 @@ final class SecureTrustDelegate: NSObject, URLSessionDelegate {
             // Certificate is invalid (self-signed, expired, wrong host, etc.)
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
+    }
+}
+
+final class PolicyTrustDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+    private let policy: TLSPolicy
+
+    init(policy: TLSPolicy) {
+        self.policy = policy
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let serverTrust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        switch policy.mode {
+        case .system:
+            completeDefaultTrust(serverTrust, completionHandler: completionHandler)
+        case .insecureCompatibility:
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        case .customCA:
+            guard
+                let pem = policy.customCAPEM,
+                let certificateData = Self.derData(fromPEM: pem),
+                let certificate = SecCertificateCreateWithData(nil, certificateData as CFData),
+                SecTrustSetAnchorCertificates(serverTrust, [certificate] as CFArray) == errSecSuccess
+            else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            SecTrustSetAnchorCertificatesOnly(serverTrust, false)
+            completeDefaultTrust(serverTrust, completionHandler: completionHandler)
+        case .certificatePin:
+            guard Self.evaluate(serverTrust),
+                  let configuredPin = policy.certificatePin,
+                  let leaf = SecTrustGetCertificateAtIndex(serverTrust, 0)
+            else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            let digest = SHA256.hash(data: SecCertificateCopyData(leaf) as Data)
+            let observedPin = "sha256/" + Data(digest).base64EncodedString()
+            if observedPin == configuredPin {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            } else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+            }
+        }
+    }
+
+    private func completeDefaultTrust(
+        _ trust: SecTrust,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        if Self.evaluate(trust) {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
+    }
+
+    private static func evaluate(_ trust: SecTrust) -> Bool {
+        var error: CFError?
+        return SecTrustEvaluateWithError(trust, &error)
+    }
+
+    private static func derData(fromPEM pem: String) -> Data? {
+        let body = pem
+            .replacingOccurrences(of: "-----BEGIN CERTIFICATE-----", with: "")
+            .replacingOccurrences(of: "-----END CERTIFICATE-----", with: "")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()
+        return Data(base64Encoded: body)
     }
 }
 
