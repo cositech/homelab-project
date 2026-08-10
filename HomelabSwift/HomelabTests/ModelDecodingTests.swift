@@ -2,6 +2,35 @@ import XCTest
 @testable import Homelab
 
 final class ModelDecodingTests: XCTestCase {
+    func testProviderRequestRejectsCleartextBeforeCredentialsAreAttached() throws {
+        let url = try XCTUnwrap(URL(string: "http://homelab.internal/api"))
+        XCTAssertThrowsError(
+            try BaseNetworkEngine.makeSecureRequest(
+                url: url,
+                method: "POST",
+                headers: ["Authorization": "Bearer secret"],
+                body: Data("password=secret".utf8)
+            )
+        )
+    }
+
+    func testProviderRequestAcceptsHTTPSAndPreservesRequestData() throws {
+        let url = try XCTUnwrap(URL(string: "https://homelab.internal/api"))
+        let request = try BaseNetworkEngine.makeSecureRequest(
+            url: url,
+            method: "POST",
+            headers: ["Authorization": "Bearer secret"],
+            body: Data("payload".utf8),
+            timeout: 12
+        )
+
+        XCTAssertEqual(request.url, url)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+        XCTAssertEqual(request.httpBody, Data("payload".utf8))
+        XCTAssertEqual(request.timeoutInterval, 12)
+    }
+
     func testProviderRegistryCoversAllServiceTypesAndReferenceCapabilities() {
         XCTAssertEqual(ProviderRegistry.registeredProviders.count, ServiceType.allCases.count)
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmox).capabilities.contains(.writeActions))

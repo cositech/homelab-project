@@ -53,6 +53,7 @@ reject_pattern 'cleartextTrafficPermitted="true"' "$ANDROID_ROOT/res/xml/network
 require_pattern 'mutableStateOf\(false\)' "$ANDROID_LOGIN"
 require_pattern 'allowSelfSigned: Boolean = false' "$ANDROID_LOGIN_VM"
 require_pattern '@State private var allowSelfSigned = false' "$IOS_LOGIN"
+require_pattern 'lowercased\(\) == "https"' "$IOS_ROOT/Networking/APIClient.swift"
 
 python3 - <<'PY'
 from pathlib import Path

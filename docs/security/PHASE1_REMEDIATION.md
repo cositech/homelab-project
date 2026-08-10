@@ -10,6 +10,7 @@ Date: 2026-08-10. Scope: SEC-001 through SEC-004 from the Phase-0 security audit
 4. System certificate validation is the default on both platforms.
 5. Custom trust anchors, certificate pins, and verification bypass are distinct instance-scoped policies.
 6. Global Android cleartext and broad iOS ATS exemptions remain disabled.
+7. Provider requests reject non-HTTPS URLs before credentials are attached to headers or bodies.
 
 ## Finding disposition
 
@@ -23,7 +24,7 @@ Date: 2026-08-10. Scope: SEC-001 through SEC-004 from the Phase-0 security audit
 
 ### SEC-003 — Broad iOS ATS exemptions
 
-**Remediated.** General, media, and web-content arbitrary-load exemptions were removed. Local-network access remains declared because direct self-hosted provider access is a product requirement; trust behavior is still controlled per instance.
+**Remediated.** General, media, and web-content arbitrary-load exemptions were removed. Local-network access remains declared because direct self-hosted provider access is a product requirement; provider requests still require HTTPS and trust behavior is controlled per instance.
 
 ### SEC-004 — Self-signed trust compatibility
 

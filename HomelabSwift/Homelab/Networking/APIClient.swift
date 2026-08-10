@@ -118,11 +118,7 @@ final class BaseNetworkEngine: Sendable {
     }
 
     static func imageData(from url: URL, headers: [String: String] = [:]) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8
-        headers.forEach { key, value in
-            request.setValue(value, forHTTPHeaderField: key)
-        }
+        let request = try makeSecureRequest(url: url, headers: headers, timeout: 8)
         let (data, response) = try await Self.secureImageSession.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw APIError.custom("Invalid image response")
@@ -240,12 +236,12 @@ final class BaseNetworkEngine: Sendable {
     // MARK: - Ping Helper
 
     func pingURL(_ urlString: String, extraHeaders: [String: String] = [:]) async -> Bool {
-        guard let url = URL(string: urlString) else { return false }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = pingTimeout
-        for (key, value) in extraHeaders {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
+        guard let url = URL(string: urlString),
+              let request = try? Self.makeSecureRequest(
+                  url: url,
+                  headers: extraHeaders,
+                  timeout: pingTimeout
+              ) else { return false }
         do {
             let (_, response) = try await pingSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
@@ -257,6 +253,27 @@ final class BaseNetworkEngine: Sendable {
 
     // MARK: - Private
 
+    static func makeSecureRequest(
+        url: URL,
+        method: String = "GET",
+        headers: [String: String] = [:],
+        body: Data? = nil,
+        timeout: TimeInterval = 8
+    ) throws -> URLRequest {
+        guard url.scheme?.lowercased() == "https" else {
+            throw APIError.custom("Cleartext HTTP is disabled for provider requests. Configure an HTTPS endpoint.")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = timeout
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = body
+        return request
+    }
+
     private func performRequest<T: Decodable>(
         baseURL: String,
         path: String,
@@ -267,13 +284,13 @@ final class BaseNetworkEngine: Sendable {
         let urlString = baseURL + path
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
 
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.timeoutInterval = timeoutInterval
-        for (key, value) in headers {
-            req.setValue(value, forHTTPHeaderField: key)
-        }
-        req.httpBody = body
+        let req = try Self.makeSecureRequest(
+            url: url,
+            method: method,
+            headers: headers,
+            body: body,
+            timeout: timeoutInterval
+        )
 
         logRequest(req)
         let (data, response) = try await requestSession.data(for: req)
@@ -298,13 +315,13 @@ final class BaseNetworkEngine: Sendable {
         let urlString = baseURL + path
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
 
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.timeoutInterval = timeoutInterval
-        for (key, value) in headers {
-            req.setValue(value, forHTTPHeaderField: key)
-        }
-        req.httpBody = body
+        let req = try Self.makeSecureRequest(
+            url: url,
+            method: method,
+            headers: headers,
+            body: body,
+            timeout: timeoutInterval
+        )
 
         logRequest(req)
         let (data, response) = try await requestSession.data(for: req)
@@ -324,13 +341,13 @@ final class BaseNetworkEngine: Sendable {
         let urlString = baseURL + path
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
 
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.timeoutInterval = timeoutInterval
-        for (key, value) in headers {
-            req.setValue(value, forHTTPHeaderField: key)
-        }
-        req.httpBody = body
+        let req = try Self.makeSecureRequest(
+            url: url,
+            method: method,
+            headers: headers,
+            body: body,
+            timeout: timeoutInterval
+        )
 
         logRequest(req)
         let (data, response) = try await requestSession.data(for: req)
@@ -348,13 +365,13 @@ final class BaseNetworkEngine: Sendable {
         let urlString = baseURL + path
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
 
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.timeoutInterval = timeoutInterval
-        for (key, value) in headers {
-            req.setValue(value, forHTTPHeaderField: key)
-        }
-        req.httpBody = body
+        let req = try Self.makeSecureRequest(
+            url: url,
+            method: method,
+            headers: headers,
+            body: body,
+            timeout: timeoutInterval
+        )
 
         logRequest(req)
         let (data, response) = try await requestSession.data(for: req)
