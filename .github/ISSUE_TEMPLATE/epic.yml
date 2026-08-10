@@ -1,0 +1,27 @@
+name: Epic
+description: Track a coherent architecture or delivery workstream
+title: "[EPIC] "
+labels: ["epic"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Exit criteria
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / migrations

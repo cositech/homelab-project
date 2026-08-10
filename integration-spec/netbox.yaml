@@ -1,0 +1,7 @@
+id: netbox
+name: NetBox
+category: source-of-truth
+maturity: planned
+connectivity: [direct, gateway]
+authentication: [api-token]
+capabilities: [asset, inventory, search, documentation]

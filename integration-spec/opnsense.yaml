@@ -1,0 +1,12 @@
+id: opnsense
+name: OPNsense
+category: network
+maturity: planned
+connectivity: [direct, gateway]
+authentication: [api-key-secret]
+capabilities: [health, metrics, alerts, asset, inventory, search, actions]
+actions:
+  - id: service.restart
+    risk: elevated
+  - id: firewall.apply
+    risk: critical

@@ -1,0 +1,14 @@
+id: zammad
+name: Zammad
+category: support
+maturity: planned
+connectivity: [direct, gateway]
+authentication: [api-token, oauth]
+capabilities: [tickets, incidents, search, actions]
+actions:
+  - id: ticket.comment
+    risk: safe
+  - id: ticket.assign
+    risk: safe
+  - id: ticket.close
+    risk: elevated

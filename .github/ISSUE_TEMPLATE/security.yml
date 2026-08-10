@@ -1,0 +1,26 @@
+name: Security hardening
+description: Non-confidential security architecture/hardening work
+title: "[Security] "
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not disclose exploitable confidential details or real credentials here."
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk / hardening objective
+    validations:
+      required: true
+  - type: textarea
+    id: target
+    attributes:
+      label: Target state
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation / tests
+    validations:
+      required: true

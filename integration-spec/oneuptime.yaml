@@ -1,0 +1,7 @@
+id: oneuptime
+name: OneUptime
+category: observability
+maturity: planned
+connectivity: [direct, gateway]
+authentication: [api-key]
+capabilities: [health, metrics, alerts, incidents, search, actions]

@@ -1,0 +1,12 @@
+id: uptime-kuma
+name: Uptime Kuma
+category: monitoring
+maturity: legacy
+connectivity: [direct, gateway]
+authentication: [username-password, token-if-supported]
+capabilities: [health, metrics, alerts, incidents, search, actions]
+actions:
+  - id: monitor.pause
+    risk: safe
+  - id: monitor.resume
+    risk: safe

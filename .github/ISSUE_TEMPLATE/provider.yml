@@ -1,0 +1,42 @@
+name: Provider integration
+description: Add or migrate a provider
+title: "[Provider] "
+labels: ["provider"]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+    validations:
+      required: true
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Capabilities
+    validations:
+      required: true
+  - type: textarea
+    id: auth
+    attributes:
+      label: Authentication and minimum privileges
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Supported API/product versions
+  - type: textarea
+    id: fixtures
+    attributes:
+      label: Fixture/test plan
+    validations:
+      required: true
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platform work
+      options:
+        - label: Android
+        - label: iOS
+        - label: Integration spec
+        - label: Contract tests

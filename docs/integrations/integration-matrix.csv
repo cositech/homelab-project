@@ -1,0 +1,117 @@
+name,category,upstream,environment,priority,strategy,capabilities,notes
+Proxmox VE,Compute,yes,existing-upstream,P0,migrate,"health,inventory,metrics,search",Final upstream README integration; preserve existing functionality during capability migration.
+Portainer,Containers,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+TrueNAS,Storage,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Uptime Kuma,Monitoring,yes,existing-upstream,P0,migrate,"health,inventory,metrics,search",Final upstream README integration; preserve existing functionality during capability migration.
+Dockhand,Containers,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+DockMon,Containers,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Beszel,Monitoring,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Komodo,Containers,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Linux Update,Operations,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Gitea / Forgejo,DevOps,yes,existing-upstream,P0,migrate,"health,inventory,metrics,search",Final upstream README integration; preserve existing functionality during capability migration.
+Healthchecks,Monitoring,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+PatchMon,Operations,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Pi-hole,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+AdGuard Home,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Ubiquiti / UniFi,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Technitium DNS,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Maltrail,Security,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Nginx Proxy Manager / NPMplus,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Plex,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Jellyfin,Media,no,legacy/source-observed,P2,migrate,provider-specific,Preserve existing functionality during capability migration. Source-observed/previously catalogued but not part of final README 34.
+Sonarr,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Radarr,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Lidarr,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Prowlarr,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+qBittorrent,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Jellyseerr,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Bazarr,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Gluetun,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+FlareSolverr,Utility,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+Crafty Controller,Gaming,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve existing functionality during capability migration.
+RomM,Gaming,no,legacy/source-observed,P2,migrate,provider-specific,Preserve existing functionality during capability migration. Source-observed/previously catalogued but not part of final README 34.
+MineOS,Gaming,no,legacy/source-observed,P2,migrate,provider-specific,Preserve existing functionality during capability migration. Source-observed/previously catalogued but not part of final README 34.
+Steam,Gaming,no,legacy/source-observed,P2,migrate,provider-specific,Preserve existing functionality during capability migration. Source-observed/previously catalogued but not part of final README 34.
+Proxmox Backup Server,Backup,no,used/considered,P0,direct+gateway,"health,backup,metrics,alerts,actions",
+Proxmox Mail Gateway,Messaging/Security,no,used/considered,P1,direct+gateway,"health,metrics,alerts,search",
+Ceph,Storage,no,used/considered,P1,prometheus+direct,"health,inventory,metrics,alerts",
+ZFS,Storage,no,used/considered,P1,prometheus+host,"health,inventory,metrics",
+Linux / systemd / OpenSSH,Compute,no,used/considered,P0,host/gateway,"health,inventory,metrics,actions",
+Docker / Docker Compose,Containers,no,used/considered,P0,direct+gateway,"health,inventory,metrics,actions",
+Kubernetes / RKE2,Containers,no,used/considered,P1,direct+gateway,"health,inventory,metrics,alerts,actions",
+Rancher,Containers,no,used/considered,P1,direct+gateway,"health,inventory,actions",
+Longhorn,Storage,no,used/considered,P1,direct+prometheus,"health,inventory,metrics,alerts",
+NVIDIA DCGM,AI/Compute,no,used/considered,P1,prometheus,"health,metrics",
+OPNsense,Network,no,used/considered,P0,direct+gateway,"health,inventory,metrics,alerts,actions",
+WireGuard,Network,no,used/considered,P0,host+gateway,"health,inventory,metrics",
+OSPF,Network,no,used/considered,P1,provider+telemetry,"health,inventory,metrics",
+BGP,Network,no,used/considered,P2,provider+telemetry,"health,inventory,metrics",
+Palo Alto PAN-OS,Security/Network,no,used/considered,P1,direct+gateway,"health,inventory,metrics,alerts,security,actions",
+GlobalProtect,Security/Network,no,used/considered,P1,panos,"health,inventory,alerts",
+Arista EOS,Network,no,used/considered,P2,direct+gateway,"health,inventory,metrics,actions",
+SNMP,Network,no,used/considered,P1,gateway,"health,inventory,metrics",
+Cloudflare,Network/Security,no,used/considered,P1,gateway,"health,inventory,security,actions",
+NetBox,Source of Truth,no,used/considered,P0,direct+gateway,"asset,inventory,search,documentation",
+Oxidized,Network/Backup,no,used/considered,P1,direct+gateway,"backup,inventory,search",
+Prometheus,Observability,no,used/considered,P0,direct+gateway,"metrics,health,search",
+Grafana,Observability,no,used/considered,P0,direct+gateway,"metrics,documentation,search",
+Alertmanager,Observability,no,used/considered,P0,direct+gateway,"alerts,actions",
+OneUptime,Observability,no,used/considered,P0,direct+gateway,"health,alerts,incidents,metrics",
+Centreon,Observability,no,used/considered,P1,direct+gateway,"health,alerts,metrics",
+Graylog,Logging,no,used/considered,P1,gateway,"logs,search,alerts",
+Loki,Logging,no,used/considered,P1,gateway,"logs,search",
+OpenSearch,Logging/Search,no,used/considered,P1,gateway,"logs,search,alerts",
+OpenObserve,Observability,no,used/considered,P2,gateway,"logs,metrics,search",
+OpenTelemetry,Observability,no,used/considered,P2,collector,"metrics,logs",
+Tempo / Jaeger,Tracing,no,used/considered,P2,gateway,"search,documentation",
+cAdvisor,Observability,no,used/considered,P2,prometheus,metrics,
+Blackbox Exporter,Observability,no,used/considered,P2,prometheus,"metrics,health",
+Node Exporter,Observability,no,used/considered,P2,prometheus,metrics,
+SNMP Exporter,Observability,no,used/considered,P2,prometheus,metrics,
+kube-state-metrics,Observability,no,used/considered,P2,prometheus,metrics,
+OPNsense Exporter,Observability,no,used/considered,P2,prometheus,metrics,
+Proxmox Exporter,Observability,no,used/considered,P2,prometheus,metrics,
+Zammad,Support,no,used/considered,P0,direct+gateway,"tickets,incidents,search,actions",
+PegaProx,RMM,no,used/considered,P0,direct+gateway,"health,asset,inventory,metrics,alerts,actions",
+FileWave UEM,Endpoint,no,used/considered,P1,gateway,"asset,inventory,security,actions",
+Cynet AiO 360,Security,no,used/considered,P1,gateway,"security,alerts,incidents",
+Authentik,Identity,no,used/considered,P1,direct+gateway,"health,inventory,security",
+Microsoft Entra ID,Identity,no,used/considered,P1,gateway,"inventory,security,alerts,actions",
+Microsoft Intune,Endpoint,no,used/considered,P1,gateway,"asset,inventory,security,actions",
+Microsoft Defender,Security,no,used/considered,P1,gateway,"security,alerts,incidents",
+Microsoft 365,Business,no,used/considered,P1,gateway,"health,inventory,alerts",
+Exchange Online,Messaging,no,used/considered,P1,gateway,"health,inventory,alerts",
+Microsoft Teams,Collaboration,no,used/considered,P2,gateway,"search,notifications",
+Teleport,Security/Access,no,used/considered,P2,gateway,"security,inventory,search",
+Vault,Security/Secrets,no,used/considered,P2,gateway-only,"health,security",
+Wazuh,Security,no,used/considered,P2,gateway,"security,alerts,incidents",
+TheHive,Security,no,used/considered,P2,gateway,"incidents,tasks,search",
+Suricata,Security,no,used/considered,P2,via-siem,"security,alerts",
+Fail2Ban,Security,no,used/considered,P2,host+gateway,"security,alerts,actions",
+OpenProject,Project,no,used/considered,P1,direct+gateway,"tasks,search,documentation,actions",
+Outline,Knowledge,no,used/considered,P1,direct+gateway,"documentation,search",
+Paperless-ngx,Knowledge,no,used/considered,P1,direct+gateway,"documentation,search",
+SharePoint,Knowledge,no,used/considered,P2,gateway,"documentation,search",
+OneDrive for Business,Knowledge,no,used/considered,P2,gateway,"documentation,search",
+sevDesk,Business,no,used/considered,P2,gateway,search,
+GitHub,DevOps,no,used/considered,P1,direct+gateway,"inventory,tasks,search,alerts",
+GitHub Actions,DevOps,no,used/considered,P1,github,"health,tasks,alerts,actions",
+Dokploy,Deployment,no,used/considered,P1,direct+gateway,"deployment,health,inventory,actions",
+Renovate,DevOps,no,used/considered,P2,github/gitea,"tasks,alerts",
+COStech Platform API,AI,no,used/considered,P1,direct+gateway,"health,ai,metrics",
+AIOC,AI,no,used/considered,P1,gateway+mcp,"ai,search,actions",
+OpenWebUI,AI,no,used/considered,P2,direct,"health,inventory",
+LiteLLM,AI,no,used/considered,P1,direct+gateway,"health,metrics,inventory",
+Ollama,AI,no,used/considered,P1,direct+gateway,"health,inventory,metrics",
+Qdrant,AI/Data,no,used/considered,P1,direct+gateway,"health,inventory,metrics",
+PostgreSQL,Data,no,used/considered,P1,metrics+gateway,"health,metrics,backup",
+Redis,Data,no,used/considered,P1,metrics+gateway,"health,metrics",
+MCP Gateway,AI,no,used/considered,P1,gateway,"health,ai,search,actions",
+Hetzner StorageBox,Backup,no,used/considered,P1,gateway,"backup,health",
+S3-compatible object storage,Backup,no,used/considered,P1,gateway,"backup,health",
+Ceph RBD / CSI,Storage,no,used/considered,P1,kubernetes+ceph,"health,inventory,metrics",
+Calagopus,Gaming,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve functionality during capability migration.
+Jellystat,Media,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve functionality during capability migration.
+Pangolin / Newt,Network,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve functionality during capability migration.
+Pterodactyl,Gaming,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve functionality during capability migration.
+Wakapi,DevOps,yes,existing-upstream,P2,migrate,provider-specific,Final upstream README integration; preserve functionality during capability migration.

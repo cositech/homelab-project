@@ -1,0 +1,62 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 3 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  packages: read
+
+jobs:
+  kotlin:
+    name: CodeQL Kotlin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6.1.0
+      - name: Build
+        working-directory: HomelabAndroid
+        run: ./gradlew --no-daemon --console=plain :app:assembleDebug
+      - uses: github/codeql-action/analyze@v3
+
+  swift:
+    name: CodeQL Swift
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: swift
+      - name: Create CI signing config
+        working-directory: HomelabSwift
+        run: |
+          mkdir -p Config
+          cat > Config/Signing.xcconfig <<'EOF'
+          DEVELOPMENT_TEAM =
+          PRODUCT_BUNDLE_IDENTIFIER = homelab.foreverhomelab
+          EOF
+      - name: Build
+        working-directory: HomelabSwift
+        run: >
+          xcodebuild build
+          -project Homelab.xcodeproj
+          -scheme Homelab
+          -configuration Debug
+          -sdk iphoneos
+          -destination 'generic/platform=iOS'
+          -derivedDataPath "$RUNNER_TEMP/homelab-ios-codeql-dd"
+          CODE_SIGNING_ALLOWED=NO
+      - uses: github/codeql-action/analyze@v3

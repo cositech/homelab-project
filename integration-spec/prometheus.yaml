@@ -1,0 +1,7 @@
+id: prometheus
+name: Prometheus
+category: observability
+maturity: planned
+connectivity: [direct, gateway]
+authentication: [reverse-proxy, bearer, none-private-network]
+capabilities: [health, metrics, search]

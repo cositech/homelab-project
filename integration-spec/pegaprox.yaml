@@ -1,0 +1,15 @@
+id: pegaprox
+name: PegaProx
+category: rmm
+maturity: planned
+connectivity: [direct, gateway]
+authentication: [api-token]
+capabilities: [health, metrics, alerts, asset, inventory, search, actions]
+actions:
+  - id: remote-session.open
+    risk: elevated
+  - id: service.restart
+    risk: elevated
+  - id: device.reboot
+    risk: critical
+notes: API/auth/action availability must be verified against the deployed PegaProx version before implementation.

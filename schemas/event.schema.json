@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NormalizedEvent",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "timestamp",
+    "provider",
+    "instanceId",
+    "severity",
+    "resource"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "info",
+        "warning",
+        "error",
+        "critical"
+      ]
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "correlationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

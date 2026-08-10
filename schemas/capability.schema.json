@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CapabilityResult",
+  "type": "object",
+  "required": [
+    "provider",
+    "instanceId",
+    "timestamp",
+    "data"
+  ],
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stale": {
+      "type": "boolean",
+      "default": false
+    },
+    "data": {}
+  }
+}

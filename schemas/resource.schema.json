@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Resource",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "sourceIdentities"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "organizationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "siteId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceIdentities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "instanceId",
+          "key"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

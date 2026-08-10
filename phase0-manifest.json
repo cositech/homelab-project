@@ -1,0 +1,14 @@
+{
+  "package": "infrahub-mobile-phase0",
+  "generated": "2026-08-10",
+  "repository": "cositech/homelab-project",
+  "upstream": "JohnnWi/homelab-project",
+  "upstream_version": "1.6.2",
+  "upstream_build": 39,
+  "base_commit": "75e7f3d53e2ec73ff55ce95927ddc173c724c9fd",
+  "branch": "phase0/foundation",
+  "status": "published_pending_dynamic_ci_validation",
+  "integration_count": 116,
+  "adr_count": 16,
+  "final_upstream_integration_count": 34
+}

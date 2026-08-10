@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/provider.schema.json",
+  "title": "ProviderSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "category",
+    "maturity",
+    "connectivity",
+    "authentication",
+    "capabilities"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string"
+    },
+    "maturity": {
+      "enum": [
+        "legacy",
+        "planned",
+        "experimental",
+        "beta",
+        "stable"
+      ]
+    },
+    "connectivity": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "direct",
+          "gateway",
+          "aggregator",
+          "host",
+          "mcp"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "authentication": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "health",
+          "metrics",
+          "alerts",
+          "asset",
+          "inventory",
+          "incidents",
+          "tickets",
+          "logs",
+          "backup",
+          "tasks",
+          "deployment",
+          "security",
+          "search",
+          "actions",
+          "documentation",
+          "ai"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "risk"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "risk": {
+            "enum": [
+              "safe",
+              "elevated",
+              "critical"
+            ]
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

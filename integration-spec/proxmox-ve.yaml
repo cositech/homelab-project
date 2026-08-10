@@ -1,0 +1,20 @@
+id: proxmox-ve
+name: Proxmox VE
+category: compute
+maturity: legacy
+connectivity: [direct, gateway]
+authentication: [api-token, ticket]
+capabilities: [health, metrics, alerts, asset, inventory, backup, search, actions]
+actions:
+  - id: vm.start
+    risk: safe
+  - id: vm.shutdown
+    risk: elevated
+  - id: vm.stop
+    risk: elevated
+  - id: vm.reboot
+    risk: elevated
+  - id: vm.migrate
+    risk: elevated
+  - id: node.reboot
+    risk: critical
