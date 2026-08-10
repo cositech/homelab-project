@@ -54,6 +54,9 @@ require_pattern 'mutableStateOf\(false\)' "$ANDROID_LOGIN"
 require_pattern 'allowSelfSigned: Boolean = false' "$ANDROID_LOGIN_VM"
 require_pattern '@State private var allowSelfSigned = false' "$IOS_LOGIN"
 require_pattern 'lowercased\(\) == "https"' "$IOS_ROOT/Networking/APIClient.swift"
+require_pattern 'makeSecureURL\(baseURL: baseURL, path: path\)' "$IOS_ROOT/Networking/APIClient.swift"
+reject_pattern 'let urlString = baseURL \+ path' "$IOS_ROOT/Networking/APIClient.swift"
+require_pattern 'redactedURLForLogging' "$IOS_ROOT/Networking/APIClient.swift"
 
 python3 - <<'PY'
 from pathlib import Path

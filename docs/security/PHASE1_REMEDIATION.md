@@ -11,6 +11,7 @@ Date: 2026-08-10. Scope: SEC-001 through SEC-004 from the Phase-0 security audit
 5. Custom trust anchors, certificate pins, and verification bypass are distinct instance-scoped policies.
 6. Global Android cleartext and broad iOS ATS exemptions remain disabled.
 7. Provider requests reject non-HTTPS URLs before credentials are attached to headers or bodies.
+8. Provider endpoint construction validates the HTTPS authority before combining paths, rejects embedded URL credentials, and redacts secret-bearing query parameters from request logs.
 
 ## Finding disposition
 
@@ -29,6 +30,10 @@ Date: 2026-08-10. Scope: SEC-001 through SEC-004 from the Phase-0 security audit
 ### SEC-004 — Self-signed trust compatibility
 
 **Remediated at the transport and persistence boundary.** Android and iOS model `SYSTEM`, `CUSTOM_CA`, `CERTIFICATE_PIN`, and `INSECURE_COMPATIBILITY` separately. System trust is the default. Custom anchors and SHA-256 certificate pins retain normal certificate validation semantics. The compatibility bypass is preserved only for legacy/self-hosted recovery and is never selected implicitly.
+
+### CodeQL — Sensitive data in provider URLs
+
+**Remediated.** The iOS network engine no longer concatenates an unvalidated base URL and a potentially secret-bearing path. It parses and validates an HTTPS base authority first, rejects embedded authority credentials, then combines relative path and query components while reasserting the literal HTTPS scheme. Legacy APIs that require a query token remain functional over HTTPS, but auth, token, password, API-key, secret, and session query values are redacted before request URLs reach application logs.
 
 ## Provider core
 

@@ -274,6 +274,37 @@ final class BaseNetworkEngine: Sendable {
         return request
     }
 
+    static func makeSecureURL(baseURL: String, path: String) throws -> URL {
+        guard var components = URLComponents(string: baseURL),
+              components.scheme?.lowercased() == "https",
+              components.host != nil,
+              components.user == nil,
+              components.password == nil else {
+            throw APIError.custom("Cleartext HTTP and credential-bearing provider URLs are disabled. Configure an HTTPS endpoint without embedded credentials.")
+        }
+        guard let relative = URLComponents(string: path),
+              relative.scheme == nil,
+              relative.host == nil,
+              relative.user == nil,
+              relative.password == nil else {
+            throw APIError.invalidURL
+        }
+
+        let basePath = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let relativePath = relative.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let joinedPath = [basePath, relativePath].filter { !$0.isEmpty }.joined(separator: "/")
+
+        // Re-assert the literal secure scheme after validation so the transport
+        // invariant remains explicit to both reviewers and static analyzers.
+        components.scheme = "https"
+        components.percentEncodedPath = joinedPath.isEmpty ? "/" : "/\(joinedPath)"
+        components.percentEncodedQuery = relative.percentEncodedQuery
+        components.fragment = nil
+
+        guard let url = components.url else { throw APIError.invalidURL }
+        return url
+    }
+
     private func performRequest<T: Decodable>(
         baseURL: String,
         path: String,
@@ -281,8 +312,7 @@ final class BaseNetworkEngine: Sendable {
         headers: [String: String],
         body: Data?
     ) async throws -> T {
-        let urlString = baseURL + path
-        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        let url = try Self.makeSecureURL(baseURL: baseURL, path: path)
 
         let req = try Self.makeSecureRequest(
             url: url,
@@ -312,8 +342,7 @@ final class BaseNetworkEngine: Sendable {
         headers: [String: String],
         body: Data?
     ) async throws -> String {
-        let urlString = baseURL + path
-        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        let url = try Self.makeSecureURL(baseURL: baseURL, path: path)
 
         let req = try Self.makeSecureRequest(
             url: url,
@@ -338,8 +367,7 @@ final class BaseNetworkEngine: Sendable {
         headers: [String: String],
         body: Data?
     ) async throws {
-        let urlString = baseURL + path
-        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        let url = try Self.makeSecureURL(baseURL: baseURL, path: path)
 
         let req = try Self.makeSecureRequest(
             url: url,
@@ -362,8 +390,7 @@ final class BaseNetworkEngine: Sendable {
         headers: [String: String],
         body: Data?
     ) async throws -> Data {
-        let urlString = baseURL + path
-        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        let url = try Self.makeSecureURL(baseURL: baseURL, path: path)
 
         let req = try Self.makeSecureRequest(
             url: url,
@@ -381,14 +408,28 @@ final class BaseNetworkEngine: Sendable {
     }
 
     private func logRequest(_ request: URLRequest) {
-        let url = request.url?.absoluteString ?? "unknown"
+        let url = request.url.map(Self.redactedURLForLogging) ?? "unknown"
         let method = request.httpMethod ?? "GET"
         AppLogger.shared.network("--> \(method) \(url)", source: serviceType.displayName)
     }
 
+    static func redactedURLForLogging(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else {
+            return url.absoluteString
+        }
+        let sensitiveNames = Set(["auth", "token", "password", "api_key", "apikey", "key", "secret", "sid"])
+        components.queryItems = queryItems.map { item in
+            sensitiveNames.contains(item.name.lowercased())
+                ? URLQueryItem(name: item.name, value: "<redacted>")
+                : item
+        }
+        return components.string ?? "<invalid-url>"
+    }
+
     private func logResponse(_ response: URLResponse, data: Data?) {
         guard let http = response as? HTTPURLResponse else { return }
-        let url = response.url?.absoluteString ?? "unknown"
+        let url = response.url.map(Self.redactedURLForLogging) ?? "unknown"
         let status = http.statusCode
         let size = data?.count ?? 0
         let msg = "<-- \(status) \(url) (\(size) bytes)"

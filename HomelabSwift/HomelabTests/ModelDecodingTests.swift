@@ -31,6 +31,36 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(request.timeoutInterval, 12)
     }
 
+    func testProviderURLRejectsCleartextBeforeCombiningSensitivePath() {
+        XCTAssertThrowsError(
+            try BaseNetworkEngine.makeSecureURL(
+                baseURL: "http://pihole.internal",
+                path: "/admin/api.php?auth=legacy-secret"
+            )
+        )
+    }
+
+    func testProviderURLBuildsHTTPSLegacyQueryWithoutEmbeddedAuthorityCredentials() throws {
+        let url = try BaseNetworkEngine.makeSecureURL(
+            baseURL: "https://pihole.internal/base/",
+            path: "/admin/api.php?summaryRaw&auth=legacy-secret"
+        )
+
+        XCTAssertEqual(url.scheme, "https")
+        XCTAssertEqual(url.host, "pihole.internal")
+        XCTAssertEqual(url.path, "/base/admin/api.php")
+        XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.last?.value, "legacy-secret")
+    }
+
+    func testProviderURLLoggingRedactsSensitiveQueryValues() throws {
+        let url = try XCTUnwrap(URL(string: "https://pihole.internal/api?auth=secret&limit=10"))
+        let logged = BaseNetworkEngine.redactedURLForLogging(url)
+
+        XCTAssertFalse(logged.contains("secret"))
+        XCTAssertTrue(logged.contains("auth=%3Credacted%3E"))
+        XCTAssertTrue(logged.contains("limit=10"))
+    }
+
     func testProviderRegistryCoversAllServiceTypesAndReferenceCapabilities() {
         XCTAssertEqual(ProviderRegistry.registeredProviders.count, ServiceType.allCases.count)
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmox).capabilities.contains(.writeActions))
