@@ -71,12 +71,12 @@ final class ModelDecodingTests: XCTestCase {
     func testOperationsSearchReturnsMatchingAssetsWithoutUnrelatedRecords() {
         let instanceId = UUID()
         let snapshot = OperationsSnapshot(
+            alerts: [
+                ProviderEvent(providerId: "uptime-kuma", instanceId: instanceId, eventId: "alert-1", severity: "critical", message: "customer portal is down", occurredAt: Date(), resourceId: "22")
+            ],
             assets: [
                 ProviderResource(providerId: "proxmox", instanceId: instanceId, resourceType: "virtual-machine", resourceId: "101", name: "zammad", state: "running", attributes: [:]),
                 ProviderResource(providerId: "uptime-kuma", instanceId: instanceId, resourceType: "monitor", resourceId: "22", name: "grafana", state: "up", attributes: [:])
-            ],
-            alerts: [
-                ProviderEvent(providerId: "uptime-kuma", instanceId: instanceId, eventId: "alert-1", severity: "critical", message: "customer portal is down", occurredAt: Date(), resourceId: "22")
             ]
         )
 
