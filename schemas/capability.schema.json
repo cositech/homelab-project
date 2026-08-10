@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.infrahub-mobile.local/v1/capability.schema.json",
+  "title": "Capability ID",
+  "type": "string",
+  "enum": ["health", "assets", "metrics", "alerts", "incidents", "tickets", "backups", "actions", "search", "vpn", "routing", "on-call"]
+}

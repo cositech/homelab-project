@@ -1,0 +1,26 @@
+name: Provider request
+description: Propose a new or expanded infrastructure provider.
+title: "provider: "
+labels: [provider]
+body:
+  - type: input
+    id: system
+    attributes: {label: System and tested versions}
+    validations: {required: true}
+  - type: textarea
+    id: value
+    attributes: {label: Operational use case and capabilities}
+    validations: {required: true}
+  - type: textarea
+    id: api
+    attributes: {label: API, authentication, TLS and minimum scopes}
+    validations: {required: true}
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: Read-only delivery is possible before actions.
+          required: true
+        - label: No real credentials or customer data are included.
+          required: true

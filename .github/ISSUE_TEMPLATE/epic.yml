@@ -1,0 +1,17 @@
+name: Delivery epic
+description: Track a multi-platform delivery slice.
+title: "epic: "
+labels: [epic]
+body:
+  - type: textarea
+    id: outcome
+    attributes: {label: Outcome and operator value}
+    validations: {required: true}
+  - type: textarea
+    id: scope
+    attributes: {label: In scope and out of scope}
+    validations: {required: true}
+  - type: textarea
+    id: gates
+    attributes: {label: Security, compatibility and operational exit gates}
+    validations: {required: true}

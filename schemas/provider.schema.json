@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.infrahub-mobile.local/v1/provider.schema.json",
+  "title": "Provider",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "type", "displayName", "capabilities", "tlsMode"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "id": {"type": "string", "pattern": "^[a-zA-Z0-9._:-]{1,128}$"},
+    "type": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+    "displayName": {"type": "string", "minLength": 1, "maxLength": 128},
+    "baseUrl": {"type": "string", "format": "uri"},
+    "credentialRef": {"type": "string", "minLength": 1, "maxLength": 256},
+    "tenantRef": {"type": "string", "maxLength": 128},
+    "capabilities": {"type": "array", "uniqueItems": true, "items": {"$ref": "capability.schema.json"}},
+    "tlsMode": {"enum": ["SYSTEM", "CUSTOM_CA", "CERTIFICATE_PIN", "INSECURE_COMPATIBILITY"]},
+    "enabled": {"type": "boolean", "default": true}
+  }
+}
