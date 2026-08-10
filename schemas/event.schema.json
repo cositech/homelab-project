@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.infrahub-mobile.local/v1/event.schema.json",
+  "title": "Normalized Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "providerRef", "type", "severity", "title", "occurredAt"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "providerRef": {"type": "string", "minLength": 1, "maxLength": 128},
+    "tenantRef": {"type": "string", "maxLength": 128},
+    "resourceRef": {"type": "string", "maxLength": 256},
+    "type": {"enum": ["alert", "incident", "audit", "task", "state-change"]},
+    "severity": {"enum": ["critical", "high", "medium", "low", "info", "unknown"]},
+    "title": {"type": "string", "minLength": 1, "maxLength": 256},
+    "message": {"type": "string", "maxLength": 8192},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["open", "acknowledged", "resolved", "suppressed", "unknown"]},
+    "deduplicationKey": {"type": "string", "maxLength": 512}
+  }
+}

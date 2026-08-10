@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.infrahub-mobile.local/v1/resource.schema.json",
+  "title": "Normalized Resource",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "providerRef", "kind", "name", "observedAt", "attributes"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "providerRef": {"type": "string", "minLength": 1, "maxLength": 128},
+    "tenantRef": {"type": "string", "maxLength": 128},
+    "canonicalAssetRef": {"type": "string", "maxLength": 256},
+    "kind": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{1,63}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 256},
+    "status": {"enum": ["healthy", "degraded", "unhealthy", "unknown", "offline"]},
+    "observedAt": {"type": "string", "format": "date-time"},
+    "attributes": {"type": "object"},
+    "links": {"type": "array", "items": {"type": "object", "required": ["rel", "href"], "properties": {"rel": {"type": "string"}, "href": {"type": "string", "format": "uri"}}}}
+  }
+}

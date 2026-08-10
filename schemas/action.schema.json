@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.infrahub-mobile.local/v1/action.schema.json",
+  "title": "Controlled Action Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "providerRef", "action", "targetRef", "risk", "requestedAt", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "providerRef": {"type": "string", "minLength": 1},
+    "tenantRef": {"type": "string"},
+    "action": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{1,127}$"},
+    "targetRef": {"type": "string", "minLength": 1},
+    "risk": {"enum": ["low", "medium", "high", "critical"]},
+    "requestedAt": {"type": "string", "format": "date-time"},
+    "idempotencyKey": {"type": "string", "minLength": 16, "maxLength": 256},
+    "parameters": {"type": "object"},
+    "dryRun": {"type": "boolean", "default": false}
+  }
+}
