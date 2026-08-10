@@ -34,6 +34,7 @@
     <string name="search_placeholder">Search...</string>
     <string name="share">Share</string>
     <string name="nav_home">Home</string>
+    <string name="nav_operations">Operations</string>
     <string name="nav_settings">Settings</string>
 
     <!-- Services -->

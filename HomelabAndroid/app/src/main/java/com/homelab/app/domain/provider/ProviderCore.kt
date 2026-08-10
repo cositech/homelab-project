@@ -53,6 +53,57 @@ data class ProviderEvent(
     val resourceId: String? = null
 )
 
+@Serializable
+data class ProviderDiagnostic(
+    val providerId: String,
+    val instanceId: String,
+    val displayName: String,
+    val endpoint: String,
+    val tlsMode: String,
+    val capabilities: Set<ProviderCapability>,
+    val state: ProviderHealthState,
+    val message: String? = null,
+    val observedAtEpochMillis: Long = System.currentTimeMillis()
+)
+
+@Serializable
+data class OperationsSnapshot(
+    val health: List<ProviderHealth> = emptyList(),
+    val alerts: List<ProviderEvent> = emptyList(),
+    val assets: List<ProviderResource> = emptyList(),
+    val diagnostics: List<ProviderDiagnostic> = emptyList(),
+    val refreshedAtEpochMillis: Long = System.currentTimeMillis()
+) {
+    fun search(query: String): OperationsSearchResults {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return OperationsSearchResults()
+        fun String?.matches(): Boolean = this?.lowercase()?.contains(needle) == true
+        return OperationsSearchResults(
+            health = health.filter { it.providerId.matches() || it.instanceId.matches() || it.message.matches() },
+            alerts = alerts.filter { it.providerId.matches() || it.message.matches() || it.resourceId.matches() },
+            assets = assets.filter {
+                it.providerId.matches() || it.resourceType.matches() || it.resourceId.matches() ||
+                    it.name.matches() || it.state.matches() || it.attributes.any { entry ->
+                        entry.key.matches() || entry.value.matches()
+                    }
+            },
+            diagnostics = diagnostics.filter {
+                it.providerId.matches() || it.displayName.matches() || it.endpoint.matches() || it.message.matches()
+            }
+        )
+    }
+}
+
+@Serializable
+data class OperationsSearchResults(
+    val health: List<ProviderHealth> = emptyList(),
+    val alerts: List<ProviderEvent> = emptyList(),
+    val assets: List<ProviderResource> = emptyList(),
+    val diagnostics: List<ProviderDiagnostic> = emptyList()
+) {
+    val isEmpty: Boolean get() = health.isEmpty() && alerts.isEmpty() && assets.isEmpty() && diagnostics.isEmpty()
+}
+
 data class ProviderDescriptor(
     val id: String,
     val serviceType: ServiceType,

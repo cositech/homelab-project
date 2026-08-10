@@ -469,6 +469,50 @@ struct ProviderEvent: Codable, Equatable, Sendable {
     let resourceId: String?
 }
 
+struct ProviderDiagnostic: Codable, Equatable, Sendable {
+    let providerId: String
+    let instanceId: UUID
+    let displayName: String
+    let endpoint: String
+    let tlsMode: TLSMode
+    let capabilities: Set<ProviderCapability>
+    let state: ProviderHealthState
+    let message: String?
+    let observedAt: Date
+}
+
+struct OperationsSnapshot: Codable, Equatable, Sendable {
+    var health: [ProviderHealth] = []
+    var alerts: [ProviderEvent] = []
+    var assets: [ProviderResource] = []
+    var diagnostics: [ProviderDiagnostic] = []
+    var refreshedAt = Date()
+
+    func search(_ query: String) -> OperationsSearchResults {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return OperationsSearchResults() }
+        func matches(_ value: String?) -> Bool { value?.lowercased().contains(needle) == true }
+        return OperationsSearchResults(
+            health: health.filter { matches($0.providerId) || matches($0.instanceId.uuidString) || matches($0.message) },
+            alerts: alerts.filter { matches($0.providerId) || matches($0.message) || matches($0.resourceId) },
+            assets: assets.filter { asset in
+                matches(asset.providerId) || matches(asset.resourceType) || matches(asset.resourceId) ||
+                    matches(asset.name) || matches(asset.state) || asset.attributes.contains { matches($0.key) || matches($0.value) }
+            },
+            diagnostics: diagnostics.filter { matches($0.providerId) || matches($0.displayName) || matches($0.endpoint) || matches($0.message) }
+        )
+    }
+}
+
+struct OperationsSearchResults: Equatable, Sendable {
+    var health: [ProviderHealth] = []
+    var alerts: [ProviderEvent] = []
+    var assets: [ProviderResource] = []
+    var diagnostics: [ProviderDiagnostic] = []
+
+    var isEmpty: Bool { health.isEmpty && alerts.isEmpty && assets.isEmpty && diagnostics.isEmpty }
+}
+
 struct ProviderDescriptor: Equatable, Sendable {
     let id: String
     let serviceType: ServiceType
