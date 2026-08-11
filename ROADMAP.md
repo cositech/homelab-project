@@ -38,7 +38,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
 - [x] Explicit confirmation, dry-run and provider write-capability gates
 - [x] Serialized execution, idempotency and bounded append-only mobile audit history
 - [x] Proxmox VE guest lifecycle reference migration
-- [ ] Durable queue recovery and retry policy
+- [x] Durable queue recovery and retry policy
 - [ ] Remaining provider actions migrated by risk class
 
 Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.

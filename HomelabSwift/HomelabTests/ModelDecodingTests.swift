@@ -1422,7 +1422,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(first.state, .succeeded)
         XCTAssertEqual(first, second)
         XCTAssertEqual(invocations, 1)
-        XCTAssertEqual(states, [.queued, .succeeded])
+        XCTAssertEqual(states, [.queued, .executing, .succeeded])
     }
 
     func testControlledActionProviderCapabilityIsEnforced() async {
@@ -1589,6 +1589,189 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ProxmoxControlledGuestAction.stop.risk, .high)
     }
 
+    func testControlledActionRetriesLowRiskTransportFailures() async {
+        let counter = ActionInvocationCounter()
+        let delays = RetryDelayRecorder()
+        let coordinator = ControlledActionCoordinator(
+            retryPolicy: ActionRetryPolicy(
+                maximumAttempts: 3,
+                initialDelayMilliseconds: 10,
+                maximumDelayMilliseconds: 40
+            ),
+            now: { Date(timeIntervalSince1970: 5) },
+            waitBeforeRetry: { await delays.append($0) }
+        )
+
+        let result = await coordinator.execute(
+            request: controlledActionRequest(risk: .low, confirmed: true),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            if await counter.value < 3 {
+                throw ControlledActionOperationError(
+                    reasonCode: "provider-unavailable",
+                    disposition: .retryable
+                )
+            }
+        }
+
+        let invocationCount = await counter.value
+        let recordedDelays = await delays.values
+        XCTAssertEqual(result.state, .succeeded)
+        XCTAssertEqual(invocationCount, 3)
+        XCTAssertEqual(recordedDelays, [10, 20])
+    }
+
+    func testControlledActionHighRiskTransportFailureRequiresManualReview() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(waitBeforeRetry: { _ in })
+
+        let result = await coordinator.execute(
+            request: controlledActionRequest(risk: .high, confirmed: true),
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "transport-error",
+                disposition: .retryable
+            )
+        }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(result.state, .manualReview)
+        XCTAssertEqual(invocationCount, 1)
+        XCTAssertEqual(result.reasonCode, "automatic-retry-forbidden-transport-error")
+    }
+
+    func testControlledActionTerminalResultSurvivesCoordinatorReconstruction() async {
+        let counter = ActionInvocationCounter()
+        let store = InMemoryDurableActionQueueStore()
+        let request = controlledActionRequest(risk: .low, confirmed: true)
+
+        _ = await ControlledActionCoordinator(durableStore: store).execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) { await counter.increment() }
+
+        let recovered = await ControlledActionCoordinator(durableStore: store).execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) { await counter.increment() }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(recovered.state, .succeeded)
+        XCTAssertEqual(invocationCount, 1)
+    }
+
+    func testControlledActionInterruptedExecutionRecoversAsManualReview() async {
+        let request = controlledActionRequest(risk: .low, confirmed: true)
+        let entry = DurableActionQueueEntry(
+            request: request,
+            actorRole: .operatorRole,
+            state: .executing,
+            attemptCount: 1,
+            reasonCode: "executing",
+            updatedAt: Date(timeIntervalSince1970: 1)
+        )
+        let coordinator = ControlledActionCoordinator(
+            durableStore: InMemoryDurableActionQueueStore(initialEntries: [entry]),
+            now: { Date(timeIntervalSince1970: 2) }
+        )
+
+        let recovered = await coordinator.pendingRecovery()
+
+        XCTAssertEqual(recovered.count, 1)
+        XCTAssertEqual(recovered.first?.state, .manualReview)
+        XCTAssertEqual(recovered.first?.reasonCode, "interrupted-execution")
+    }
+
+    func testControlledActionDurableQueueOmitsParameters() async {
+        let store = InMemoryDurableActionQueueStore()
+        let coordinator = ControlledActionCoordinator(durableStore: store)
+        var request = controlledActionRequest(risk: .low, confirmed: true)
+        request.parameters = ["secret": "value"]
+
+        _ = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {}
+
+        let persistedParameters = await store.snapshot().first?.request.parameters
+        XCTAssertEqual(persistedParameters, [:])
+    }
+
+    func testControlledActionRetriesWrappedAPITransportFailures() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(
+            retryPolicy: ActionRetryPolicy(
+                maximumAttempts: 2,
+                initialDelayMilliseconds: 0,
+                maximumDelayMilliseconds: 0
+            ),
+            waitBeforeRetry: { _ in }
+        )
+
+        let result = await coordinator.execute(
+            request: controlledActionRequest(risk: .low, confirmed: true),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            if await counter.value == 1 {
+                throw APIError.bothURLsFailed(
+                    primaryError: APIError.networkError(URLError(.timedOut)),
+                    fallbackError: URLError(.cannotConnectToHost)
+                )
+            }
+        }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(result.state, .succeeded)
+        XCTAssertEqual(invocationCount, 2)
+    }
+
+    func testControlledActionRecoveredTerminalKeyRejectsDifferentIdentity() async {
+        let store = InMemoryDurableActionQueueStore()
+        let original = controlledActionRequest(risk: .low, confirmed: true)
+
+        _ = await ControlledActionCoordinator(durableStore: store).execute(
+            request: original,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {}
+
+        var conflicting = original
+        conflicting = ControlledActionRequest(
+            id: conflicting.id,
+            providerRef: conflicting.providerRef,
+            tenantRef: conflicting.tenantRef,
+            action: conflicting.action,
+            targetRef: "qemu/999",
+            risk: conflicting.risk,
+            requestedAt: conflicting.requestedAt,
+            idempotencyKey: conflicting.idempotencyKey,
+            parameters: conflicting.parameters,
+            dryRun: conflicting.dryRun,
+            confirmed: conflicting.confirmed
+        )
+        let counter = ActionInvocationCounter()
+        let result = await ControlledActionCoordinator(durableStore: store).execute(
+            request: conflicting,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) { await counter.increment() }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(result.state, .rejected)
+        XCTAssertEqual(result.reasonCode, "idempotency-key-conflict")
+        XCTAssertEqual(invocationCount, 0)
+    }
+
 }
 
 private actor ActionInvocationCounter {
@@ -1610,5 +1793,14 @@ private actor ActionConcurrencyProbe {
 
     func end() {
         active -= 1
+    }
+}
+
+
+private actor RetryDelayRecorder {
+    private(set) var values: [Int] = []
+
+    func append(_ value: Int) {
+        values.append(value)
     }
 }

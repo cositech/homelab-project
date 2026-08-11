@@ -883,11 +883,11 @@ enum ControlledActionPolicy {
 }
 
 enum ActionExecutionState: String, Codable, Equatable, Sendable {
-    case queued
-    case succeeded
-    case failed
-    case rejected
+    case queued, executing
+    case retryWait = "retry_wait"
+    case succeeded, failed, cancelled, rejected
     case dryRun = "dry_run"
+    case manualReview = "manual_review"
 }
 
 struct ActionAuditRecord: Codable, Equatable, Sendable {
@@ -902,6 +902,125 @@ struct ActionAuditRecord: Codable, Equatable, Sendable {
     let state: ActionExecutionState
     let reasonCode: String
     let recordedAt: Date
+}
+
+struct DurableActionQueueEntry: Codable, Equatable, Sendable {
+    let request: ControlledActionRequest
+    let actorRole: ControlledActionRole
+    var state: ActionExecutionState
+    var attemptCount: Int
+    var nextAttemptAt: Date?
+    var reasonCode: String
+    var updatedAt: Date
+    var terminalRecord: ActionAuditRecord?
+}
+
+protocol DurableActionQueueStore: Sendable {
+    func snapshot() async -> [DurableActionQueueEntry]
+    func upsert(_ entry: DurableActionQueueEntry) async
+}
+
+actor InMemoryDurableActionQueueStore: DurableActionQueueStore {
+    private let maximumEntries: Int
+    private var entries: [String: DurableActionQueueEntry] = [:]
+    private var order: [String] = []
+
+    init(initialEntries: [DurableActionQueueEntry] = [], maximumEntries: Int = 500) {
+        precondition(maximumEntries > 0)
+        self.maximumEntries = maximumEntries
+        for entry in initialEntries.suffix(maximumEntries) {
+            entries[entry.request.idempotencyKey] = entry
+            order.append(entry.request.idempotencyKey)
+        }
+    }
+
+    func snapshot() -> [DurableActionQueueEntry] {
+        order.compactMap { entries[$0] }
+    }
+
+    func upsert(_ entry: DurableActionQueueEntry) {
+        let key = entry.request.idempotencyKey
+        order.removeAll { $0 == key }
+        order.append(key)
+        entries[key] = entry
+        while order.count > maximumEntries {
+            entries.removeValue(forKey: order.removeFirst())
+        }
+    }
+}
+
+actor UserDefaultsDurableActionQueueStore: DurableActionQueueStore {
+    private let key: String
+    private let maximumEntries: Int
+
+    init(key: String = "controlled_action_queue_v1", maximumEntries: Int = 500) {
+        precondition(maximumEntries > 0)
+        self.key = key
+        self.maximumEntries = maximumEntries
+    }
+
+    func snapshot() -> [DurableActionQueueEntry] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([DurableActionQueueEntry].self, from: data)) ?? []
+    }
+
+    func upsert(_ entry: DurableActionQueueEntry) {
+        var entries = snapshotByKey()
+        entries.removeAll { $0.request.idempotencyKey == entry.request.idempotencyKey }
+        entries.append(entry)
+        if entries.count > maximumEntries {
+            entries.removeFirst(entries.count - maximumEntries)
+        }
+        guard let encoded = try? JSONEncoder().encode(entries) else { return }
+        UserDefaults.standard.set(encoded, forKey: key)
+    }
+
+    private func snapshotByKey() -> [DurableActionQueueEntry] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([DurableActionQueueEntry].self, from: data)) ?? []
+    }
+}
+
+struct ActionRetryPolicy: Codable, Equatable, Sendable {
+    let maximumAttempts: Int
+    let initialDelayMilliseconds: Int
+    let maximumDelayMilliseconds: Int
+
+    init(
+        maximumAttempts: Int = 3,
+        initialDelayMilliseconds: Int = 1_000,
+        maximumDelayMilliseconds: Int = 30_000
+    ) {
+        precondition(maximumAttempts > 0)
+        precondition(initialDelayMilliseconds >= 0)
+        precondition(maximumDelayMilliseconds >= initialDelayMilliseconds)
+        self.maximumAttempts = maximumAttempts
+        self.initialDelayMilliseconds = initialDelayMilliseconds
+        self.maximumDelayMilliseconds = maximumDelayMilliseconds
+    }
+
+    func delayBeforeAttempt(completedAttempts: Int) -> Int {
+        guard completedAttempts > 0 else { return 0 }
+        var value = initialDelayMilliseconds
+        for _ in 0..<min(max(completedAttempts - 1, 0), 30) {
+            value = min(value * 2, maximumDelayMilliseconds)
+        }
+        return value
+    }
+
+    func permitsAutomaticRetry(risk: ControlledActionRisk, completedAttempts: Int) -> Bool {
+        (risk == .low || risk == .medium) && completedAttempts < maximumAttempts
+    }
+}
+
+enum ActionFailureDisposition: String, Codable, Equatable, Sendable {
+    case retryable
+    case nonRetryable = "non_retryable"
+}
+
+struct ControlledActionOperationError: Error, Sendable {
+    let reasonCode: String
+    let disposition: ActionFailureDisposition
 }
 
 actor ControlledActionLedger {
@@ -920,9 +1039,7 @@ actor ControlledActionLedger {
         }
     }
 
-    func snapshot() -> [ActionAuditRecord] {
-        records
-    }
+    func snapshot() -> [ActionAuditRecord] { records }
 }
 
 actor ControlledActionExecutionGate {
@@ -941,9 +1058,7 @@ actor ControlledActionExecutionGate {
             isLocked = true
             return
         }
-        await withCheckedContinuation { continuation in
-            waiters.append(continuation)
-        }
+        await withCheckedContinuation { waiters.append($0) }
     }
 
     private func release() {
@@ -958,18 +1073,31 @@ actor ControlledActionExecutionGate {
 actor ControlledActionCoordinator {
     private let ledger: ControlledActionLedger
     private let executionGate: ControlledActionExecutionGate
+    private let durableStore: any DurableActionQueueStore
+    private let retryPolicy: ActionRetryPolicy
     private let now: @Sendable () -> Date
+    private let waitBeforeRetry: @Sendable (Int) async -> Void
     private var terminalResults: [String: ActionAuditRecord] = [:]
+    private var durableEntries: [String: DurableActionQueueEntry] = [:]
     private var inFlight: [String: Task<ActionAuditRecord, Never>] = [:]
+    private var recovered = false
 
     init(
         ledger: ControlledActionLedger = ControlledActionLedger(),
         executionGate: ControlledActionExecutionGate = ControlledActionExecutionGate(),
-        now: @escaping @Sendable () -> Date = Date.init
+        durableStore: any DurableActionQueueStore = InMemoryDurableActionQueueStore(),
+        retryPolicy: ActionRetryPolicy = ActionRetryPolicy(),
+        now: @escaping @Sendable () -> Date = Date.init,
+        waitBeforeRetry: @escaping @Sendable (Int) async -> Void = {
+            try? await Task.sleep(nanoseconds: UInt64($0) * 1_000_000)
+        }
     ) {
         self.ledger = ledger
         self.executionGate = executionGate
+        self.durableStore = durableStore
+        self.retryPolicy = retryPolicy
         self.now = now
+        self.waitBeforeRetry = waitBeforeRetry
     }
 
     func execute(
@@ -978,21 +1106,42 @@ actor ControlledActionCoordinator {
         providerCapabilities: Set<ProviderCapability>,
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
-        if let completed = terminalResults[request.idempotencyKey] {
-            return completed
+        await recoverIfNeeded()
+        let existing = durableEntries[request.idempotencyKey]
+        if let existing, !existing.request.hasSameIdentity(as: request) {
+            return await Self.audit(
+                request: request, actorRole: actorRole, state: .rejected,
+                reasonCode: "idempotency-key-conflict", ledger: ledger, now: now
+            )
         }
-        if let existingTask = inFlight[request.idempotencyKey] {
-            return await existingTask.value
+        if let completed = terminalResults[request.idempotencyKey] { return completed }
+        if let existingTask = inFlight[request.idempotencyKey] { return await existingTask.value }
+        if let existing, existing.state == .manualReview {
+            let result: ActionAuditRecord
+            if let terminal = existing.terminalRecord {
+                result = terminal
+            } else {
+                result = await Self.audit(
+                    request: request, actorRole: actorRole, state: .manualReview,
+                    reasonCode: existing.reasonCode, ledger: ledger, now: now
+                )
+            }
+            terminalResults[request.idempotencyKey] = result
+            return result
         }
 
-        let task = Task { [executionGate, ledger, now] in
+        let task = Task { [executionGate, ledger, durableStore, retryPolicy, now, waitBeforeRetry] in
             await executionGate.withLock {
                 await Self.perform(
                     request: request,
                     actorRole: actorRole,
                     providerCapabilities: providerCapabilities,
+                    existing: existing,
                     ledger: ledger,
+                    durableStore: durableStore,
+                    retryPolicy: retryPolicy,
                     now: now,
+                    waitBeforeRetry: waitBeforeRetry,
                     operation: operation
                 )
             }
@@ -1001,47 +1150,222 @@ actor ControlledActionCoordinator {
         let result = await task.value
         terminalResults[request.idempotencyKey] = result
         inFlight[request.idempotencyKey] = nil
+        if let updated = await durableStore.snapshot().first(where: {
+            $0.request.idempotencyKey == request.idempotencyKey
+        }) {
+            durableEntries[request.idempotencyKey] = updated
+        }
         return result
     }
 
-    func auditSnapshot() async -> [ActionAuditRecord] {
-        await ledger.snapshot()
+    func pendingRecovery() async -> [DurableActionQueueEntry] {
+        await recoverIfNeeded()
+        return durableEntries.values.filter {
+            $0.state == .queued || $0.state == .retryWait || $0.state == .manualReview
+        }
+    }
+
+    func auditSnapshot() async -> [ActionAuditRecord] { await ledger.snapshot() }
+
+    private func recoverIfNeeded() async {
+        guard !recovered else { return }
+        for stored in await durableStore.snapshot() {
+            var entry = stored
+            if stored.state == .executing {
+                let result = await Self.audit(
+                    request: stored.request,
+                    actorRole: stored.actorRole,
+                    state: .manualReview,
+                    reasonCode: "interrupted-execution",
+                    ledger: ledger,
+                    now: now
+                )
+                entry.state = .manualReview
+                entry.reasonCode = "interrupted-execution"
+                entry.updatedAt = now()
+                entry.terminalRecord = result
+                await durableStore.upsert(entry)
+            }
+            durableEntries[entry.request.idempotencyKey] = entry
+            if let terminal = entry.terminalRecord {
+                terminalResults[entry.request.idempotencyKey] = terminal
+            }
+        }
+        recovered = true
     }
 
     private static func perform(
         request: ControlledActionRequest,
         actorRole: ControlledActionRole,
         providerCapabilities: Set<ProviderCapability>,
+        existing: DurableActionQueueEntry?,
         ledger: ControlledActionLedger,
+        durableStore: any DurableActionQueueStore,
+        retryPolicy: ActionRetryPolicy,
         now: @Sendable () -> Date,
+        waitBeforeRetry: @Sendable (Int) async -> Void,
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
         let decision = ControlledActionPolicy.evaluate(
-            request,
-            actorRole: actorRole,
-            providerCapabilities: providerCapabilities
+            request, actorRole: actorRole, providerCapabilities: providerCapabilities
         )
         switch decision.outcome {
         case .denied, .confirmationRequired:
-            return await audit(request: request, actorRole: actorRole, state: .rejected, reasonCode: decision.reasonCode, ledger: ledger, now: now)
+            let result = await audit(
+                request: request, actorRole: actorRole, state: .rejected,
+                reasonCode: decision.reasonCode, ledger: ledger, now: now
+            )
+            await persistTerminal(request, actorRole, result, 0, durableStore, now)
+            return result
         case .dryRunApproved:
-            return await audit(request: request, actorRole: actorRole, state: .dryRun, reasonCode: decision.reasonCode, ledger: ledger, now: now)
+            let result = await audit(
+                request: request, actorRole: actorRole, state: .dryRun,
+                reasonCode: decision.reasonCode, ledger: ledger, now: now
+            )
+            await persistTerminal(request, actorRole, result, 0, durableStore, now)
+            return result
         case .approved:
-            _ = await audit(request: request, actorRole: actorRole, state: .queued, reasonCode: "queued", ledger: ledger, now: now)
+            break
+        }
+
+        var entry = existing ?? DurableActionQueueEntry(
+            request: request.sanitizedForPersistence(),
+            actorRole: actorRole,
+            state: .queued,
+            attemptCount: 0,
+            reasonCode: "queued",
+            updatedAt: now()
+        )
+        if existing == nil {
+            await durableStore.upsert(entry)
+            _ = await audit(
+                request: request, actorRole: actorRole, state: .queued,
+                reasonCode: "queued", ledger: ledger, now: now
+            )
+        }
+
+        if let retryAt = entry.nextAttemptAt {
+            let remaining = max(Int(retryAt.timeIntervalSince(now()) * 1_000), 0)
+            if remaining > 0 { await waitBeforeRetry(remaining) }
+        }
+
+        while true {
+            entry.state = .executing
+            entry.attemptCount += 1
+            entry.nextAttemptAt = nil
+            entry.reasonCode = "executing"
+            entry.updatedAt = now()
+            await durableStore.upsert(entry)
+            _ = await audit(
+                request: request, actorRole: actorRole, state: .executing,
+                reasonCode: "attempt-\(entry.attemptCount)", ledger: ledger, now: now
+            )
+
             do {
                 try await operation()
-                return await audit(request: request, actorRole: actorRole, state: .succeeded, reasonCode: "completed", ledger: ledger, now: now)
-            } catch {
-                return await audit(
-                    request: request,
-                    actorRole: actorRole,
-                    state: .failed,
-                    reasonCode: String(describing: type(of: error)),
-                    ledger: ledger,
-                    now: now
+                let result = await audit(
+                    request: request, actorRole: actorRole, state: .succeeded,
+                    reasonCode: "completed", ledger: ledger, now: now
                 )
+                await persistTerminal(request, actorRole, result, entry.attemptCount, durableStore, now)
+                return result
+            } catch is CancellationError {
+                let result = await audit(
+                    request: request, actorRole: actorRole, state: .cancelled,
+                    reasonCode: "cancelled", ledger: ledger, now: now
+                )
+                entry.state = .manualReview
+                entry.reasonCode = "cancelled-during-execution"
+                entry.updatedAt = now()
+                entry.terminalRecord = result
+                await durableStore.upsert(entry)
+                return result
+            } catch {
+                let failure = classifyFailure(error)
+                if failure.disposition == .retryable &&
+                    retryPolicy.permitsAutomaticRetry(
+                        risk: request.risk, completedAttempts: entry.attemptCount
+                    ) {
+                    let delay = retryPolicy.delayBeforeAttempt(completedAttempts: entry.attemptCount)
+                    entry.state = .retryWait
+                    entry.nextAttemptAt = now().addingTimeInterval(Double(delay) / 1_000)
+                    entry.reasonCode = failure.reasonCode
+                    entry.updatedAt = now()
+                    await durableStore.upsert(entry)
+                    _ = await audit(
+                        request: request, actorRole: actorRole, state: .retryWait,
+                        reasonCode: failure.reasonCode, ledger: ledger, now: now
+                    )
+                    await waitBeforeRetry(delay)
+                    continue
+                }
+
+                let review = failure.disposition == .retryable
+                let state: ActionExecutionState = review ? .manualReview : .failed
+                let reason: String
+                if review && (request.risk == .high || request.risk == .critical) {
+                    reason = "automatic-retry-forbidden-\(failure.reasonCode)"
+                } else if review {
+                    reason = "retry-exhausted-\(failure.reasonCode)"
+                } else {
+                    reason = failure.reasonCode
+                }
+                let result = await audit(
+                    request: request, actorRole: actorRole, state: state,
+                    reasonCode: reason, ledger: ledger, now: now
+                )
+                await persistTerminal(request, actorRole, result, entry.attemptCount, durableStore, now)
+                return result
             }
         }
+    }
+
+    private static func classifyFailure(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError { return controlled }
+        if error is URLError {
+            return ControlledActionOperationError(reasonCode: "transport-error", disposition: .retryable)
+        }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .networkError(let underlying):
+                return classifyFailure(underlying)
+            case .bothURLsFailed(let primary, let fallback):
+                let primaryFailure = classifyFailure(primary)
+                let fallbackFailure = classifyFailure(fallback)
+                if primaryFailure.disposition == .retryable &&
+                    fallbackFailure.disposition == .retryable {
+                    return ControlledActionOperationError(
+                        reasonCode: "transport-error",
+                        disposition: .retryable
+                    )
+                }
+            default:
+                break
+            }
+        }
+        return ControlledActionOperationError(
+            reasonCode: String(describing: type(of: error)),
+            disposition: .nonRetryable
+        )
+    }
+
+    private static func persistTerminal(
+        _ request: ControlledActionRequest,
+        _ actorRole: ControlledActionRole,
+        _ result: ActionAuditRecord,
+        _ attemptCount: Int,
+        _ durableStore: any DurableActionQueueStore,
+        _ now: @Sendable () -> Date
+    ) async {
+        await durableStore.upsert(DurableActionQueueEntry(
+            request: request.sanitizedForPersistence(),
+            actorRole: actorRole,
+            state: result.state,
+            attemptCount: attemptCount,
+            reasonCode: result.reasonCode,
+            updatedAt: now(),
+            terminalRecord: result
+        ))
     }
 
     private static func audit(
@@ -1053,19 +1377,25 @@ actor ControlledActionCoordinator {
         now: @Sendable () -> Date
     ) async -> ActionAuditRecord {
         let record = ActionAuditRecord(
-            auditId: UUID(),
-            requestId: request.id,
-            providerRef: request.providerRef,
-            action: request.action,
-            targetRef: request.targetRef,
-            risk: request.risk,
-            actorRole: actorRole,
-            idempotencyKey: request.idempotencyKey,
-            state: state,
-            reasonCode: reasonCode,
-            recordedAt: now()
+            auditId: UUID(), requestId: request.id, providerRef: request.providerRef,
+            action: request.action, targetRef: request.targetRef, risk: request.risk,
+            actorRole: actorRole, idempotencyKey: request.idempotencyKey,
+            state: state, reasonCode: reasonCode, recordedAt: now()
         )
         await ledger.append(record)
         return record
+    }
+}
+
+private extension ControlledActionRequest {
+    func sanitizedForPersistence() -> ControlledActionRequest {
+        var copy = self
+        copy.parameters = [:]
+        return copy
+    }
+
+    func hasSameIdentity(as other: ControlledActionRequest) -> Bool {
+        providerRef == other.providerRef && tenantRef == other.tenantRef &&
+            action == other.action && targetRef == other.targetRef && risk == other.risk
     }
 }
