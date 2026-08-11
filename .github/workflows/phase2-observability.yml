@@ -13,6 +13,6 @@ jobs:
     name: Phase 2 observability provider invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Validate read-only Prometheus and Grafana contracts
         run: bash ./scripts/phase2-observability-audit.sh
