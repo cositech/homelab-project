@@ -395,6 +395,10 @@ actor InfrastructureOperationsAPIClient {
         let monitors = try await oneUptimeList(path: "/api/monitor/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeMonitorSelect)
         let alerts = try await oneUptimeList(path: "/api/alert/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeAlertSelect)
         let incidents = try await oneUptimeList(path: "/api/incident/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeIncidentSelect)
+        let alertSeverityItems = try await oneUptimeList(path: "/api/alert-severity/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeSeveritySelect)
+        let incidentSeverityItems = try await oneUptimeList(path: "/api/incident-severity/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeSeveritySelect)
+        let alertSeverities = Self.oneUptimeSeverityMap(alertSeverityItems)
+        let incidentSeverities = Self.oneUptimeSeverityMap(incidentSeverityItems)
         let assets = monitors.compactMap { monitor -> ProviderResource? in
             guard let id = Self.string(monitor, "_id") else { return nil }
             var attributes = ["endpointDetailsRedacted": "true"]
@@ -414,11 +418,15 @@ actor InfrastructureOperationsAPIClient {
         let events = alerts.compactMap { alert -> ProviderEvent? in
             guard let id = Self.string(alert, "_id") else { return nil }
             let number = Self.string(alert, "alertNumber") ?? String(id.prefix(8))
-            return ProviderEvent(providerId: "oneuptime", instanceId: instanceId, eventId: "alert:\(id)", severity: "warning", message: "Alert #\(number)", occurredAt: now, resourceId: id)
+            let severity = Self.severity(alertSeverities[Self.string(alert, "alertSeverityId") ?? ""])
+            let occurredAt = Self.oneUptimeDate(Self.string(alert, "createdAt"), fallback: now)
+            return ProviderEvent(providerId: "oneuptime", instanceId: instanceId, eventId: "alert:\(id)", severity: severity, message: "Alert #\(number)", occurredAt: occurredAt, resourceId: id)
         } + incidents.compactMap { incident -> ProviderEvent? in
             guard let id = Self.string(incident, "_id") else { return nil }
             let number = Self.string(incident, "incidentNumber") ?? String(id.prefix(8))
-            return ProviderEvent(providerId: "oneuptime", instanceId: instanceId, eventId: "incident:\(id)", severity: "critical", message: "Incident #\(number)", occurredAt: now, resourceId: id)
+            let severity = Self.severity(incidentSeverities[Self.string(incident, "incidentSeverityId") ?? ""])
+            let occurredAt = Self.oneUptimeDate(Self.string(incident, "declaredAt") ?? Self.string(incident, "createdAt"), fallback: now)
+            return ProviderEvent(providerId: "oneuptime", instanceId: instanceId, eventId: "incident:\(id)", severity: severity, message: "Incident #\(number)", occurredAt: occurredAt, resourceId: id)
         }
         let disabled = assets.filter { $0.state == "disabled" }.count
         return InfrastructureOperationsPayload(
@@ -681,9 +689,11 @@ actor InfrastructureOperationsAPIClient {
     }
 
     private func oneUptimeList(path: String, select: [String: Bool]) async throws -> [[String: Any]] {
-        guard Self.oneUptimeReadPaths.contains(path.components(separatedBy: "?")[0]), let apiToken else {
-            throw APIError.notConfigured
+        let basePath = path.components(separatedBy: "?")[0]
+        guard Self.oneUptimeReadPaths.contains(basePath) else {
+            throw APIError.custom("OneUptime path is not allowlisted: \(basePath)")
         }
+        guard let apiToken else { throw APIError.notConfigured }
         let body = try JSONSerialization.data(withJSONObject: ["select": select, "query": [:], "sort": ["createdAt": -1]])
         let data = try await engine.requestData(
             baseURL: baseURL,
@@ -755,6 +765,21 @@ actor InfrastructureOperationsAPIClient {
         }
     }
 
+    private static func oneUptimeSeverityMap(_ values: [[String: Any]]) -> [String: String] {
+        values.reduce(into: [:]) { result, value in
+            guard let id = string(value, "_id"), let name = string(value, "name") ?? string(value, "slug") else { return }
+            result[id] = name
+        }
+    }
+
+    private static func oneUptimeDate(_ raw: String?, fallback: Date) -> Date {
+        guard let raw else { return fallback }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let value = fractional.date(from: raw) { return value }
+        return ISO8601DateFormatter().date(from: raw) ?? fallback
+    }
+
     private static let supportedTypes: Set<ServiceType> = [.netbox, .zammad, .pegaprox, .opnsense, .oneuptime]
     private static let pageSize = 100
     private static let maxItems = 500
@@ -762,10 +787,17 @@ actor InfrastructureOperationsAPIClient {
     private static let maxResourcesPerCluster = 1_000
     private static let maxAlertsPerCluster = 200
     private static let oneUptimeLimit = 100
-    private static let oneUptimeReadPaths: Set<String> = ["/api/monitor/get-list", "/api/alert/get-list", "/api/incident/get-list"]
+    private static let oneUptimeReadPaths: Set<String> = [
+        "/api/monitor/get-list",
+        "/api/alert/get-list",
+        "/api/incident/get-list",
+        "/api/alert-severity/get-list",
+        "/api/incident-severity/get-list"
+    ]
     private static let oneUptimeMonitorSelect = ["currentMonitorStatusId": true, "disableActiveMonitoring": true, "monitorType": true, "name": true, "projectId": true]
-    private static let oneUptimeAlertSelect = ["alertSeverityId": true, "currentAlertStateId": true, "projectId": true, "alertNumber": true]
-    private static let oneUptimeIncidentSelect = ["currentIncidentStateId": true, "declaredAt": true, "incidentSeverityId": true, "projectId": true, "incidentNumber": true]
+    private static let oneUptimeAlertSelect = ["alertSeverityId": true, "createdAt": true, "currentAlertStateId": true, "projectId": true, "alertNumber": true]
+    private static let oneUptimeIncidentSelect = ["createdAt": true, "currentIncidentStateId": true, "declaredAt": true, "incidentSeverityId": true, "projectId": true, "incidentNumber": true]
+    private static let oneUptimeSeveritySelect = ["name": true, "slug": true]
 }
 
 private extension String {

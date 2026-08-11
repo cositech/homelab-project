@@ -12,6 +12,11 @@ ANDROID_CLIENT="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository
 ANDROID_OPERATIONS="HomelabAndroid/app/src/main/java/com/homelab/app/ui/operations/OperationsViewModel.kt"
 IOS_CLIENT="HomelabSwift/Homelab/Networking/Observability/ObservabilityAPIClients.swift"
 IOS_OPERATIONS="HomelabSwift/Homelab/Views/ContentView.swift"
+ANDROID_NON_ONEUPTIME="$(mktemp)"
+IOS_NON_ONEUPTIME="$(mktemp)"
+trap 'rm -f "$ANDROID_NON_ONEUPTIME" "$IOS_NON_ONEUPTIME"' EXIT
+awk '/private suspend fun oneUptimeRequest\(/ { skip=1 } skip && /private fun authorization\(/ { skip=0 } !skip { print }' "$ANDROID_CLIENT" > "$ANDROID_NON_ONEUPTIME"
+awk '/private func oneUptimeList\(/ { skip=1 } skip && /private func requestObject\(/ { skip=0 } !skip { print }' "$IOS_CLIENT" > "$IOS_NON_ONEUPTIME"
 
 for path in \
   "$ANDROID_CLIENT" "$ANDROID_OPERATIONS" "$IOS_CLIENT" "$IOS_OPERATIONS" \
@@ -24,6 +29,10 @@ for path in \
 done
 
 for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
+  read_only_path="$ANDROID_NON_ONEUPTIME"
+  if [ "$path" = "$IOS_CLIENT" ]; then
+    read_only_path="$IOS_NON_ONEUPTIME"
+  fi
   require_pattern "/api/status/" "$path"
   require_pattern "/api/dcim/devices/\\?exclude=config_context" "$path"
   require_pattern "/api/virtualization/virtual-machines/\\?exclude=config_context" "$path"
@@ -39,9 +48,9 @@ for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
   require_pattern "MAX_CLUSTERS|maxClusters" "$path"
   require_pattern "piiRedacted" "$path"
   require_pattern "tenantScoped" "$path"
-  reject_pattern "\\.(put|patch|delete)\\(" "$path"
-  reject_pattern "method:[[:space:]]*\\\"(PUT|PATCH|DELETE)\\\"" "$path"
-  reject_pattern "/(console|vnc|shell)(/|\\\"|$)" "$path"
+  reject_pattern "\\.(post|put|patch|delete)\\(" "$read_only_path"
+  reject_pattern "method:[[:space:]]*\"(POST|PUT|PATCH|DELETE)\"" "$read_only_path"
+  reject_pattern "/(console|vnc|shell)(/|\"|$)" "$path"
 done
 
 for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
@@ -50,8 +59,16 @@ for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
   require_pattern "/api/monitor/get-list" "$path"
   require_pattern "/api/alert/get-list" "$path"
   require_pattern "/api/incident/get-list" "$path"
+  require_pattern "/api/alert-severity/get-list" "$path"
+  require_pattern "/api/incident-severity/get-list" "$path"
   require_pattern "ONEUPTIME_READ_PATHS|oneUptimeReadPaths" "$path"
   require_pattern "contentRedacted" "$path"
+  require_pattern "createdAt" "$path"
+  require_pattern "alertSeverityId" "$path"
+  require_pattern "incidentSeverityId" "$path"
+  require_pattern "oneUptimeTimestamp|oneUptimeDate" "$path"
+  require_pattern "alertSeverities" "$path"
+  require_pattern "OneUptime path is not allowlisted" "$path"
 done
 
 require_pattern "WRITE_ACTIONS !in netbox" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt

@@ -9,6 +9,7 @@ import com.homelab.app.domain.provider.ProviderResource
 import com.homelab.app.util.ServiceType
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -146,6 +147,12 @@ class InfrastructureOperationsRepository @Inject constructor(
         val monitors = oneUptimeData(instance, "/api/monitor/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_MONITOR_BODY, client)
         val alertItems = oneUptimeData(instance, "/api/alert/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_ALERT_BODY, client)
         val incidents = oneUptimeData(instance, "/api/incident/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_INCIDENT_BODY, client)
+        val alertSeverities = oneUptimeData(instance, "/api/alert-severity/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_SEVERITY_BODY, client)
+            .mapNotNull { severity -> severity.string("_id")?.let { it to (severity.string("name") ?: severity.string("slug")) } }
+            .toMap()
+        val incidentSeverities = oneUptimeData(instance, "/api/incident-severity/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_SEVERITY_BODY, client)
+            .mapNotNull { severity -> severity.string("_id")?.let { it to (severity.string("name") ?: severity.string("slug")) } }
+            .toMap()
         val now = System.currentTimeMillis()
         val assets = monitors.mapNotNull { monitor ->
             val id = monitor.string("_id") ?: return@mapNotNull null
@@ -167,12 +174,16 @@ class InfrastructureOperationsRepository @Inject constructor(
             alertItems.forEach { alert ->
                 val id = alert.string("_id") ?: return@forEach
                 val number = alert.string("alertNumber") ?: id.take(8)
-                add(ProviderEvent("oneuptime", instance.id, "alert:$id", "warning", "Alert #$number", now, id))
+                val severity = normalizeSeverity(alertSeverities[alert.string("alertSeverityId")])
+                val occurredAt = oneUptimeTimestamp(alert.string("createdAt"), now)
+                add(ProviderEvent("oneuptime", instance.id, "alert:$id", severity, "Alert #$number", occurredAt, id))
             }
             incidents.forEach { incident ->
                 val id = incident.string("_id") ?: return@forEach
                 val number = incident.string("incidentNumber") ?: id.take(8)
-                add(ProviderEvent("oneuptime", instance.id, "incident:$id", "critical", "Incident #$number", now, id))
+                val severity = normalizeSeverity(incidentSeverities[incident.string("incidentSeverityId")])
+                val occurredAt = oneUptimeTimestamp(incident.string("declaredAt") ?: incident.string("createdAt"), now)
+                add(ProviderEvent("oneuptime", instance.id, "incident:$id", severity, "Incident #$number", occurredAt, id))
             }
         }
         val disabled = assets.count { it.state == "disabled" }
@@ -578,6 +589,8 @@ class InfrastructureOperationsRepository @Inject constructor(
         "warning", "warn", "medium" -> "warning"
         else -> "info"
     }
+    private fun oneUptimeTimestamp(raw: String?, fallback: Long): Long =
+        raw?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: fallback
 
     companion object {
         private const val PAGE_SIZE = 100
@@ -587,9 +600,16 @@ class InfrastructureOperationsRepository @Inject constructor(
         private const val MAX_ALERTS_PER_CLUSTER = 200
         private const val ONEUPTIME_LIMIT = 100
         private const val ONEUPTIME_MONITOR_BODY = "{\"select\":{\"currentMonitorStatusId\":true,\"disableActiveMonitoring\":true,\"monitorType\":true,\"name\":true,\"projectId\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
-        private const val ONEUPTIME_ALERT_BODY = "{\"select\":{\"alertSeverityId\":true,\"currentAlertStateId\":true,\"projectId\":true,\"alertNumber\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
-        private const val ONEUPTIME_INCIDENT_BODY = "{\"select\":{\"currentIncidentStateId\":true,\"declaredAt\":true,\"incidentSeverityId\":true,\"projectId\":true,\"incidentNumber\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
-        private val ONEUPTIME_READ_PATHS = setOf("/api/monitor/get-list", "/api/alert/get-list", "/api/incident/get-list")
+        private const val ONEUPTIME_ALERT_BODY = "{\"select\":{\"alertSeverityId\":true,\"createdAt\":true,\"currentAlertStateId\":true,\"projectId\":true,\"alertNumber\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
+        private const val ONEUPTIME_INCIDENT_BODY = "{\"select\":{\"createdAt\":true,\"currentIncidentStateId\":true,\"declaredAt\":true,\"incidentSeverityId\":true,\"projectId\":true,\"incidentNumber\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
+        private const val ONEUPTIME_SEVERITY_BODY = "{\"select\":{\"name\":true,\"slug\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
+        private val ONEUPTIME_READ_PATHS = setOf(
+            "/api/monitor/get-list",
+            "/api/alert/get-list",
+            "/api/incident/get-list",
+            "/api/alert-severity/get-list",
+            "/api/incident-severity/get-list"
+        )
         private val supportedTypes = setOf(
             ServiceType.NETBOX,
             ServiceType.ZAMMAD,
