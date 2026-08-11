@@ -184,7 +184,9 @@ actor ProxmoxBackupServerAPIClient {
     }
 
     private static func clean(_ value: String?) -> String? {
-        value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        guard let value else { return nil }
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     private static func formatPercent(_ ratio: Double) -> String {
