@@ -13,6 +13,6 @@ jobs:
     name: Phase 2 operations invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Validate normalized operations contracts and views
         run: bash ./scripts/phase2-operations-audit.sh

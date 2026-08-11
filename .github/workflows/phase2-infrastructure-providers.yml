@@ -13,6 +13,6 @@ jobs:
     name: Phase 2 infrastructure provider invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Validate read-only NetBox, Zammad, and PegaProx contracts
         run: bash ./scripts/phase2-infrastructure-providers-audit.sh
