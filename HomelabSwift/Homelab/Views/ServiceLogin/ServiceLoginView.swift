@@ -75,6 +75,8 @@ struct ServiceLoginView: View {
             || serviceType == .netbox
             || serviceType == .zammad
             || serviceType == .pegaprox
+            || serviceType == .opnsense
+            || serviceType == .oneuptime
     }
 
     private var usesKomodoAuth: Bool {
@@ -101,8 +103,13 @@ struct ServiceLoginView: View {
             return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
         }
 
-        if [.grafana, .netbox, .zammad, .pegaprox].contains(serviceType) {
-            return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
+        if [.grafana, .netbox, .zammad, .pegaprox, .opnsense, .oneuptime].contains(serviceType) {
+            let hasKey = normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
+            if serviceType == .opnsense {
+                let hasSecret = normalizedOptional(password) != nil || (isEditing && existingInstance?.password?.isEmpty == false)
+                return hasKey && hasSecret
+            }
+            return hasKey
         }
 
         if serviceType == .proxmoxBackupServer {
@@ -369,6 +376,19 @@ struct ServiceLoginView: View {
                         onSubmit: handleSave
                     )
                 }
+
+                if serviceType == .opnsense {
+                    InputField(
+                        icon: "lock.fill",
+                        placeholder: isEditing ? "OPNsense API secret (leave blank to keep)" : "OPNsense API secret",
+                        text: $password,
+                        isSecure: !showPassword,
+                        showToggle: true,
+                        toggleAction: { showPassword.toggle() },
+                        showPassword: showPassword,
+                        onSubmit: handleSave
+                    )
+                }
             } else if !supportsCredentiallessAuth {
                 if needsUsername {
                     let isEmailField = serviceType == .beszel || serviceType == .nginxProxyManager
@@ -521,6 +541,10 @@ struct ServiceLoginView: View {
                                  return "Use an access token restricted to the required groups. Ticket content, customers and article bodies are excluded."
         case .pegaprox:
                                  return "Use a restricted pgx_ API token. Visibility comes exclusively from server-side RBAC and tenant filtering."
+        case .opnsense:
+                                 return "Use a dedicated OPNsense API key/secret pair with only firmware status and interface overview privileges."
+        case .oneuptime:
+                                 return "Use a read-only OneUptime API key. Only fixed monitor, alert and incident list requests are allowed; alert content is redacted."
         case .truenas:           return localizer.t.loginHintTruenas
         case .pterodactyl:       return localizer.t.loginHintPterodactyl
         case .calagopus:         return localizer.t.loginHintCalagopus
@@ -613,7 +637,7 @@ struct ServiceLoginView: View {
             username = existing.username ?? ""
             apiKey = ""
             password = ""
-        } else if [.prometheus, .grafana, .netbox, .zammad, .pegaprox].contains(serviceType) {
+        } else if [.prometheus, .grafana, .netbox, .zammad, .pegaprox, .opnsense, .oneuptime].contains(serviceType) {
             username = existing.username ?? ""
             apiKey = ""
             password = ""
@@ -1697,16 +1721,23 @@ struct ServiceLoginView: View {
                 fallbackUrl: fallbackUrl,
                 allowSelfSigned: allowSelfSigned
             )
-        case .netbox, .zammad, .pegaprox:
+        case .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
             let existingToken = existingInstance?.url == url ? existingInstance?.apiKey : nil
             guard let token = normalizedOptional(apiKey) ?? existingToken else {
                 throw APIError.custom(localizer.t.loginErrorCredentials)
             }
             let id = existingInstanceId ?? UUID()
+            let apiSecret = serviceType == .opnsense
+                ? (normalizedOptional(password) ?? (existingInstance?.url == url ? existingInstance?.password : nil))
+                : nil
+            if serviceType == .opnsense && apiSecret == nil {
+                throw APIError.custom(localizer.t.loginErrorCredentials)
+            }
             let client = InfrastructureOperationsAPIClient(instanceId: id, serviceType: serviceType)
             try await client.authenticate(
                 url: url,
                 apiToken: token,
+                apiSecret: apiSecret,
                 fallbackUrl: fallbackUrl,
                 allowSelfSigned: allowSelfSigned
             )
@@ -1718,7 +1749,8 @@ struct ServiceLoginView: View {
                 token: "",
                 apiKey: token,
                 fallbackUrl: fallbackUrl,
-                allowSelfSigned: allowSelfSigned
+                allowSelfSigned: allowSelfSigned,
+                password: apiSecret
             )
         }
     }

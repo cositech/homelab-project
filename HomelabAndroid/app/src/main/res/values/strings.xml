@@ -60,6 +60,8 @@
     <string name="service_zammad">Zammad</string>
     <string name="service_zammad_desc">Read-only, PII-redacted ticket operations view</string>
     <string name="service_pegaprox">PegaProx</string>
+    <string name="service_opnsense">OPNsense</string>
+    <string name="service_oneuptime">OneUptime</string>
     <string name="service_pegaprox_desc">Tenant-scoped cluster, guest and active alert monitoring</string>
     <string name="service_unifi_network">Ubiquiti Network</string>
     <string name="service_unifi_network_desc">UniFi sites, devices, clients and network health</string>
@@ -222,6 +224,8 @@
     <string name="login_hint_netbox">Use a read-only NetBox v2 token where possible. Results are capped and configuration contexts are excluded.</string>
     <string name="login_hint_zammad">Use an access token restricted to the required groups. Ticket content, customers and article bodies are not stored in operations data.</string>
     <string name="login_hint_pegaprox">Use a restricted pgx_ API token. Cluster and VM visibility is accepted only from PegaProx server-side RBAC and tenant filtering.</string>
+    <string name="login_hint_opnsense">Use a dedicated OPNsense API key/secret pair assigned only the firmware status and interface overview privileges.</string>
+    <string name="login_hint_oneuptime">Use a read-only OneUptime API key. The app only calls fixed monitor, alert and incident list endpoints and redacts alert content.</string>
     <string name="prometheus_targets_healthy">healthy targets</string>
     <string name="grafana_dashboards_data_sources">dashboards / data sources</string>
     <string name="login_pbs_token_id">PBS token ID</string>
@@ -1750,6 +1754,7 @@
     <string name="service_komodo_desc">Docker fleet management and deployment monitoring</string>
     <string name="login_hint_komodo">Use your Komodo base URL plus an API key and API secret. Homelab calls the Komodo /read RPC endpoints.</string>
     <string name="komodo_api_secret">API secret</string>
+    <string name="opnsense_api_secret">OPNsense API secret</string>
     <string name="komodo_login_error_api_secret_required">Enter the Komodo API secret</string>
     <string name="komodo_instance_label">Komodo instance</string>
     <string name="komodo_resources">Resources</string>

@@ -48,6 +48,8 @@
     <string name="service_zammad">Zammad</string>
     <string name="service_zammad_desc">Schreibgeschützte, PII-reduzierte Ticket-Operationsansicht</string>
     <string name="service_pegaprox">PegaProx</string>
+    <string name="service_opnsense">OPNsense</string>
+    <string name="service_oneuptime">OneUptime</string>
     <string name="service_pegaprox_desc">Mandantengefiltertes Monitoring von Clustern, Gästen und aktiven Alerts</string>
     <string name="login_hint_proxmox_backup_server">Verwende einen PBS-API-Token mit minimalen Rechten. Token-ID: user@realm!token-name. Empfohlen: Audit auf / und DatastoreAudit auf den benötigten Datastores.</string>
     <string name="login_hint_prometheus">Der Bearer-Token ist optional. Gelesen werden nur Build-Informationen, aktive Targets und aktive Alerts; beliebige PromQL-Abfragen werden nicht ausgeführt.</string>
@@ -55,6 +57,8 @@
     <string name="login_hint_netbox">Verwende möglichst einen schreibgeschützten NetBox-v2-Token. Ergebnisse sind begrenzt und Konfigurationskontexte werden ausgeschlossen.</string>
     <string name="login_hint_zammad">Verwende einen auf die benötigten Gruppen begrenzten Access-Token. Ticketinhalte, Kundendaten und Artikeltexte werden nicht in Operationsdaten übernommen.</string>
     <string name="login_hint_pegaprox">Verwende einen eingeschränkten pgx_-API-Token. Cluster- und VM-Sichtbarkeit wird ausschließlich aus serverseitigem RBAC und Tenant-Filtering von PegaProx übernommen.</string>
+    <string name="login_hint_opnsense">Verwende ein eigenes OPNsense-API-Schlüsselpaar, das nur Rechte für Firmware-Status und Interface-Übersicht besitzt.</string>
+    <string name="login_hint_oneuptime">Verwende einen schreibgeschützten OneUptime-API-Key. Die App ruft nur fest definierte Monitor-, Alert- und Incident-Listen ab und redigiert Alert-Inhalte.</string>
     <string name="prometheus_targets_healthy">gesunde Targets</string>
     <string name="grafana_dashboards_data_sources">Dashboards / Datenquellen</string>
     <string name="login_pbs_token_id">PBS-Token-ID</string>
@@ -1458,6 +1462,7 @@
     <string name="service_komodo_desc">Docker-Flottenverwaltung und Deployment-Überwachung</string>
     <string name="login_hint_komodo">Verwenden Sie die Komodo-Basis-URL mit API-Schlüssel und API-Secret. Homelab ruft die Komodo-/read-RPC-Endpunkte auf.</string>
     <string name="komodo_api_secret">API-Secret</string>
+    <string name="opnsense_api_secret">OPNsense-API-Secret</string>
     <string name="komodo_login_error_api_secret_required">Geben Sie das Komodo-API-Secret ein</string>
     <string name="komodo_instance_label">Komodo-Instanz</string>
     <string name="komodo_resources">Ressourcen</string>

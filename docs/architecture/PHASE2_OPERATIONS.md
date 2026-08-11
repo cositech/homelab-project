@@ -19,9 +19,11 @@ Diagnostics expose only scheme, host and explicit port. Search returns an empty 
 - NetBox contributes capped, paginated device and virtual-machine inventory with configuration contexts excluded; stable NetBox IDs remain the correlation keys.
 - Zammad contributes only tickets visible to the token. Ticket titles, customers, organizations, article bodies and attachments are excluded from normalized operations data; escalations become warning events.
 - PegaProx contributes tenant-filtered clusters, guests, health scores and active alerts. The mobile clients never broaden server results and do not expose console, shell or remote-session links.
+- OPNsense contributes firmware health and an interface inventory through Basic-authenticated GET endpoints. The provider accepts a dedicated API key/secret pair and exposes no mutation, service-control or configuration endpoints.
+- OneUptime contributes capped monitor, alert and incident lists through the API's read-style POST contract. Only three exact `/get-list` paths and fixed field selections are permitted; endpoint details, titles, descriptions and notes are excluded from normalized data.
 
 The workspace is intentionally read-only. Mutating operations remain in the existing service dashboards until Phase 3 introduces policy, confirmation, RBAC and immutable audit records.
 
 ## Follow-up deliveries
 
-OPNsense and OneUptime attach through the same snapshot boundary in the remaining Phase-2 delivery. The Grafana legacy `/api` inventory endpoints require a planned migration path to `/apis` as Grafana 13 deprecation work progresses.
+Phase 2 is complete. The Grafana legacy `/api` inventory endpoints require a planned migration path to `/apis` as Grafana 13 deprecation work progresses.

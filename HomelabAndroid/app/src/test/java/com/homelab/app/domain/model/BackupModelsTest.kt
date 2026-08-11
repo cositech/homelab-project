@@ -85,6 +85,10 @@ class BackupModelsTest {
         assertEquals(ServiceType.ZAMMAD, BackupServiceTypeMapper.serviceType("zammad"))
         assertEquals("pegaprox", BackupServiceTypeMapper.backupKey(ServiceType.PEGAPROX))
         assertEquals(ServiceType.PEGAPROX, BackupServiceTypeMapper.serviceType("pega-prox"))
+        assertEquals("opnsense", BackupServiceTypeMapper.backupKey(ServiceType.OPNSENSE))
+        assertEquals(ServiceType.OPNSENSE, BackupServiceTypeMapper.serviceType("opn-sense"))
+        assertEquals("oneuptime", BackupServiceTypeMapper.backupKey(ServiceType.ONEUPTIME))
+        assertEquals(ServiceType.ONEUPTIME, BackupServiceTypeMapper.serviceType("one_uptime"))
     }
 
     @Test

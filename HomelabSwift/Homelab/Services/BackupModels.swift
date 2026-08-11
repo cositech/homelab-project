@@ -76,6 +76,8 @@ enum BackupServiceTypeMapper {
         case .netbox:            return "netbox"
         case .zammad:            return "zammad"
         case .pegaprox:          return "pegaprox"
+        case .opnsense:          return "opnsense"
+        case .oneuptime:         return "oneuptime"
         case .truenas:           return "truenas"
         case .pterodactyl:       return "pterodactyl"
         case .calagopus:         return "calagopus"
@@ -141,6 +143,8 @@ enum BackupServiceTypeMapper {
         case "netbox":               return .netbox
         case "zammad":               return .zammad
         case "pegaprox", "pega_prox", "pega-prox": return .pegaprox
+        case "opnsense", "opn_sense", "opn-sense": return .opnsense
+        case "oneuptime", "one_uptime", "one-uptime": return .oneuptime
         case "truenas",
              "truenas_scale",
              "truenas-scale",

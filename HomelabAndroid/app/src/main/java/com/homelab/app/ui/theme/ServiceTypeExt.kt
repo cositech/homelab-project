@@ -45,6 +45,8 @@ val ServiceType.primaryColor: Color
         ServiceType.NETBOX -> Color(0xFF00A651)
         ServiceType.ZAMMAD -> Color(0xFFCA2317)
         ServiceType.PEGAPROX -> Color(0xFF5B4BDB)
+        ServiceType.OPNSENSE -> Color(0xFFD94F00)
+        ServiceType.ONEUPTIME -> Color(0xFF5B5BD6)
         ServiceType.JELLYSTAT -> Color(0xFFC93DF6)
         ServiceType.BESZEL -> Color(0xFF8B5CF6)
         ServiceType.GITEA -> Color(0xFF609926)
@@ -90,6 +92,8 @@ val ServiceType.backgroundColor: Color
         ServiceType.NETBOX -> Color(0xFF00A651).copy(alpha = 0.12f)
         ServiceType.ZAMMAD -> Color(0xFFCA2317).copy(alpha = 0.12f)
         ServiceType.PEGAPROX -> Color(0xFF5B4BDB).copy(alpha = 0.12f)
+        ServiceType.OPNSENSE -> Color(0xFFD94F00).copy(alpha = 0.12f)
+        ServiceType.ONEUPTIME -> Color(0xFF5B5BD6).copy(alpha = 0.12f)
         ServiceType.PLEX -> Color(0xFFE5A00D).copy(alpha = 0.12f)
         ServiceType.JELLYSTAT -> Color(0xFFC93DF6).copy(alpha = 0.12f)
         ServiceType.BESZEL -> Color(0xFF8B5CF6).copy(alpha = 0.12f)
@@ -135,6 +139,8 @@ val ServiceType.iconUrl: String
         ServiceType.NETBOX -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/netbox.png"
         ServiceType.ZAMMAD -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/zammad.png"
         ServiceType.PEGAPROX -> "https://raw.githubusercontent.com/PegaProx/project-pegaprox/main/web/favicon.png"
+        ServiceType.OPNSENSE -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/opnsense.png"
+        ServiceType.ONEUPTIME -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/oneuptime.png"
         ServiceType.PLEX -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/plex.png"
         ServiceType.JELLYSTAT -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/jellystat.png"
         ServiceType.BESZEL -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/beszel.png"
@@ -270,6 +276,8 @@ val ServiceType.fallbackIcon: ImageVector
         ServiceType.NETBOX -> Icons.Default.Storage
         ServiceType.ZAMMAD -> Icons.Default.Source
         ServiceType.PEGAPROX -> Icons.Default.Dns
+        ServiceType.OPNSENSE -> Icons.Default.Security
+        ServiceType.ONEUPTIME -> Icons.Default.ShowChart
         ServiceType.TRUENAS -> Icons.Default.Storage
         ServiceType.PTERODACTYL -> Icons.Default.Dns
         ServiceType.CALAGOPUS -> Icons.Default.Dns
