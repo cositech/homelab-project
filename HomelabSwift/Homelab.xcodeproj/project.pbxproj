@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D1E2F30415263748596A7B8C /* ObservabilityAPIClients.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F30415263748596A7B8C9D /* ObservabilityAPIClients.swift */; };
 		B0C1D2E3F405162738495A6B /* ProxmoxBackupServerAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B1C2D3E4F5061728394A5B /* ProxmoxBackupServerAPIClient.swift */; };
 		001FA6007779556F8CF2BDC5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B518BC3D0A31F29612A69B75 /* Assets.xcassets */; };
 		00623F9E5FFF09815953B86C /* UniFiDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFB37C2FF152CEF28395F2C /* UniFiDashboard.swift */; };
@@ -207,6 +208,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E2F30415263748596A7B8C9D /* ObservabilityAPIClients.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservabilityAPIClients.swift; sourceTree = "<group>"; };
 		A0B1C2D3E4F5061728394A5B /* ProxmoxBackupServerAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxmoxBackupServerAPIClient.swift; sourceTree = "<group>"; };
 		04940FAEDE28A509EB1E0EEB /* NpmAccessListForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NpmAccessListForm.swift; sourceTree = "<group>"; };
 		04B5CCA8C815CB0FB9A9B076 /* DockhandComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockhandComponents.swift; sourceTree = "<group>"; };
@@ -402,6 +404,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		F30415263748596A7B8C9D0E /* Observability */ = {
+			isa = PBXGroup;
+			children = (
+				E2F30415263748596A7B8C9D /* ObservabilityAPIClients.swift */,
+			);
+			path = Observability;
+			sourceTree = "<group>";
+		};
 		C0D1E2F30415263748596A7B /* ProxmoxBackupServer */ = {
 			isa = PBXGroup;
 			children = (
@@ -1207,6 +1217,7 @@
 				4C90EF8FCC9EEF95D9AB014C /* LinuxUpdate */,
 				7EE465F8B66B567A6A7A2622 /* Maltrail */,
 				23AB1F8E0947D3598E65C623 /* NginxProxyManager */,
+				F30415263748596A7B8C9D0E /* Observability */,
 				1E129360F625134B518C39D4 /* Pangolin */,
 				AEF3A1B12CFF68006D2F06AF /* Patchmon */,
 				D43D23351242B6BFC6E743DC /* PiHole */,
@@ -1575,6 +1586,7 @@
 				462FAAA3890B72AC8A953A68 /* ProxmoxModels.swift in Sources */,
 				FAF059D26F6524AD3CCFDA3E /* ProxmoxNetworkView.swift in Sources */,
 				B0C1D2E3F405162738495A6B /* ProxmoxBackupServerAPIClient.swift in Sources */,
+				D1E2F30415263748596A7B8C /* ObservabilityAPIClients.swift in Sources */,
 				1BA6E685696F653F3CAD798A /* ProxmoxNodeDetailView.swift in Sources */,
 				046CD8D1432531A4E8563885 /* ProxmoxPoolDetailView.swift in Sources */,
 				ACC3251242810B5ADED0CDD9 /* ProxmoxServicesView.swift in Sources */,

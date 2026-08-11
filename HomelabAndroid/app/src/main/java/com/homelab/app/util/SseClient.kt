@@ -54,6 +54,8 @@ class SseClient @Inject constructor(
                 ServiceType.CRAFTY_CONTROLLER -> "Crafty Controller"
                 ServiceType.PROXMOX -> "Proxmox"
                 ServiceType.PROXMOX_BACKUP_SERVER -> "Proxmox Backup Server"
+                ServiceType.PROMETHEUS -> "Prometheus"
+                ServiceType.GRAFANA -> "Grafana"
                 ServiceType.TRUENAS -> "TrueNAS"
                 ServiceType.PTERODACTYL -> "Pterodactyl"
                 ServiceType.CALAGOPUS -> "Calagopus"

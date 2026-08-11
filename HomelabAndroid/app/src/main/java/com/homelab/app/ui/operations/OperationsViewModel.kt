@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ProxmoxBackupServerRepository
+import com.homelab.app.data.repository.ObservabilityRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.data.repository.UptimeKumaMonitorStatus
 import com.homelab.app.data.repository.UptimeKumaRepository
@@ -38,7 +39,8 @@ class OperationsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
     private val proxmoxRepository: ProxmoxRepository,
     private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
-    private val uptimeKumaRepository: UptimeKumaRepository
+    private val uptimeKumaRepository: UptimeKumaRepository,
+    private val observabilityRepository: ObservabilityRepository
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OperationsUiState())
     val uiState: StateFlow<OperationsUiState> = _uiState.asStateFlow()
@@ -97,6 +99,16 @@ class OperationsViewModel @Inject constructor(
                     ServiceType.UPTIME_KUMA -> {
                         instanceHealth = uptimeKumaRepository.getNormalizedHealth(instance.id)
                         appendUptimeKuma(instance, assets, alerts, observedAt)
+                    }
+                    ServiceType.PROMETHEUS -> {
+                        val overview = observabilityRepository.getPrometheusOverview(instance.id)
+                        instanceHealth = observabilityRepository.normalizePrometheusHealth(instance.id, overview)
+                        appendPrometheus(instance, overview, assets, alerts, observedAt)
+                    }
+                    ServiceType.GRAFANA -> {
+                        val overview = observabilityRepository.getGrafanaOverview(instance.id)
+                        instanceHealth = observabilityRepository.normalizeGrafanaHealth(instance.id, overview)
+                        appendGrafana(instance, overview, assets)
                     }
                     else -> Unit
                 }
@@ -276,6 +288,89 @@ class OperationsViewModel @Inject constructor(
                     datastore.store
                 )
             }
+        }
+    }
+
+    private fun appendPrometheus(
+        instance: ServiceInstance,
+        overview: com.homelab.app.data.repository.PrometheusOverview,
+        assets: MutableList<ProviderResource>,
+        alerts: MutableList<ProviderEvent>,
+        observedAt: Long
+    ) {
+        overview.targets.forEach { target ->
+            assets += ProviderResource(
+                providerId = "prometheus",
+                instanceId = instance.id,
+                resourceType = "scrape-target",
+                resourceId = target.id,
+                name = "${target.job} / ${target.instance}",
+                state = target.health.lowercase(),
+                attributes = buildMap {
+                    put("job", target.job)
+                    put("instance", target.instance)
+                    target.lastScrape?.let { put("lastScrape", it) }
+                }
+            )
+            if (!target.health.equals("up", ignoreCase = true)) {
+                alerts += ProviderEvent(
+                    "prometheus",
+                    instance.id,
+                    "target:${target.id}:down",
+                    "critical",
+                    "Prometheus target ${target.job} / ${target.instance} is ${target.health}",
+                    observedAt,
+                    target.id
+                )
+            }
+        }
+        overview.alerts.forEachIndexed { index, alert ->
+            val severity = if (alert.state.equals("firing", true)) "critical" else "warning"
+            alerts += ProviderEvent(
+                "prometheus",
+                instance.id,
+                "alert:${alert.name.hashCode()}:$index:${alert.state.lowercase()}",
+                severity,
+                alert.summary?.takeIf { it.isNotBlank() } ?: "Prometheus alert ${alert.name} is ${alert.state}",
+                observedAt,
+                alert.name
+            )
+        }
+    }
+
+    private fun appendGrafana(
+        instance: ServiceInstance,
+        overview: com.homelab.app.data.repository.GrafanaOverview,
+        assets: MutableList<ProviderResource>
+    ) {
+        overview.dashboards.forEach { dashboard ->
+            assets += ProviderResource(
+                providerId = "grafana",
+                instanceId = instance.id,
+                resourceType = "dashboard",
+                resourceId = dashboard.uid,
+                name = dashboard.title,
+                state = "available",
+                attributes = buildMap {
+                    dashboard.folderTitle?.let { put("folder", it) }
+                    if (dashboard.tags.isNotEmpty()) put("tags", dashboard.tags.joinToString(", "))
+                }
+            )
+        }
+        overview.dataSources.forEach { dataSource ->
+            assets += ProviderResource(
+                providerId = "grafana",
+                instanceId = instance.id,
+                resourceType = "data-source",
+                resourceId = dataSource.uid,
+                name = dataSource.name,
+                state = "configured",
+                attributes = mapOf(
+                    "type" to dataSource.type,
+                    "default" to dataSource.isDefault.toString(),
+                    "readOnly" to dataSource.readOnly.toString()
+                )
+            )
         }
     }
 

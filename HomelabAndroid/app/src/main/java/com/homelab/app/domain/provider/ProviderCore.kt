@@ -130,6 +130,17 @@ object ProviderRegistry {
                     ProviderCapability.EVENTS,
                     ProviderCapability.METRICS
                 )
+                ServiceType.PROMETHEUS -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.EVENTS,
+                    ProviderCapability.METRICS
+                )
+                ServiceType.GRAFANA -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.METRICS
+                )
                 ServiceType.UPTIME_KUMA -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,

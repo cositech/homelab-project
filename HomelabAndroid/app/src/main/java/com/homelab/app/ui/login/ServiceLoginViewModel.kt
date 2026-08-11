@@ -18,6 +18,7 @@ import com.homelab.app.data.repository.MaltrailRepository
 import com.homelab.app.data.repository.MediaArrRepository
 import com.homelab.app.data.repository.AdGuardHomeRepository
 import com.homelab.app.data.repository.NginxProxyManagerRepository
+import com.homelab.app.data.repository.ObservabilityRepository
 import com.homelab.app.data.repository.PatchmonRepository
 import com.homelab.app.data.repository.PangolinRepository
 import com.homelab.app.data.repository.PiholeRepository
@@ -79,7 +80,8 @@ class ServiceLoginViewModel @Inject constructor(
     private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val trueNasRepository: TrueNasRepository,
     private val pterodactylRepository: PterodactylRepository,
-    private val calagopusRepository: CalagopusRepository
+    private val calagopusRepository: CalagopusRepository,
+    private val observabilityRepository: ObservabilityRepository
 ) : ViewModel() {
 
     private val existingInstanceId: String? = savedStateHandle["instanceId"]
@@ -740,6 +742,47 @@ class ServiceLoginViewModel @Inject constructor(
                                 url = cleanUrl,
                                 apiKey = trimmedApiKey.ifBlank { null },
                                 fallbackUrl = cleanFallbackUrl
+                            )
+                        }
+                        ServiceType.PROMETHEUS -> {
+                            val bearerToken = trimmedApiKey.ifBlank {
+                                existing?.apiKey.orEmpty().takeIf { existing.url == cleanUrl }.orEmpty()
+                            }
+                            observabilityRepository.authenticatePrometheus(
+                                url = cleanUrl,
+                                bearerToken = bearerToken.ifBlank { null },
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                apiKey = bearerToken.ifBlank { null },
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                        }
+                        ServiceType.GRAFANA -> {
+                            val serviceAccountToken = trimmedApiKey.ifBlank {
+                                existing?.apiKey.orEmpty().takeIf { existing.url == cleanUrl }.orEmpty()
+                            }
+                            require(serviceAccountToken.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
+                            observabilityRepository.authenticateGrafana(
+                                url = cleanUrl,
+                                serviceAccountToken = serviceAccountToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                apiKey = serviceAccountToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
                             )
                         }
                         ServiceType.UNKNOWN -> throw IllegalArgumentException(context.getString(R.string.error_unknown))

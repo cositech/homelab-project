@@ -19,6 +19,8 @@ class ProviderCoreTest {
         val proxmox = ProviderRegistry.capabilities(ServiceType.PROXMOX)
         val kuma = ProviderRegistry.capabilities(ServiceType.UPTIME_KUMA)
         val pbs = ProviderRegistry.capabilities(ServiceType.PROXMOX_BACKUP_SERVER)
+        val prometheus = ProviderRegistry.capabilities(ServiceType.PROMETHEUS)
+        val grafana = ProviderRegistry.capabilities(ServiceType.GRAFANA)
 
         assertTrue(ProviderCapability.RESOURCES in proxmox)
         assertTrue(ProviderCapability.WRITE_ACTIONS in proxmox)
@@ -27,6 +29,11 @@ class ProviderCoreTest {
         assertTrue(ProviderCapability.RESOURCES in pbs)
         assertTrue(ProviderCapability.METRICS in pbs)
         assertTrue(ProviderCapability.WRITE_ACTIONS !in pbs)
+        assertTrue(ProviderCapability.EVENTS in prometheus)
+        assertTrue(ProviderCapability.WRITE_ACTIONS !in prometheus)
+        assertTrue(ProviderCapability.RESOURCES in grafana)
+        assertTrue(ProviderCapability.EVENTS !in grafana)
+        assertTrue(ProviderCapability.WRITE_ACTIONS !in grafana)
     }
 
     @Test

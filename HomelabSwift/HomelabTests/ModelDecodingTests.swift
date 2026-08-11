@@ -69,6 +69,11 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.resources))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.metrics))
         XCTAssertFalse(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .prometheus).capabilities.contains(.events))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .prometheus).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.resources))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.events))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.writeActions))
     }
 
     func testProxmoxBackupServerDatastoreDecodingAndAliases() throws {
