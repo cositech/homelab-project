@@ -31,6 +31,8 @@ private final class ServiceClientManager {
     private var wakapiClients: [UUID: WakapiAPIClient] = [:]
     private var proxmoxClients: [UUID: ProxmoxAPIClient] = [:]
     private var proxmoxBackupServerClients: [UUID: ProxmoxBackupServerAPIClient] = [:]
+    private var prometheusClients: [UUID: PrometheusAPIClient] = [:]
+    private var grafanaClients: [UUID: GrafanaAPIClient] = [:]
     private var truenasClients: [UUID: TrueNASAPIClient] = [:]
     private var pterodactylClients: [UUID: PterodactylAPIClient] = [:]
     private var calagopusClients: [UUID: CalagopusAPIClient] = [:]
@@ -275,6 +277,20 @@ private final class ServiceClientManager {
         return client
     }
 
+    func prometheusClient(id: UUID) -> PrometheusAPIClient {
+        if let client = prometheusClients[id] { return client }
+        let client = PrometheusAPIClient(instanceId: id)
+        prometheusClients[id] = client
+        return client
+    }
+
+    func grafanaClient(id: UUID) -> GrafanaAPIClient {
+        if let client = grafanaClients[id] { return client }
+        let client = GrafanaAPIClient(instanceId: id)
+        grafanaClients[id] = client
+        return client
+    }
+
     func truenasClient(id: UUID) -> TrueNASAPIClient {
         if let client = truenasClients[id] {
             return client
@@ -367,6 +383,10 @@ private final class ServiceClientManager {
             proxmoxClients.removeValue(forKey: id)
         case .proxmoxBackupServer:
             proxmoxBackupServerClients.removeValue(forKey: id)
+        case .prometheus:
+            prometheusClients.removeValue(forKey: id)
+        case .grafana:
+            grafanaClients.removeValue(forKey: id)
         case .truenas:
             truenasClients.removeValue(forKey: id)
         case .pterodactyl:
@@ -408,6 +428,8 @@ private final class ServiceClientManager {
         wakapiClients = wakapiClients.filter { knownInstanceIds.contains($0.key) }
         proxmoxClients = proxmoxClients.filter { knownInstanceIds.contains($0.key) }
         proxmoxBackupServerClients = proxmoxBackupServerClients.filter { knownInstanceIds.contains($0.key) }
+        prometheusClients = prometheusClients.filter { knownInstanceIds.contains($0.key) }
+        grafanaClients = grafanaClients.filter { knownInstanceIds.contains($0.key) }
         truenasClients = truenasClients.filter { knownInstanceIds.contains($0.key) }
         pterodactylClients = pterodactylClients.filter { knownInstanceIds.contains($0.key) }
         calagopusClients = calagopusClients.filter { knownInstanceIds.contains($0.key) }
@@ -753,6 +775,16 @@ final class ServicesStore {
         return clientManager.proxmoxBackupServerClient(id: instance.id)
     }
 
+    func prometheusClient(instanceId: UUID) async -> PrometheusAPIClient? {
+        guard let instance = instancesById[instanceId], instance.type == .prometheus else { return nil }
+        return clientManager.prometheusClient(id: instance.id)
+    }
+
+    func grafanaClient(instanceId: UUID) async -> GrafanaAPIClient? {
+        guard let instance = instancesById[instanceId], instance.type == .grafana else { return nil }
+        return clientManager.grafanaClient(id: instance.id)
+    }
+
     func truenasClient(instanceId: UUID) async -> TrueNASAPIClient? {
         guard let instance = instancesById[instanceId], instance.type == .truenas else { return nil }
         return clientManager.truenasClient(id: instance.id)
@@ -839,6 +871,10 @@ final class ServicesStore {
             ok = await clientManager.proxmoxClient(id: instanceId).ping()
         case .proxmoxBackupServer:
             ok = await clientManager.proxmoxBackupServerClient(id: instanceId).ping()
+        case .prometheus:
+            ok = await clientManager.prometheusClient(id: instanceId).ping()
+        case .grafana:
+            ok = await clientManager.grafanaClient(id: instanceId).ping()
         case .truenas:
             ok = await clientManager.truenasClient(id: instanceId).ping()
         case .pterodactyl:
@@ -1356,6 +1392,24 @@ final class ServicesStore {
                 fallbackUrl: instance.fallbackUrl,
                 tokenId: instance.username,
                 tokenSecret: instance.password,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
+        case .prometheus:
+            let client = clientManager.prometheusClient(id: instance.id)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                bearerToken: instance.apiKey,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
+        case .grafana:
+            let client = clientManager.grafanaClient(id: instance.id)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                serviceAccountToken: instance.apiKey,
                 allowSelfSigned: instance.allowSelfSigned,
                 tlsPolicy: instance.tlsPolicy
             )

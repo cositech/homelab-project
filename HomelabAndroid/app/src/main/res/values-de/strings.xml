@@ -39,7 +39,15 @@
     <string name="service_wakapi_desc">Aktivitäts-Tracker für die Programmierung</string>
     <string name="service_proxmox_backup_server">Proxmox Backup Server</string>
     <string name="service_proxmox_backup_server_desc">Schreibgeschütztes Monitoring von Datastore-Kapazität und Wartungsstatus</string>
+    <string name="service_prometheus">Prometheus</string>
+    <string name="service_prometheus_desc">Schreibgeschütztes Monitoring von Scrape-Targets und aktiven Alerts</string>
+    <string name="service_grafana">Grafana</string>
+    <string name="service_grafana_desc">Schreibgeschütztes Inventar von Dashboards und Datenquellen</string>
     <string name="login_hint_proxmox_backup_server">Verwende einen PBS-API-Token mit minimalen Rechten. Token-ID: user@realm!token-name. Empfohlen: Audit auf / und DatastoreAudit auf den benötigten Datastores.</string>
+    <string name="login_hint_prometheus">Der Bearer-Token ist optional. Gelesen werden nur Build-Informationen, aktive Targets und aktive Alerts; beliebige PromQL-Abfragen werden nicht ausgeführt.</string>
+    <string name="login_hint_grafana">Verwende einen organisationsgebundenen, schreibgeschützten Service-Account-Token mit Dashboard-Suche und Leserechten für Datenquellen.</string>
+    <string name="prometheus_targets_healthy">gesunde Targets</string>
+    <string name="grafana_dashboards_data_sources">Dashboards / Datenquellen</string>
     <string name="login_pbs_token_id">PBS-Token-ID</string>
     <string name="login_pbs_token_secret">PBS-Token-Secret</string>
     <string name="service_unifi_network">Ubiquiti Network</string>

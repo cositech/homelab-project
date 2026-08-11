@@ -76,6 +76,8 @@ object BackupServiceTypeMapper {
             ServiceType.WAKAPI -> "wakapi"
             ServiceType.PROXMOX -> "proxmox"
             ServiceType.PROXMOX_BACKUP_SERVER -> "proxmox_backup_server"
+            ServiceType.PROMETHEUS -> "prometheus"
+            ServiceType.GRAFANA -> "grafana"
             ServiceType.TRUENAS -> "truenas"
             ServiceType.PTERODACTYL -> "pterodactyl"
             ServiceType.CALAGOPUS -> "calagopus"
@@ -119,6 +121,8 @@ object BackupServiceTypeMapper {
             "crafty_controller", "crafty" -> ServiceType.CRAFTY_CONTROLLER
             "proxmox" -> ServiceType.PROXMOX
             "proxmox_backup_server", "proxmox-backup-server", "pbs" -> ServiceType.PROXMOX_BACKUP_SERVER
+            "prometheus" -> ServiceType.PROMETHEUS
+            "grafana" -> ServiceType.GRAFANA
             "truenas", "truenas_scale", "truenas-scale", "truenasscale",
             "truenas_core", "truenas-core", "truenascore" -> ServiceType.TRUENAS
             "pterodactyl" -> ServiceType.PTERODACTYL

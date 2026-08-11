@@ -46,6 +46,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.homelab.app.data.repository.ObservabilityRepository
 import kotlin.math.floor
 
 @HiltViewModel
@@ -76,6 +77,7 @@ class HomeViewModel @Inject constructor(
     private val wakapiRepository: com.homelab.app.data.repository.WakapiRepository,
     private val pterodactylRepository: PterodactylRepository,
     private val calagopusRepository: CalagopusRepository,
+    private val observabilityRepository: ObservabilityRepository,
     private val localPreferencesRepository: LocalPreferencesRepository
 ) : ViewModel() {
 
@@ -378,6 +380,15 @@ class HomeViewModel @Inject constructor(
                     datastore.maintenance.isNullOrBlank() && (datastore.usageRatio ?: 0.0) < 0.85
                 }
                 InstanceSummary("$healthy", "/ ${datastores.size}", "datastores_healthy")
+            }
+            ServiceType.PROMETHEUS -> {
+                val overview = observabilityRepository.getPrometheusOverview(instanceId)
+                val healthy = overview.targets.count { it.health.equals("up", ignoreCase = true) }
+                InstanceSummary("$healthy", "/ ${overview.targets.size}", "prometheus_targets_healthy")
+            }
+            ServiceType.GRAFANA -> {
+                val overview = observabilityRepository.getGrafanaOverview(instanceId)
+                InstanceSummary("${overview.dashboards.size}", "/ ${overview.dataSources.size}", "grafana_dashboards_data_sources")
             }
             ServiceType.TRUENAS -> {
                 val dashboard = trueNasRepository.getSummary(instanceId)

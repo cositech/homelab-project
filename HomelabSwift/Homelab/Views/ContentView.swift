@@ -140,6 +140,20 @@ private final class OperationsWorkspace {
                         assets.append(contentsOf: details.assets)
                         alerts.append(contentsOf: details.alerts)
                     }
+                case .prometheus:
+                    if let client = await servicesStore.prometheusClient(instanceId: instance.id) {
+                        let overview = try await client.getOverview()
+                        currentHealth = await client.normalizedHealth(for: overview)
+                        let details = loadPrometheus(overview: overview, instance: instance, observedAt: observedAt)
+                        assets.append(contentsOf: details.assets)
+                        alerts.append(contentsOf: details.alerts)
+                    }
+                case .grafana:
+                    if let client = await servicesStore.grafanaClient(instanceId: instance.id) {
+                        let overview = try await client.getOverview()
+                        currentHealth = await client.normalizedHealth(for: overview)
+                        assets.append(contentsOf: loadGrafana(overview: overview, instance: instance))
+                    }
                 default:
                     break
                 }
@@ -333,6 +347,86 @@ private final class OperationsWorkspace {
             observedAt: observedAt,
             attributes: [:]
         )
+    }
+
+    private func loadPrometheus(
+        overview: PrometheusOverview,
+        instance: ServiceInstance,
+        observedAt: Date
+    ) -> (assets: [ProviderResource], alerts: [ProviderEvent]) {
+        var assets: [ProviderResource] = []
+        var alerts: [ProviderEvent] = []
+        for target in overview.targets {
+            let health = target.health ?? "unknown"
+            var attributes = ["job": target.job, "instance": target.instance]
+            if let lastScrape = target.lastScrape { attributes["lastScrape"] = lastScrape }
+            assets.append(ProviderResource(
+                providerId: "prometheus",
+                instanceId: instance.id,
+                resourceType: "scrape-target",
+                resourceId: target.identifier,
+                name: "\(target.job) / \(target.instance)",
+                state: health.lowercased(),
+                attributes: attributes
+            ))
+            if health.lowercased() != "up" {
+                alerts.append(ProviderEvent(
+                    providerId: "prometheus",
+                    instanceId: instance.id,
+                    eventId: "target:\(target.identifier):down",
+                    severity: "critical",
+                    message: "Prometheus target \(target.job) / \(target.instance) is \(health)",
+                    occurredAt: observedAt,
+                    resourceId: target.identifier
+                ))
+            }
+        }
+        for (index, alert) in overview.alerts.enumerated() {
+            let state = alert.state ?? "unknown"
+            alerts.append(ProviderEvent(
+                providerId: "prometheus",
+                instanceId: instance.id,
+                eventId: "alert:\(index):\(state.lowercased())",
+                severity: state.lowercased() == "firing" ? "critical" : "warning",
+                message: alert.summary ?? "Prometheus alert \(alert.name) is \(state)",
+                occurredAt: observedAt,
+                resourceId: alert.name
+            ))
+        }
+        return (assets, alerts)
+    }
+
+    private func loadGrafana(overview: GrafanaOverview, instance: ServiceInstance) -> [ProviderResource] {
+        let dashboards = overview.dashboards.map { dashboard in
+            var attributes: [String: String] = [:]
+            if let folder = dashboard.folderTitle { attributes["folder"] = folder }
+            if let tags = dashboard.tags, !tags.isEmpty { attributes["tags"] = tags.joined(separator: ", ") }
+            return ProviderResource(
+                providerId: "grafana",
+                instanceId: instance.id,
+                resourceType: "dashboard",
+                resourceId: dashboard.uid,
+                name: dashboard.title,
+                state: "available",
+                attributes: attributes
+            )
+        }
+        let dataSources = overview.dataSources.map { dataSource in
+            ProviderResource(
+                providerId: "grafana",
+                instanceId: instance.id,
+                resourceType: "data-source",
+                resourceId: dataSource.identifier,
+                name: dataSource.name,
+                state: "configured",
+                attributes: [
+                    "type": dataSource.type,
+                    "default": String(dataSource.isDefault ?? false),
+                    "readOnly": String(dataSource.readOnly ?? false)
+                ]
+            )
+        }
+        return dashboards + dataSources
     }
 
     private func safeEndpoint(_ raw: String) -> String {

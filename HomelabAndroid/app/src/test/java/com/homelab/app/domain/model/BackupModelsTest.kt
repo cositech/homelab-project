@@ -70,6 +70,14 @@ class BackupModelsTest {
     }
 
     @Test
+    fun `observability backup mapper stays stable`() {
+        assertEquals("prometheus", BackupServiceTypeMapper.backupKey(ServiceType.PROMETHEUS))
+        assertEquals(ServiceType.PROMETHEUS, BackupServiceTypeMapper.serviceType("prometheus"))
+        assertEquals("grafana", BackupServiceTypeMapper.backupKey(ServiceType.GRAFANA))
+        assertEquals(ServiceType.GRAFANA, BackupServiceTypeMapper.serviceType("grafana"))
+    }
+
+    @Test
     fun `pangolin backup mapper and conversion stay stable`() {
         assertEquals("pangolin", BackupServiceTypeMapper.backupKey(ServiceType.PANGOLIN))
         assertEquals(ServiceType.PANGOLIN, BackupServiceTypeMapper.serviceType("pangolin"))

@@ -26,7 +26,7 @@ Exit gate: Phase 1 security invariants, Android/iOS compilation and unit tests, 
 - [x] Global Android and iOS operations workspaces with refresh and empty/error states
 - [x] Read-only Proxmox VE and Uptime Kuma resource/alert aggregation
 - [x] Proxmox Backup Server provider
-- [ ] Prometheus and Grafana providers
+- [x] Prometheus and Grafana providers
 - [ ] NetBox, Zammad and PegaProx providers
 - [ ] OPNsense and OneUptime providers
 

@@ -49,4 +49,11 @@ final class BackupModelsTests: XCTestCase {
         XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "truenas_core"), .truenas)
         XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "truenas-core"), .truenas)
     }
+
+    func testObservabilityBackupMapperRoundTrip() {
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .prometheus), "prometheus")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "prometheus"), .prometheus)
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .grafana), "grafana")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "grafana"), .grafana)
+    }
 }

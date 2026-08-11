@@ -71,6 +71,7 @@ struct ServiceLoginView: View {
             || serviceType == .truenas
             || serviceType == .pterodactyl
             || serviceType == .calagopus
+            || serviceType == .grafana
     }
 
     private var usesKomodoAuth: Bool {
@@ -78,11 +79,11 @@ struct ServiceLoginView: View {
     }
 
     private var supportsCredentiallessAuth: Bool {
-        serviceType == .gluetun || serviceType == .flaresolverr
+        serviceType == .gluetun || serviceType == .flaresolverr || serviceType == .prometheus
     }
 
     private var supportsOptionalApiKey: Bool {
-        serviceType == .gluetun || serviceType == .flaresolverr
+        serviceType == .gluetun || serviceType == .flaresolverr || serviceType == .prometheus
     }
 
     private var isProxmox: Bool {
@@ -94,6 +95,10 @@ struct ServiceLoginView: View {
         guard !cleanUrl.isEmpty else { return false }
 
         if serviceType == .unifiNetwork {
+            return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
+        }
+
+        if serviceType == .grafana {
             return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
         }
 
@@ -503,6 +508,10 @@ struct ServiceLoginView: View {
         case .proxmox:           return localizer.t.loginHintProxmox
         case .proxmoxBackupServer:
                                  return "Use a least-privilege PBS API token. The initial provider is read-only and does not support password or ticket authentication."
+        case .prometheus:
+                                 return "The bearer token is optional. Only build info, active targets, and active alerts are read; arbitrary PromQL is not executed."
+        case .grafana:
+                                 return "Use an organization-scoped, read-only service account token with dashboard search and data source read permissions."
         case .truenas:           return localizer.t.loginHintTruenas
         case .pterodactyl:       return localizer.t.loginHintPterodactyl
         case .calagopus:         return localizer.t.loginHintCalagopus
@@ -592,6 +601,10 @@ struct ServiceLoginView: View {
                 proxmoxApiTokenEntryMode = 1
             }
         } else if serviceType == .proxmoxBackupServer {
+            username = existing.username ?? ""
+            apiKey = ""
+            password = ""
+        } else if serviceType == .prometheus || serviceType == .grafana {
             username = existing.username ?? ""
             apiKey = ""
             password = ""
@@ -1632,6 +1645,48 @@ struct ServiceLoginView: View {
                 fallbackUrl: fallbackUrl,
                 allowSelfSigned: allowSelfSigned,
                 password: tokenSecret
+            )
+        case .prometheus:
+            let existingToken = existingInstance?.url == url ? existingInstance?.apiKey : nil
+            let token = normalizedOptional(apiKey) ?? existingToken
+            let client = PrometheusAPIClient(instanceId: existingInstanceId ?? UUID())
+            try await client.authenticate(
+                url: url,
+                bearerToken: token,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
+            )
+            return ServiceInstance(
+                id: existingInstanceId ?? UUID(),
+                type: .prometheus,
+                label: label,
+                url: url,
+                token: "",
+                apiKey: token,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
+            )
+        case .grafana:
+            let existingToken = existingInstance?.url == url ? existingInstance?.apiKey : nil
+            guard let token = normalizedOptional(apiKey) ?? existingToken else {
+                throw APIError.custom(localizer.t.loginErrorCredentials)
+            }
+            let client = GrafanaAPIClient(instanceId: existingInstanceId ?? UUID())
+            try await client.authenticate(
+                url: url,
+                serviceAccountToken: token,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
+            )
+            return ServiceInstance(
+                id: existingInstanceId ?? UUID(),
+                type: .grafana,
+                label: label,
+                url: url,
+                token: "",
+                apiKey: token,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
             )
         }
     }

@@ -331,6 +331,8 @@ struct HomeView: View {
         case .proxmox:           ProxmoxDashboard(instanceId: route.instanceId)
         case .proxmoxBackupServer:
                                  OperationsView()
+        case .prometheus, .grafana:
+                                 OperationsView()
         case .truenas:           TrueNASDashboard(instanceId: route.instanceId)
         case .pterodactyl:       PterodactylDashboard(instanceId: route.instanceId)
         case .calagopus:         CalagopusDashboard(instanceId: route.instanceId)
@@ -548,6 +550,15 @@ struct HomeView: View {
                     subValue: "/ \(dashboard.datastores.count)",
                     label: "healthy datastores"
                 )
+            case .prometheus:
+                guard let client = await servicesStore.prometheusClient(instanceId: instanceId) else { return nil }
+                let overview = try await client.getOverview()
+                let healthy = overview.targets.filter { ($0.health ?? "unknown").lowercased() == "up" }.count
+                return ServiceSummaryInfo(value: "\(healthy)", subValue: "/ \(overview.targets.count)", label: "healthy targets")
+            case .grafana:
+                guard let client = await servicesStore.grafanaClient(instanceId: instanceId) else { return nil }
+                let overview = try await client.getOverview()
+                return ServiceSummaryInfo(value: "\(overview.dashboards.count)", subValue: "/ \(overview.dataSources.count)", label: "dashboards / data sources")
             case .truenas:
                 guard let client = await servicesStore.truenasClient(instanceId: instanceId) else { return nil }
                 let snapshot = try await client.getDashboardSnapshot()
