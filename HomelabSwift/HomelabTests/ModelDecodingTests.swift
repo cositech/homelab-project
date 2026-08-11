@@ -68,6 +68,35 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertFalse(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.writeActions))
     }
 
+    func testOperationsSearchReturnsMatchingAssetsWithoutUnrelatedRecords() {
+        let instanceId = UUID()
+        let snapshot = OperationsSnapshot(
+            alerts: [
+                ProviderEvent(providerId: "uptime-kuma", instanceId: instanceId, eventId: "alert-1", severity: "critical", message: "customer portal is down", occurredAt: Date(), resourceId: "22")
+            ],
+            assets: [
+                ProviderResource(providerId: "proxmox", instanceId: instanceId, resourceType: "virtual-machine", resourceId: "101", name: "zammad", state: "running", attributes: [:]),
+                ProviderResource(providerId: "uptime-kuma", instanceId: instanceId, resourceType: "monitor", resourceId: "22", name: "grafana", state: "up", attributes: [:])
+            ]
+        )
+
+        let result = snapshot.search("zammad")
+
+        XCTAssertEqual(result.assets.map(\.resourceId), ["101"])
+        XCTAssertTrue(result.alerts.isEmpty)
+        XCTAssertTrue(result.health.isEmpty)
+    }
+
+    func testBlankOperationsSearchDoesNotReturnFullSnapshot() {
+        let snapshot = OperationsSnapshot(
+            diagnostics: [
+                ProviderDiagnostic(providerId: "proxmox", instanceId: UUID(), displayName: "PVE", endpoint: "https://pve.internal", tlsMode: .system, capabilities: [], state: .healthy, message: nil, observedAt: Date())
+            ]
+        )
+
+        XCTAssertTrue(snapshot.search("   ").isEmpty)
+    }
+
 
     // MARK: - Portainer
 
