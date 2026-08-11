@@ -550,6 +550,16 @@ class AuthInterceptor @Inject constructor(
                     builder.addHeader("Authorization", "Bearer ${instance.apiKey}")
                 }
             }
+            ServiceType.OPNSENSE -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank() && !instance.password.isNullOrBlank()) {
+                    builder.addHeader("Authorization", okhttp3.Credentials.basic(instance.apiKey, instance.password))
+                }
+            }
+            ServiceType.ONEUPTIME -> {
+                if (builder.build().header("ApiKey") == null && !instance.apiKey.isNullOrBlank()) {
+                    builder.addHeader("ApiKey", instance.apiKey)
+                }
+            }
             else -> {}
         }
     }

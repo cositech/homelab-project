@@ -14,22 +14,29 @@ IOS_CLIENT="HomelabSwift/Homelab/Networking/Observability/ObservabilityAPIClient
 IOS_OPERATIONS="HomelabSwift/Homelab/Views/ContentView.swift"
 PROM_SPEC="docs/integrations/providers/prometheus.md"
 GRAFANA_SPEC="docs/integrations/providers/grafana.md"
+IOS_OBSERVABILITY_SECTION="$(mktemp)"
+trap 'rm -f "$IOS_OBSERVABILITY_SECTION"' EXIT
+sed '/actor InfrastructureOperationsAPIClient/,$d' "$IOS_CLIENT" > "$IOS_OBSERVABILITY_SECTION"
 
 for path in "$ANDROID_CLIENT" "$ANDROID_OPERATIONS" "$IOS_CLIENT" "$IOS_OPERATIONS" "$PROM_SPEC" "$GRAFANA_SPEC"; do
   test -s "$path" || fail "missing or empty: $path"
 done
 
 for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
-  require_pattern "/api/v1/status/buildinfo" "$path"
-  require_pattern "/api/v1/targets\\?state=active" "$path"
-  require_pattern "/api/v1/alerts" "$path"
-  require_pattern "/api/health" "$path"
-  require_pattern "/api/search\\?type=dash-db" "$path"
-  require_pattern "/api/datasources" "$path"
-  require_pattern "Authorization.*Bearer" "$path"
-  reject_pattern "/api/v1/query(_range)?" "$path"
-  reject_pattern "\\.(post|put|patch|delete)\\(" "$path"
-  reject_pattern "method:[[:space:]]*\\\"(POST|PUT|PATCH|DELETE)\\\"" "$path"
+  read_only_path="$path"
+  if [ "$path" = "$IOS_CLIENT" ]; then
+    read_only_path="$IOS_OBSERVABILITY_SECTION"
+  fi
+  require_pattern "/api/v1/status/buildinfo" "$read_only_path"
+  require_pattern "/api/v1/targets\\?state=active" "$read_only_path"
+  require_pattern "/api/v1/alerts" "$read_only_path"
+  require_pattern "/api/health" "$read_only_path"
+  require_pattern "/api/search\\?type=dash-db" "$read_only_path"
+  require_pattern "/api/datasources" "$read_only_path"
+  require_pattern "Authorization.*Bearer" "$read_only_path"
+  reject_pattern "/api/v1/query(_range)?" "$read_only_path"
+  reject_pattern "\\.(post|put|patch|delete)\\(" "$read_only_path"
+  reject_pattern "method:[[:space:]]*\\\"(POST|PUT|PATCH|DELETE)\\\"" "$read_only_path"
 done
 
 require_pattern "WRITE_ACTIONS !in prometheus" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt

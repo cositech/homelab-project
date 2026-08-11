@@ -24,6 +24,8 @@ class ProviderCoreTest {
         val netbox = ProviderRegistry.capabilities(ServiceType.NETBOX)
         val zammad = ProviderRegistry.capabilities(ServiceType.ZAMMAD)
         val pegaprox = ProviderRegistry.capabilities(ServiceType.PEGAPROX)
+        val opnsense = ProviderRegistry.capabilities(ServiceType.OPNSENSE)
+        val oneuptime = ProviderRegistry.capabilities(ServiceType.ONEUPTIME)
 
         assertTrue(ProviderCapability.RESOURCES in proxmox)
         assertTrue(ProviderCapability.WRITE_ACTIONS in proxmox)
@@ -43,6 +45,10 @@ class ProviderCoreTest {
         assertTrue(ProviderCapability.WRITE_ACTIONS !in zammad)
         assertTrue(ProviderCapability.METRICS in pegaprox)
         assertTrue(ProviderCapability.WRITE_ACTIONS !in pegaprox)
+        assertTrue(ProviderCapability.METRICS in opnsense)
+        assertTrue(ProviderCapability.WRITE_ACTIONS !in opnsense)
+        assertTrue(ProviderCapability.EVENTS in oneuptime)
+        assertTrue(ProviderCapability.WRITE_ACTIONS !in oneuptime)
     }
 
     @Test

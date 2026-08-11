@@ -158,6 +158,18 @@ object ProviderRegistry {
                     ProviderCapability.METRICS,
                     ProviderCapability.READ_ACTIONS
                 )
+                ServiceType.OPNSENSE -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.METRICS,
+                    ProviderCapability.READ_ACTIONS
+                )
+                ServiceType.ONEUPTIME -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.EVENTS,
+                    ProviderCapability.READ_ACTIONS
+                )
                 ServiceType.UPTIME_KUMA -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,

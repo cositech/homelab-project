@@ -81,6 +81,8 @@ object BackupServiceTypeMapper {
             ServiceType.NETBOX -> "netbox"
             ServiceType.ZAMMAD -> "zammad"
             ServiceType.PEGAPROX -> "pegaprox"
+            ServiceType.OPNSENSE -> "opnsense"
+            ServiceType.ONEUPTIME -> "oneuptime"
             ServiceType.TRUENAS -> "truenas"
             ServiceType.PTERODACTYL -> "pterodactyl"
             ServiceType.CALAGOPUS -> "calagopus"
@@ -129,6 +131,8 @@ object BackupServiceTypeMapper {
             "netbox" -> ServiceType.NETBOX
             "zammad" -> ServiceType.ZAMMAD
             "pegaprox", "pega_prox", "pega-prox" -> ServiceType.PEGAPROX
+            "opnsense", "opn_sense", "opn-sense" -> ServiceType.OPNSENSE
+            "oneuptime", "one_uptime", "one-uptime" -> ServiceType.ONEUPTIME
             "truenas", "truenas_scale", "truenas-scale", "truenasscale",
             "truenas_core", "truenas-core", "truenascore" -> ServiceType.TRUENAS
             "pterodactyl" -> ServiceType.PTERODACTYL

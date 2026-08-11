@@ -59,6 +59,8 @@ class SseClient @Inject constructor(
                 ServiceType.NETBOX -> "NetBox"
                 ServiceType.ZAMMAD -> "Zammad"
                 ServiceType.PEGAPROX -> "PegaProx"
+                ServiceType.OPNSENSE -> "OPNsense"
+                ServiceType.ONEUPTIME -> "OneUptime"
                 ServiceType.TRUENAS -> "TrueNAS"
                 ServiceType.PTERODACTYL -> "Pterodactyl"
                 ServiceType.CALAGOPUS -> "Calagopus"

@@ -265,6 +265,7 @@ actor InfrastructureOperationsAPIClient {
     private var baseURL = ""
     private var fallbackURL = ""
     private var apiToken: String?
+    private var apiSecret: String?
     private var engine: BaseNetworkEngine
 
     init(instanceId: UUID, serviceType: ServiceType) {
@@ -278,12 +279,14 @@ actor InfrastructureOperationsAPIClient {
         url: String,
         fallbackUrl: String?,
         apiToken: String?,
+        apiSecret: String? = nil,
         allowSelfSigned: Bool,
         tlsPolicy: TLSPolicy? = nil
     ) async {
         baseURL = PrometheusAPIClient.normalizeURL(url)
         fallbackURL = PrometheusAPIClient.normalizeURL(fallbackUrl ?? "")
         self.apiToken = PrometheusAPIClient.clean(apiToken)
+        self.apiSecret = PrometheusAPIClient.clean(apiSecret)
         engine = BaseNetworkEngine(
             serviceType: serviceType,
             instanceId: instanceId,
@@ -294,19 +297,31 @@ actor InfrastructureOperationsAPIClient {
     func authenticate(
         url: String,
         apiToken: String,
+        apiSecret: String? = nil,
         fallbackUrl: String?,
         allowSelfSigned: Bool
     ) async throws {
         guard !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw APIError.custom("A read-only API token is required")
         }
-        await configure(url: url, fallbackUrl: fallbackUrl, apiToken: apiToken, allowSelfSigned: allowSelfSigned)
-        _ = try await requestJSON(path: authenticationPath)
+        if serviceType == .opnsense, PrometheusAPIClient.clean(apiSecret) == nil {
+            throw APIError.custom("An OPNsense API secret is required")
+        }
+        await configure(url: url, fallbackUrl: fallbackUrl, apiToken: apiToken, apiSecret: apiSecret, allowSelfSigned: allowSelfSigned)
+        if serviceType == .oneuptime {
+            _ = try await oneUptimeList(path: "/api/monitor/get-list?skip=0&limit=1", select: Self.oneUptimeMonitorSelect)
+        } else {
+            _ = try await requestJSON(path: authenticationPath)
+        }
     }
 
     func ping() async -> Bool {
         do {
-            _ = try await requestJSON(path: authenticationPath)
+            if serviceType == .oneuptime {
+                _ = try await oneUptimeList(path: "/api/monitor/get-list?skip=0&limit=1", select: Self.oneUptimeMonitorSelect)
+            } else {
+                _ = try await requestJSON(path: authenticationPath)
+            }
             return true
         } catch {
             return false
@@ -318,8 +333,121 @@ actor InfrastructureOperationsAPIClient {
         case .netbox: return try await netBoxSnapshot()
         case .zammad: return try await zammadSnapshot()
         case .pegaprox: return try await pegaProxSnapshot()
+        case .opnsense: return try await opnSenseSnapshot()
+        case .oneuptime: return try await oneUptimeSnapshot()
         default: throw APIError.notConfigured
         }
+    }
+
+    private func opnSenseSnapshot() async throws -> InfrastructureOperationsPayload {
+        let firmware = try await requestObject(path: "/api/core/firmware/status")
+        let root = try await requestObject(path: "/api/interfaces/overview/interfacesInfo")
+        let values: [[String: Any]]
+        if let rows = root["interfaces"] as? [[String: Any]] ?? root["rows"] as? [[String: Any]] {
+            values = rows
+        } else if let keyed = root["interfaces"] as? [String: [String: Any]] {
+            values = Array(keyed.values)
+        } else {
+            values = root.values.compactMap { $0 as? [String: Any] }
+        }
+        let assets = values.prefix(Self.maxItems).enumerated().map { index, value in
+            let id = Self.string(value, "identifier") ?? Self.string(value, "name") ?? Self.string(value, "device") ?? "interface-\(index)"
+            var attributes: [String: String] = [:]
+            for key in ["device", "ipv4", "ipv6", "media"] {
+                if let item = Self.string(value, key) { attributes[key] = item }
+            }
+            return ProviderResource(
+                providerId: "opnsense",
+                instanceId: instanceId,
+                resourceType: "interface",
+                resourceId: id,
+                name: Self.string(value, "description") ?? Self.string(value, "name") ?? id,
+                state: Self.string(value, "status") ?? (Self.bool(value, "up") ? "up" : "unknown"),
+                attributes: attributes
+            )
+        }
+        let down = assets.filter { ["down", "no carrier"].contains($0.state?.lowercased() ?? "") }.count
+        let status = Self.string(firmware, "status")?.lowercased()
+        let firmwareOK = status.map { ["ok", "none", "done"].contains($0) } ?? true
+        var attributes = [
+            "interfaces": String(assets.count),
+            "interfacesDown": String(down),
+            "requestMode": "read-only-get"
+        ]
+        if let version = Self.string(firmware, "product_version") ?? Self.string(firmware, "productVersion") {
+            attributes["version"] = version
+        }
+        return InfrastructureOperationsPayload(
+            health: ProviderHealth(
+                providerId: "opnsense",
+                instanceId: instanceId,
+                state: firmwareOK && down == 0 ? .healthy : .degraded,
+                message: "\(assets.count) interface(s), \(down) down",
+                observedAt: Date(),
+                attributes: attributes
+            ),
+            assets: assets,
+            alerts: []
+        )
+    }
+
+    private func oneUptimeSnapshot() async throws -> InfrastructureOperationsPayload {
+        let monitors = try await oneUptimeList(path: "/api/monitor/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeMonitorSelect)
+        let alerts = try await oneUptimeList(path: "/api/alert/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeAlertSelect)
+        let incidents = try await oneUptimeList(path: "/api/incident/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeIncidentSelect)
+        let alertSeverityItems = try await oneUptimeList(path: "/api/alert-severity/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeSeveritySelect)
+        let incidentSeverityItems = try await oneUptimeList(path: "/api/incident-severity/get-list?skip=0&limit=\(Self.oneUptimeLimit)", select: Self.oneUptimeSeveritySelect)
+        let alertSeverities = Self.oneUptimeSeverityMap(alertSeverityItems)
+        let incidentSeverities = Self.oneUptimeSeverityMap(incidentSeverityItems)
+        let assets = monitors.compactMap { monitor -> ProviderResource? in
+            guard let id = Self.string(monitor, "_id") else { return nil }
+            var attributes = ["endpointDetailsRedacted": "true"]
+            if let type = Self.string(monitor, "monitorType") { attributes["monitorType"] = type }
+            if let project = Self.string(monitor, "projectId") { attributes["projectId"] = project }
+            return ProviderResource(
+                providerId: "oneuptime",
+                instanceId: instanceId,
+                resourceType: "monitor",
+                resourceId: id,
+                name: Self.string(monitor, "name") ?? "Monitor \(id.prefix(8))",
+                state: Self.bool(monitor, "disableActiveMonitoring") ? "disabled" : (Self.string(monitor, "currentMonitorStatusId") ?? "unknown"),
+                attributes: attributes
+            )
+        }
+        let now = Date()
+        let events = alerts.compactMap { alert -> ProviderEvent? in
+            guard let id = Self.string(alert, "_id") else { return nil }
+            let number = Self.string(alert, "alertNumber") ?? String(id.prefix(8))
+            let severity = Self.severity(alertSeverities[Self.string(alert, "alertSeverityId") ?? ""])
+            let occurredAt = Self.oneUptimeDate(Self.string(alert, "createdAt"), fallback: now)
+            return ProviderEvent(providerId: "oneuptime", instanceId: instanceId, eventId: "alert:\(id)", severity: severity, message: "Alert #\(number)", occurredAt: occurredAt, resourceId: id)
+        } + incidents.compactMap { incident -> ProviderEvent? in
+            guard let id = Self.string(incident, "_id") else { return nil }
+            let number = Self.string(incident, "incidentNumber") ?? String(id.prefix(8))
+            let severity = Self.severity(incidentSeverities[Self.string(incident, "incidentSeverityId") ?? ""])
+            let occurredAt = Self.oneUptimeDate(Self.string(incident, "declaredAt") ?? Self.string(incident, "createdAt"), fallback: now)
+            return ProviderEvent(providerId: "oneuptime", instanceId: instanceId, eventId: "incident:\(id)", severity: severity, message: "Incident #\(number)", occurredAt: occurredAt, resourceId: id)
+        }
+        let disabled = assets.filter { $0.state == "disabled" }.count
+        return InfrastructureOperationsPayload(
+            health: ProviderHealth(
+                providerId: "oneuptime",
+                instanceId: instanceId,
+                state: disabled > 0 ? .degraded : .healthy,
+                message: "\(assets.count) monitor(s), \(alerts.count) alert(s), \(incidents.count) incident(s)",
+                observedAt: now,
+                attributes: [
+                    "monitors": String(assets.count),
+                    "disabledMonitors": String(disabled),
+                    "alerts": String(alerts.count),
+                    "incidents": String(incidents.count),
+                    "contentRedacted": "true",
+                    "requestMode": "allowlisted-read-post"
+                ]
+            ),
+            assets: assets,
+            alerts: events
+        )
     }
 
     private func netBoxSnapshot() async throws -> InfrastructureOperationsPayload {
@@ -538,19 +666,48 @@ actor InfrastructureOperationsAPIClient {
         case .netbox: return "/api/status/"
         case .zammad: return "/api/v1/users/me"
         case .pegaprox: return "/api/clusters"
+        case .opnsense: return "/api/core/firmware/status"
         default: return "/"
         }
     }
 
     private func requestJSON(path: String) async throws -> Any {
         guard let apiToken else { throw APIError.notConfigured }
+        var headers = ["Accept": "application/json"]
+        if serviceType == .oneuptime {
+            headers["ApiKey"] = apiToken
+        } else {
+            headers["Authorization"] = try Self.authorization(serviceType, apiToken, apiSecret)
+        }
         let data = try await engine.requestData(
             baseURL: baseURL,
             fallbackURL: fallbackURL,
             path: path,
-            headers: ["Accept": "application/json", "Authorization": Self.authorization(serviceType, apiToken)]
+            headers: headers
         )
         return try JSONSerialization.jsonObject(with: data)
+    }
+
+    private func oneUptimeList(path: String, select: [String: Bool]) async throws -> [[String: Any]] {
+        let basePath = path.components(separatedBy: "?")[0]
+        guard Self.oneUptimeReadPaths.contains(basePath) else {
+            throw APIError.custom("OneUptime path is not allowlisted: \(basePath)")
+        }
+        guard let apiToken else { throw APIError.notConfigured }
+        let body = try JSONSerialization.data(withJSONObject: ["select": select, "query": [:], "sort": ["createdAt": -1]])
+        let data = try await engine.requestData(
+            baseURL: baseURL,
+            fallbackURL: fallbackURL,
+            path: path,
+            method: "POST",
+            headers: ["Accept": "application/json", "Content-Type": "application/json", "ApiKey": apiToken],
+            body: body
+        )
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let values = root["data"] as? [[String: Any]] else {
+            throw APIError.custom("Expected OneUptime list response")
+        }
+        return Array(values.prefix(Self.oneUptimeLimit))
     }
 
     private func requestObject(path: String) async throws -> [String: Any] {
@@ -567,11 +724,14 @@ actor InfrastructureOperationsAPIClient {
         return value
     }
 
-    private static func authorization(_ type: ServiceType, _ token: String) -> String {
+    private static func authorization(_ type: ServiceType, _ token: String, _ secret: String?) throws -> String {
         switch type {
         case .netbox: return token.hasPrefix("nbt_") ? "Bearer \(token)" : "Token \(token)"
         case .zammad: return "Token token=\(token)"
         case .pegaprox: return "Bearer \(token)"
+        case .opnsense:
+            guard let secret else { throw APIError.notConfigured }
+            return "Basic " + Data("\(token):\(secret)".utf8).base64EncodedString()
         default: return ""
         }
     }
@@ -605,12 +765,39 @@ actor InfrastructureOperationsAPIClient {
         }
     }
 
-    private static let supportedTypes: Set<ServiceType> = [.netbox, .zammad, .pegaprox]
+    private static func oneUptimeSeverityMap(_ values: [[String: Any]]) -> [String: String] {
+        values.reduce(into: [:]) { result, value in
+            guard let id = string(value, "_id"), let name = string(value, "name") ?? string(value, "slug") else { return }
+            result[id] = name
+        }
+    }
+
+    private static func oneUptimeDate(_ raw: String?, fallback: Date) -> Date {
+        guard let raw else { return fallback }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let value = fractional.date(from: raw) { return value }
+        return ISO8601DateFormatter().date(from: raw) ?? fallback
+    }
+
+    private static let supportedTypes: Set<ServiceType> = [.netbox, .zammad, .pegaprox, .opnsense, .oneuptime]
     private static let pageSize = 100
     private static let maxItems = 500
     private static let maxClusters = 50
     private static let maxResourcesPerCluster = 1_000
     private static let maxAlertsPerCluster = 200
+    private static let oneUptimeLimit = 100
+    private static let oneUptimeReadPaths: Set<String> = [
+        "/api/monitor/get-list",
+        "/api/alert/get-list",
+        "/api/incident/get-list",
+        "/api/alert-severity/get-list",
+        "/api/incident-severity/get-list"
+    ]
+    private static let oneUptimeMonitorSelect = ["currentMonitorStatusId": true, "disableActiveMonitoring": true, "monitorType": true, "name": true, "projectId": true]
+    private static let oneUptimeAlertSelect = ["alertSeverityId": true, "createdAt": true, "currentAlertStateId": true, "projectId": true, "alertNumber": true]
+    private static let oneUptimeIncidentSelect = ["createdAt": true, "currentIncidentStateId": true, "declaredAt": true, "incidentSeverityId": true, "projectId": true, "incidentNumber": true]
+    private static let oneUptimeSeveritySelect = ["name": true, "slug": true]
 }
 
 private extension String {

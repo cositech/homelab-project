@@ -28,7 +28,7 @@ Exit gate: Phase 1 security invariants, Android/iOS compilation and unit tests, 
 - [x] Proxmox Backup Server provider
 - [x] Prometheus and Grafana providers
 - [x] NetBox, Zammad and PegaProx providers
-- [ ] OPNsense and OneUptime providers
+- [x] OPNsense and OneUptime providers
 
 Exit gate: operations contract tests, Android/iOS compilation and unit tests, security invariants, CodeQL and dependency review pass for every vertical Phase-2 delivery.
 

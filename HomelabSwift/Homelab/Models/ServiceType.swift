@@ -38,6 +38,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
     case netbox
     case zammad
     case pegaprox
+    case opnsense
+    case oneuptime
     case truenas
     case pterodactyl
     case calagopus
@@ -95,6 +97,10 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
             return .zammad
         case "pegaprox", "pega_prox":
             return .pegaprox
+        case "opnsense", "opn_sense":
+            return .opnsense
+        case "oneuptime", "one_uptime":
+            return .oneuptime
         case "truenas", "truenas_scale", "truenasscale", "truenas_core", "truenascore":
             return .truenas
         case "pterodactyl":
@@ -182,6 +188,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             return "NetBox"
         case .zammad:             return "Zammad"
         case .pegaprox:           return "PegaProx"
+        case .opnsense:           return "OPNsense"
+        case .oneuptime:          return "OneUptime"
         case .truenas:            return "TrueNAS"
         case .pterodactyl:        return "Pterodactyl"
         case .calagopus:          return "Calagopus"
@@ -227,6 +235,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             return "Read-only device and virtual machine inventory"
         case .zammad:             return "Read-only, PII-redacted ticket operations view"
         case .pegaprox:           return "Tenant-scoped cluster, guest and active alert monitoring"
+        case .opnsense:           return "Read-only firewall health and interface inventory"
+        case .oneuptime:          return "Read-only monitor, alert and incident operations view"
         case .truenas:            return t.serviceTruenasDesc
         case .pterodactyl:        return t.servicePterodactylDesc
         case .calagopus:          return t.serviceCalagopusDesc
@@ -277,6 +287,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             return "server.rack"
         case .zammad:             return "ticket.fill"
         case .pegaprox:           return "point.3.connected.trianglepath.dotted"
+        case .opnsense:           return "shield.lefthalf.filled"
+        case .oneuptime:          return "waveform.path.ecg.rectangle"
         case .truenas:            return "externaldrive.connected.to.line.below.fill"
         case .pterodactyl:        return "gamecontroller.fill"
         case .calagopus:          return "bird.fill"
@@ -322,6 +334,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/netbox.png"
         case .zammad:             return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/zammad.png"
         case .pegaprox:           return "https://raw.githubusercontent.com/PegaProx/project-pegaprox/main/web/favicon.png"
+        case .opnsense:           return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/opnsense.png"
+        case .oneuptime:          return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/oneuptime.png"
         case .truenas:            return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/truenas-scale.png"
         case .pterodactyl:        return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/pterodactyl.png"
         case .calagopus:          return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/calagopus.png"
@@ -373,6 +387,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             slug = "netbox"
         case .zammad:             slug = "zammad"
         case .pegaprox:           slug = "pegaprox"
+        case .opnsense:           slug = "opnsense"
+        case .oneuptime:          slug = "oneuptime"
         case .truenas:            slug = "truenas-scale"
         case .pterodactyl:        slug = "pterodactyl"
         case .calagopus:          slug = "calagopus"
@@ -432,6 +448,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             return "service-netbox"
         case .zammad:             return "service-zammad"
         case .pegaprox:           return "service-pegaprox"
+        case .opnsense:           return "service-opnsense"
+        case .oneuptime:          return "service-oneuptime"
         case .truenas:            return "service-truenas"
         case .pterodactyl:        return "service-pterodactyl"
         case .calagopus:          return "service-calagopus"
@@ -477,6 +495,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .netbox:             return ServiceColorSet(primary: Color(hex: "#00A651"), dark: Color(hex: "#007A3D"), bg: Color(hex: "#00A651").opacity(0.09))
         case .zammad:             return ServiceColorSet(primary: Color(hex: "#CA2317"), dark: Color(hex: "#991B12"), bg: Color(hex: "#CA2317").opacity(0.09))
         case .pegaprox:           return ServiceColorSet(primary: Color(hex: "#5B4BDB"), dark: Color(hex: "#4338A8"), bg: Color(hex: "#5B4BDB").opacity(0.09))
+        case .opnsense:           return ServiceColorSet(primary: Color(hex: "#D94F00"), dark: Color(hex: "#A83D00"), bg: Color(hex: "#D94F00").opacity(0.09))
+        case .oneuptime:          return ServiceColorSet(primary: Color(hex: "#5B5BD6"), dark: Color(hex: "#4141A8"), bg: Color(hex: "#5B5BD6").opacity(0.09))
         case .truenas:            return ServiceColorSet(primary: .truenasAccessibleAccent, dark: Color(hex: "#006EA3"), bg: Color(hex: "#0095D5").opacity(0.09))
         case .pterodactyl:        return ServiceColorSet(primary: Color(hex: "#0E4BEF"), dark: Color(hex: "#0B38C5"), bg: Color(hex: "#0E4BEF").opacity(0.09))
         case .calagopus:          return ServiceColorSet(primary: Color(hex: "#16A34A"), dark: Color(hex: "#15803D"), bg: Color(hex: "#16A34A").opacity(0.09))
@@ -599,6 +619,10 @@ enum ProviderRegistry {
                 capabilities = [.health, .resources, .events, .readActions]
             case .pegaprox:
                 capabilities = [.health, .resources, .events, .metrics, .readActions]
+            case .opnsense:
+                capabilities = [.health, .resources, .metrics, .readActions]
+            case .oneuptime:
+                capabilities = [.health, .resources, .events, .readActions]
             case .uptimeKuma:
                 capabilities = [.health, .resources, .events, .metrics]
             default:

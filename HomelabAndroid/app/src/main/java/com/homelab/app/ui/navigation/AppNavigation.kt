@@ -107,7 +107,9 @@ private fun dashboardRoute(type: ServiceType, instanceId: String): String {
         ServiceType.GRAFANA,
         ServiceType.NETBOX,
         ServiceType.ZAMMAD,
-        ServiceType.PEGAPROX -> Screen.Operations.route
+        ServiceType.PEGAPROX,
+        ServiceType.OPNSENSE,
+        ServiceType.ONEUPTIME -> Screen.Operations.route
         ServiceType.TRUENAS -> "truenas/$instanceId/dashboard"
         ServiceType.PTERODACTYL -> "pterodactyl/$instanceId/dashboard"
         ServiceType.CALAGOPUS -> "calagopus/$instanceId/dashboard"

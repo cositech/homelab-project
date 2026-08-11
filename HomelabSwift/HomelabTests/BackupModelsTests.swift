@@ -64,5 +64,9 @@ final class BackupModelsTests: XCTestCase {
         XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "zammad"), .zammad)
         XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .pegaprox), "pegaprox")
         XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "pega-prox"), .pegaprox)
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .opnsense), "opnsense")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "opn-sense"), .opnsense)
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .oneuptime), "oneuptime")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "one_uptime"), .oneuptime)
     }
 }

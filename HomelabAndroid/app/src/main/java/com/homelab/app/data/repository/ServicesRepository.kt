@@ -142,6 +142,8 @@ class ServicesRepository @Inject constructor(
                     ServiceType.NETBOX -> listOf("/api/status/")
                     ServiceType.ZAMMAD -> listOf("/api/v1/users/me")
                     ServiceType.PEGAPROX -> listOf("/api/clusters")
+                    ServiceType.OPNSENSE -> listOf("/api/core/firmware/status")
+                    ServiceType.ONEUPTIME -> listOf("")
                     ServiceType.TRUENAS -> listOf("/api/current", "/ui", "")
                     else -> listOf("")
                 }

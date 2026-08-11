@@ -789,15 +789,25 @@ class ServiceLoginViewModel @Inject constructor(
                         }
                         ServiceType.NETBOX,
                         ServiceType.ZAMMAD,
-                        ServiceType.PEGAPROX -> {
+                        ServiceType.PEGAPROX,
+                        ServiceType.OPNSENSE,
+                        ServiceType.ONEUPTIME -> {
                             val readOnlyToken = trimmedApiKey.ifBlank {
                                 existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
                             }
                             require(readOnlyToken.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
+                            val apiSecret = if (serviceType == ServiceType.OPNSENSE) {
+                                trimmedPassword.ifBlank {
+                                    existing?.takeIf { it.url == cleanUrl }?.password.orEmpty()
+                                }.also {
+                                    require(it.isNotBlank()) { context.getString(R.string.login_error_password_required) }
+                                }
+                            } else null
                             infrastructureOperationsRepository.authenticate(
                                 type = serviceType,
                                 url = cleanUrl,
                                 apiToken = readOnlyToken,
+                                apiSecret = apiSecret,
                                 fallbackUrl = cleanFallbackUrl,
                                 allowSelfSigned = allowSelfSigned
                             )
@@ -807,6 +817,7 @@ class ServiceLoginViewModel @Inject constructor(
                                 label = normalizedLabel,
                                 url = cleanUrl,
                                 apiKey = readOnlyToken,
+                                password = apiSecret,
                                 fallbackUrl = cleanFallbackUrl,
                                 allowSelfSigned = allowSelfSigned
                             )

@@ -429,6 +429,8 @@ internal fun serviceDisplayNameForSettings(type: ServiceType): String {
         ServiceType.NETBOX -> stringResource(R.string.service_netbox)
         ServiceType.ZAMMAD -> stringResource(R.string.service_zammad)
         ServiceType.PEGAPROX -> stringResource(R.string.service_pegaprox)
+        ServiceType.OPNSENSE -> stringResource(R.string.service_opnsense)
+        ServiceType.ONEUPTIME -> stringResource(R.string.service_oneuptime)
         ServiceType.TRUENAS -> stringResource(R.string.service_truenas)
         ServiceType.PTERODACTYL -> stringResource(R.string.service_pterodactyl)
         ServiceType.CALAGOPUS -> stringResource(R.string.service_calagopus)
