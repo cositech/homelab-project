@@ -77,7 +77,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v6.1.0
+      - uses: gradle/actions/setup-gradle@v6.3.0
 
       - name: Compile Debug Kotlin
         run: ./gradlew :app:compileDebugKotlin --console=plain
@@ -95,7 +95,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.1.0
+      - uses: gradle/actions/setup-gradle@v6.3.0
       - name: Run Debug unit tests
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
