@@ -1107,9 +1107,6 @@ actor ControlledActionCoordinator {
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
         await recoverIfNeeded()
-        if let completed = terminalResults[request.idempotencyKey] { return completed }
-        if let existingTask = inFlight[request.idempotencyKey] { return await existingTask.value }
-
         let existing = durableEntries[request.idempotencyKey]
         if let existing, !existing.request.hasSameIdentity(as: request) {
             return await Self.audit(
@@ -1117,6 +1114,8 @@ actor ControlledActionCoordinator {
                 reasonCode: "idempotency-key-conflict", ledger: ledger, now: now
             )
         }
+        if let completed = terminalResults[request.idempotencyKey] { return completed }
+        if let existingTask = inFlight[request.idempotencyKey] { return await existingTask.value }
         if let existing, existing.state == .manualReview {
             let result: ActionAuditRecord
             if let terminal = existing.terminalRecord {
@@ -1325,6 +1324,24 @@ actor ControlledActionCoordinator {
         if let controlled = error as? ControlledActionOperationError { return controlled }
         if error is URLError {
             return ControlledActionOperationError(reasonCode: "transport-error", disposition: .retryable)
+        }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .networkError(let underlying):
+                return classifyFailure(underlying)
+            case .bothURLsFailed(let primary, let fallback):
+                let primaryFailure = classifyFailure(primary)
+                let fallbackFailure = classifyFailure(fallback)
+                if primaryFailure.disposition == .retryable &&
+                    fallbackFailure.disposition == .retryable {
+                    return ControlledActionOperationError(
+                        reasonCode: "transport-error",
+                        disposition: .retryable
+                    )
+                }
+            default:
+                break
+            }
         }
         return ControlledActionOperationError(
             reasonCode: String(describing: type(of: error)),

@@ -16,7 +16,7 @@ for required_file in "$android_core" "$android_tests" "$android_di" "$android_pr
   test -s "$required_file"
 done
 
-for pattern in   'enum class ActionRisk' 'enum class ActionRole' 'data class ControlledActionRequest'   'object ControlledActionPolicy' 'class ControlledActionCoordinator'   'ActionPolicyOutcome.DRY_RUN_APPROVED' 'provider-write-capability-required'   'ProviderCapability.WRITE_ACTIONS' 'CancellationException' 'terminalResults'   'DurableActionQueueEntry' 'DurableActionQueueStore' 'ActionRetryPolicy'   'ActionExecutionState.MANUAL_REVIEW' 'interrupted-execution'   'automatic-retry-forbidden-' 'sanitizedForPersistence'
+for pattern in   'enum class ActionRisk' 'enum class ActionRole' 'data class ControlledActionRequest'   'object ControlledActionPolicy' 'class ControlledActionCoordinator'   'ActionPolicyOutcome.DRY_RUN_APPROVED' 'provider-write-capability-required'   'ProviderCapability.WRITE_ACTIONS' 'CancellationException' 'terminalResults'   'DurableActionQueueEntry' 'DurableActionQueueStore' 'ActionRetryPolicy'   'ActionExecutionState.MANUAL_REVIEW' 'interrupted-execution'   'automatic-retry-forbidden-' 'terminal-persistence-failed' 'sanitizedForPersistence'
 do
   grep -Fq "$pattern" "$android_core"
 done

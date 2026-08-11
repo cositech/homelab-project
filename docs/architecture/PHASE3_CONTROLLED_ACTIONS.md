@@ -19,6 +19,7 @@ Phase 3 establishes one policy, durable execution and audit contract in both nat
 13. Only explicitly retryable transport failures for low- and medium-risk actions are retried automatically. The default policy permits three attempts with capped exponential backoff.
 14. High- and critical-risk failures never retry automatically. A retryable failure at those risk levels requires manual review.
 15. An action found in `executing` state after process restart has an indeterminate provider outcome and transitions to `manual_review`. It is never replayed automatically.
+16. A persistence failure after a successful provider call transitions the in-memory result to `manual_review`; it never re-enters the provider retry path.
 
 ## Durable state model
 

@@ -250,12 +250,11 @@ class ControlledActionCoordinator(
         operation: suspend () -> Unit
     ): ActionAuditRecord = queue.withLock {
         recoverLocked()
-        terminalResults[request.idempotencyKey]?.let { return@withLock it }
-
         val existing = durableEntries[request.idempotencyKey]
         if (existing != null && !existing.request.hasSameIdentity(request)) {
             return@withLock audit(request, actorRole, ActionExecutionState.REJECTED, "idempotency-key-conflict")
         }
+        terminalResults[request.idempotencyKey]?.let { return@withLock it }
         if (existing?.state == ActionExecutionState.MANUAL_REVIEW) {
             val result = existing.terminalRecord ?: audit(
                 request, actorRole, ActionExecutionState.MANUAL_REVIEW, existing.reasonCode
@@ -303,12 +302,9 @@ class ControlledActionCoordinator(
             persist(entry)
             audit(request, actorRole, ActionExecutionState.EXECUTING, "attempt-${entry.attemptCount}")
 
+            var operationError: Exception? = null
             try {
                 operation()
-                val result = audit(request, actorRole, ActionExecutionState.SUCCEEDED, "completed")
-                persistTerminal(request, actorRole, result, entry.attemptCount)
-                terminalResults[request.idempotencyKey] = result
-                return@withLock result
             } catch (error: CancellationException) {
                 val result = audit(request, actorRole, ActionExecutionState.CANCELLED, "cancelled")
                 persist(entry.copy(
@@ -320,36 +316,59 @@ class ControlledActionCoordinator(
                 terminalResults[request.idempotencyKey] = result
                 throw error
             } catch (error: Exception) {
-                val failure = classifyFailure(error)
-                if (failure.disposition == ActionFailureDisposition.RETRYABLE &&
-                    retryPolicy.permitsAutomaticRetry(request.risk, entry.attemptCount)
-                ) {
-                    val retryDelay = retryPolicy.delayBeforeAttempt(entry.attemptCount)
-                    entry = entry.copy(
-                        state = ActionExecutionState.RETRY_WAIT,
-                        nextAttemptAtEpochMillis = now() + retryDelay,
-                        reasonCode = failure.reasonCode,
-                        updatedAtEpochMillis = now()
-                    )
-                    persist(entry)
-                    audit(request, actorRole, ActionExecutionState.RETRY_WAIT, failure.reasonCode)
-                    waitBeforeRetry(retryDelay)
-                    continue
-                }
+                operationError = error
+            }
 
-                val review = failure.disposition == ActionFailureDisposition.RETRYABLE
-                val state = if (review) ActionExecutionState.MANUAL_REVIEW else ActionExecutionState.FAILED
-                val reason = when {
-                    review && request.risk in setOf(ActionRisk.HIGH, ActionRisk.CRITICAL) ->
-                        "automatic-retry-forbidden-${failure.reasonCode}"
-                    review -> "retry-exhausted-${failure.reasonCode}"
-                    else -> failure.reasonCode
+            if (operationError == null) {
+                val completed = audit(request, actorRole, ActionExecutionState.SUCCEEDED, "completed")
+                val result = try {
+                    persistTerminal(request, actorRole, completed, entry.attemptCount)
+                    completed
+                } catch (error: CancellationException) {
+                    terminalResults[request.idempotencyKey] = audit(
+                        request, actorRole, ActionExecutionState.MANUAL_REVIEW,
+                        "terminal-persistence-cancelled"
+                    )
+                    throw error
+                } catch (_: Exception) {
+                    audit(
+                        request, actorRole, ActionExecutionState.MANUAL_REVIEW,
+                        "terminal-persistence-failed"
+                    )
                 }
-                val result = audit(request, actorRole, state, reason)
-                persistTerminal(request, actorRole, result, entry.attemptCount)
                 terminalResults[request.idempotencyKey] = result
                 return@withLock result
             }
+
+            val failure = classifyFailure(checkNotNull(operationError))
+            if (failure.disposition == ActionFailureDisposition.RETRYABLE &&
+                retryPolicy.permitsAutomaticRetry(request.risk, entry.attemptCount)
+            ) {
+                val retryDelay = retryPolicy.delayBeforeAttempt(entry.attemptCount)
+                entry = entry.copy(
+                    state = ActionExecutionState.RETRY_WAIT,
+                    nextAttemptAtEpochMillis = now() + retryDelay,
+                    reasonCode = failure.reasonCode,
+                    updatedAtEpochMillis = now()
+                )
+                persist(entry)
+                audit(request, actorRole, ActionExecutionState.RETRY_WAIT, failure.reasonCode)
+                waitBeforeRetry(retryDelay)
+                continue
+            }
+
+            val review = failure.disposition == ActionFailureDisposition.RETRYABLE
+            val state = if (review) ActionExecutionState.MANUAL_REVIEW else ActionExecutionState.FAILED
+            val reason = when {
+                review && request.risk in setOf(ActionRisk.HIGH, ActionRisk.CRITICAL) ->
+                    "automatic-retry-forbidden-${failure.reasonCode}"
+                review -> "retry-exhausted-${failure.reasonCode}"
+                else -> failure.reasonCode
+            }
+            val result = audit(request, actorRole, state, reason)
+            persistTerminal(request, actorRole, result, entry.attemptCount)
+            terminalResults[request.idempotencyKey] = result
+            return@withLock result
         }
         throw IllegalStateException("controlled action retry loop terminated unexpectedly")
     }

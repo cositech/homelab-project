@@ -1705,6 +1705,73 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(persistedParameters, [:])
     }
 
+    func testControlledActionRetriesWrappedAPITransportFailures() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(
+            retryPolicy: ActionRetryPolicy(
+                maximumAttempts: 2,
+                initialDelayMilliseconds: 0,
+                maximumDelayMilliseconds: 0
+            ),
+            waitBeforeRetry: { _ in }
+        )
+
+        let result = await coordinator.execute(
+            request: controlledActionRequest(risk: .low, confirmed: true),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            if await counter.value == 1 {
+                throw APIError.bothURLsFailed(
+                    primaryError: APIError.networkError(URLError(.timedOut)),
+                    fallbackError: URLError(.cannotConnectToHost)
+                )
+            }
+        }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(result.state, .succeeded)
+        XCTAssertEqual(invocationCount, 2)
+    }
+
+    func testControlledActionRecoveredTerminalKeyRejectsDifferentIdentity() async {
+        let store = InMemoryDurableActionQueueStore()
+        let original = controlledActionRequest(risk: .low, confirmed: true)
+
+        _ = await ControlledActionCoordinator(durableStore: store).execute(
+            request: original,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {}
+
+        var conflicting = original
+        conflicting = ControlledActionRequest(
+            id: conflicting.id,
+            providerRef: conflicting.providerRef,
+            tenantRef: conflicting.tenantRef,
+            action: conflicting.action,
+            targetRef: "qemu/999",
+            risk: conflicting.risk,
+            requestedAt: conflicting.requestedAt,
+            idempotencyKey: conflicting.idempotencyKey,
+            parameters: conflicting.parameters,
+            dryRun: conflicting.dryRun,
+            confirmed: conflicting.confirmed
+        )
+        let counter = ActionInvocationCounter()
+        let result = await ControlledActionCoordinator(durableStore: store).execute(
+            request: conflicting,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) { await counter.increment() }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(result.state, .rejected)
+        XCTAssertEqual(result.reasonCode, "idempotency-key-conflict")
+        XCTAssertEqual(invocationCount, 0)
+    }
+
 }
 
 private actor ActionInvocationCounter {

@@ -2,6 +2,7 @@ package com.homelab.app.domain.action
 
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.ui.proxmox.ProxmoxGuestAction
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -290,6 +291,56 @@ class ControlledActionsTest {
         ) {}
 
         assertTrue(store.snapshot().single().request.parameters.isEmpty())
+    }
+
+    @Test
+    fun `terminal persistence failure never retries completed provider mutation`() = runTest {
+        val backing = InMemoryDurableActionQueueStore()
+        val store = object : DurableActionQueueStore {
+            override suspend fun snapshot(): List<DurableActionQueueEntry> = backing.snapshot()
+
+            override suspend fun upsert(entry: DurableActionQueueEntry) {
+                if (entry.state == ActionExecutionState.SUCCEEDED) {
+                    throw IOException("simulated persistence failure")
+                }
+                backing.upsert(entry)
+            }
+        }
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(durableStore = store)
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW, confirmed = true),
+            ActionRole.OPERATOR,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { invocations += 1 }
+
+        assertEquals(ActionExecutionState.MANUAL_REVIEW, result.state)
+        assertEquals("terminal-persistence-failed", result.reasonCode)
+        assertEquals(1, invocations)
+    }
+
+    @Test
+    fun `recovered terminal key rejects different action identity`() = runTest {
+        val store = InMemoryDurableActionQueueStore()
+        val original = request(risk = ActionRisk.LOW, confirmed = true)
+
+        ControlledActionCoordinator(durableStore = store).execute(
+            original,
+            ActionRole.OPERATOR,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {}
+
+        var invoked = false
+        val result = ControlledActionCoordinator(durableStore = store).execute(
+            original.copy(targetRef = "qemu/999"),
+            ActionRole.OPERATOR,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { invoked = true }
+
+        assertEquals(ActionExecutionState.REJECTED, result.state)
+        assertEquals("idempotency-key-conflict", result.reasonCode)
+        assertFalse(invoked)
     }
 
 }
