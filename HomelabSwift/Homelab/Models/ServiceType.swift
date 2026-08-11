@@ -668,6 +668,42 @@ enum ControlledActionRisk: String, Codable, CaseIterable, Equatable, Sendable {
     case critical
 }
 
+enum ProxmoxControlledGuestAction: String, CaseIterable, Equatable, Sendable {
+    case start, stop, shutdown, reboot, suspend, resume
+
+    var actionName: String { "guest.\(rawValue)" }
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .start, .resume: return .low
+        case .shutdown, .reboot, .suspend: return .medium
+        case .stop: return .high
+        }
+    }
+
+    func request(
+        instanceId: UUID,
+        node: String,
+        vmid: Int,
+        guestType: ProxmoxGuestType,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "\(guestType.rawValue)/\(vmid)@\(node)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum ControlledActionRole: String, Codable, CaseIterable, Equatable, Sendable {
     case viewer
     case operatorRole = "operator"

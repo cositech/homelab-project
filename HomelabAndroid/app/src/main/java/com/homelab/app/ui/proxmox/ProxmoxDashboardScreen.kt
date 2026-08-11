@@ -388,7 +388,7 @@ fun ProxmoxDashboardScreen(
                                 Text(stringResource(R.string.proxmox_vms), fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
                             }
                             items(filteredVms, key = { it.first.vmid }) { (vm, node) ->
-                                GuestCard(vm = vm, node = node, isQemu = true, color = serviceColor, isDark = isDark, isFavorite = favoriteIds.contains("${node}-vm-${vm.vmid}"), onAction = { action -> viewModel.performAction(action, node, vm.vmid, true) }, onNavigate = { onNavigateToGuest(node, vm.vmid, true) }, snackbarHostState = snackbarHostState, context = context, scope = scope)
+                                GuestCard(vm = vm, node = node, isQemu = true, color = serviceColor, isDark = isDark, isFavorite = favoriteIds.contains("${node}-vm-${vm.vmid}"), onAction = { action, confirmed -> viewModel.performAction(action, node, vm.vmid, true, confirmed) }, onNavigate = { onNavigateToGuest(node, vm.vmid, true) }, snackbarHostState = snackbarHostState, context = context, scope = scope)
                             }
                         }
 
@@ -398,7 +398,7 @@ fun ProxmoxDashboardScreen(
                                 Text(stringResource(R.string.proxmox_containers), fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
                             }
                             items(filteredLxcs, key = { it.first.vmid }) { (lxc, node) ->
-                                GuestCard(vm = null, lxc = lxc, node = node, isQemu = false, color = Color(0xFF4CAF50), isDark = isDark, isFavorite = favoriteIds.contains("${node}-lxc-${lxc.vmid}"), onAction = { action -> viewModel.performAction(action, node, lxc.vmid, false) }, onNavigate = { onNavigateToGuest(node, lxc.vmid, false) }, snackbarHostState = snackbarHostState, context = context, scope = scope)
+                                GuestCard(vm = null, lxc = lxc, node = node, isQemu = false, color = Color(0xFF4CAF50), isDark = isDark, isFavorite = favoriteIds.contains("${node}-lxc-${lxc.vmid}"), onAction = { action, confirmed -> viewModel.performAction(action, node, lxc.vmid, false, confirmed) }, onNavigate = { onNavigateToGuest(node, lxc.vmid, false) }, snackbarHostState = snackbarHostState, context = context, scope = scope)
                             }
                         }
 
@@ -525,7 +525,7 @@ private fun GuestCard(
     color: Color,
     isDark: Boolean,
     isFavorite: Boolean = false,
-    onAction: (ProxmoxGuestAction) -> Unit,
+    onAction: (ProxmoxGuestAction, Boolean) -> Unit,
     onNavigate: () -> Unit,
     snackbarHostState: SnackbarHostState,
     context: android.content.Context,
@@ -539,6 +539,7 @@ private fun GuestCard(
     val vmid = vm?.vmid ?: (lxc?.vmid ?: 0)
 
     var showMenu by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<ProxmoxGuestAction?>(null) }
     val actionLabel = when {
         isStopped -> stringResource(R.string.proxmox_start)
         isRunning -> "Actions"
@@ -614,7 +615,7 @@ private fun GuestCard(
                     text = { Text(startSent, color = Color.Green) },
                     onClick = {
                         showMenu = false
-                        onAction(ProxmoxGuestAction.START)
+                        onAction(ProxmoxGuestAction.START, false)
                         launchSnackbar(snackbarHostState, startSent, scope)
                     },
                     leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Green) }
@@ -627,8 +628,7 @@ private fun GuestCard(
                     text = { Text(shutdownSent) },
                     onClick = {
                         showMenu = false
-                        onAction(ProxmoxGuestAction.SHUTDOWN)
-                        launchSnackbar(snackbarHostState, shutdownSent, scope)
+                        pendingAction = ProxmoxGuestAction.SHUTDOWN
                     },
                     leadingIcon = { Icon(Icons.Default.PowerSettingsNew, contentDescription = null) }
                 )
@@ -636,8 +636,7 @@ private fun GuestCard(
                     text = { Text(stopSent, color = Color.Red) },
                     onClick = {
                         showMenu = false
-                        onAction(ProxmoxGuestAction.STOP)
-                        launchSnackbar(snackbarHostState, stopSent, scope)
+                        pendingAction = ProxmoxGuestAction.STOP
                     },
                     leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null, tint = Color.Red) }
                 )
@@ -645,13 +644,44 @@ private fun GuestCard(
                     text = { Text(rebootSent) },
                     onClick = {
                         showMenu = false
-                        onAction(ProxmoxGuestAction.REBOOT)
-                        launchSnackbar(snackbarHostState, rebootSent, scope)
+                        pendingAction = ProxmoxGuestAction.REBOOT
                     },
                     leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null) }
                 )
             }
         }
+    }
+
+    pendingAction?.let { action ->
+        val label = when (action) {
+            ProxmoxGuestAction.START -> stringResource(R.string.proxmox_start)
+            ProxmoxGuestAction.STOP -> stringResource(R.string.proxmox_stop)
+            ProxmoxGuestAction.SHUTDOWN -> stringResource(R.string.proxmox_shutdown)
+            ProxmoxGuestAction.REBOOT -> stringResource(R.string.proxmox_reboot)
+        }
+        val sentMessage = when (action) {
+            ProxmoxGuestAction.START -> stringResource(R.string.proxmox_start_sent)
+            ProxmoxGuestAction.STOP -> stringResource(R.string.proxmox_stop_sent)
+            ProxmoxGuestAction.SHUTDOWN -> stringResource(R.string.proxmox_shutdown_sent)
+            ProxmoxGuestAction.REBOOT -> stringResource(R.string.proxmox_reboot_sent)
+        }
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.proxmox_confirm_action, label)) },
+            text = { Text(stringResource(R.string.proxmox_confirm_action_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAction = null
+                    onAction(action, true)
+                    launchSnackbar(snackbarHostState, sentMessage, scope)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 

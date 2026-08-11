@@ -214,7 +214,7 @@ fun ProxmoxGuestDetailScreen(
                                     isRefreshing = false
                                 }
                             },
-                            onAction = { action -> viewModel.performAction(action, node, data.vmid, isQemu) },
+                            onAction = { action, confirmed -> viewModel.performAction(action, node, data.vmid, isQemu, confirmed) },
                             onNavigateToConsole = onNavigateToConsole,
                             onNavigateToConfig = onNavigateToConfig,
                             onCloneClick = {
@@ -537,13 +537,43 @@ private fun GuestOverviewTab(
     isDark: Boolean,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    onAction: (ProxmoxGuestAction) -> Unit,
+    onAction: (ProxmoxGuestAction, Boolean) -> Unit,
     onNavigateToConsole: ((String, Int, Boolean) -> Unit)?,
     onNavigateToConfig: ((String, Int, Boolean) -> Unit)?,
     onCloneClick: () -> Unit,
     onMigrateClick: () -> Unit,
     onEditNotesClick: () -> Unit
 ) {
+    var pendingAction by remember { mutableStateOf<ProxmoxGuestAction?>(null) }
+    fun requestAction(action: ProxmoxGuestAction) {
+        if (action.requiresConfirmation) pendingAction = action else onAction(action, false)
+    }
+
+    pendingAction?.let { action ->
+        val label = when (action) {
+            ProxmoxGuestAction.START -> stringResource(R.string.proxmox_start)
+            ProxmoxGuestAction.STOP -> stringResource(R.string.proxmox_stop)
+            ProxmoxGuestAction.SHUTDOWN -> stringResource(R.string.proxmox_shutdown)
+            ProxmoxGuestAction.REBOOT -> stringResource(R.string.proxmox_reboot)
+        }
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.proxmox_confirm_action, label)) },
+            text = { Text(stringResource(R.string.proxmox_confirm_action_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAction = null
+                    onAction(action, true)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
@@ -633,7 +663,7 @@ private fun GuestOverviewTab(
                                         label = stringResource(R.string.proxmox_start),
                                         icon = Icons.Default.PlayArrow,
                                         color = Color.Green,
-                                        onClick = { onAction(ProxmoxGuestAction.START) },
+                                        onClick = { requestAction(ProxmoxGuestAction.START) },
                                         modifier = Modifier.weight(1f)
                                     )
                                 } else {
@@ -641,21 +671,21 @@ private fun GuestOverviewTab(
                                         label = stringResource(R.string.proxmox_shutdown),
                                         icon = Icons.Default.PowerSettingsNew,
                                         color = Color(0xFFFF9800),
-                                        onClick = { onAction(ProxmoxGuestAction.SHUTDOWN) },
+                                        onClick = { requestAction(ProxmoxGuestAction.SHUTDOWN) },
                                         modifier = Modifier.weight(1f)
                                     )
                                     ActionButton(
                                         label = stringResource(R.string.proxmox_stop),
                                         icon = Icons.Default.Stop,
                                         color = Color.Red,
-                                        onClick = { onAction(ProxmoxGuestAction.STOP) },
+                                        onClick = { requestAction(ProxmoxGuestAction.STOP) },
                                         modifier = Modifier.weight(1f)
                                     )
                                     ActionButton(
                                         label = stringResource(R.string.proxmox_reboot),
                                         icon = Icons.Default.RestartAlt,
                                         color = Color.Blue,
-                                        onClick = { onAction(ProxmoxGuestAction.REBOOT) },
+                                        onClick = { requestAction(ProxmoxGuestAction.REBOOT) },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }

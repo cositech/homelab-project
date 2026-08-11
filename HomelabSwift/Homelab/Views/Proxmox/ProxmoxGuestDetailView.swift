@@ -1614,21 +1614,54 @@ struct ProxmoxGuestDetailView: View {
         do {
             guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
             let reference: ProxmoxTaskReference
-            switch (guestType, action) {
-            case (.qemu, .start):    reference = try await client.startVM(node: currentNodeName, vmid: vmid)
-            case (.qemu, .stop):     reference = try await client.stopVM(node: currentNodeName, vmid: vmid)
-            case (.qemu, .shutdown): reference = try await client.shutdownVM(node: currentNodeName, vmid: vmid)
-            case (.qemu, .reboot):   reference = try await client.rebootVM(node: currentNodeName, vmid: vmid)
-            case (.qemu, .suspend):  reference = try await client.suspendVM(node: currentNodeName, vmid: vmid)
-            case (.qemu, .resume):   reference = try await client.resumeVM(node: currentNodeName, vmid: vmid)
-            case (.qemu, .template): reference = try await client.convertVMToTemplate(node: currentNodeName, vmid: vmid)
-            case (.lxc, .start):     reference = try await client.startLXC(node: currentNodeName, vmid: vmid)
-            case (.lxc, .stop):      reference = try await client.stopLXC(node: currentNodeName, vmid: vmid)
-            case (.lxc, .shutdown):  reference = try await client.shutdownLXC(node: currentNodeName, vmid: vmid)
-            case (.lxc, .reboot):    reference = try await client.rebootLXC(node: currentNodeName, vmid: vmid)
-            case (.lxc, .template):  reference = try await client.convertLXCToTemplate(node: currentNodeName, vmid: vmid)
-            default: return
+
+            if let controlledAction = action.controlledAction {
+                let actionNode = currentNodeName
+                let actionVmid = vmid
+                let actionGuestType = guestType
+                let referenceBox = ProxmoxActionReferenceBox()
+                let request = controlledAction.request(
+                    instanceId: instanceId,
+                    node: actionNode,
+                    vmid: actionVmid,
+                    guestType: actionGuestType,
+                    confirmed: true
+                )
+                let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+                let result = await servicesStore.controlledActionCoordinator.execute(
+                    request: request,
+                    actorRole: .admin,
+                    providerCapabilities: capabilities
+                ) {
+                    let completedReference: ProxmoxTaskReference
+                    switch (actionGuestType, controlledAction) {
+                    case (.qemu, .start):    completedReference = try await client.startVM(node: actionNode, vmid: actionVmid)
+                    case (.qemu, .stop):     completedReference = try await client.stopVM(node: actionNode, vmid: actionVmid)
+                    case (.qemu, .shutdown): completedReference = try await client.shutdownVM(node: actionNode, vmid: actionVmid)
+                    case (.qemu, .reboot):   completedReference = try await client.rebootVM(node: actionNode, vmid: actionVmid)
+                    case (.qemu, .suspend):  completedReference = try await client.suspendVM(node: actionNode, vmid: actionVmid)
+                    case (.qemu, .resume):   completedReference = try await client.resumeVM(node: actionNode, vmid: actionVmid)
+                    case (.lxc, .start):     completedReference = try await client.startLXC(node: actionNode, vmid: actionVmid)
+                    case (.lxc, .stop):      completedReference = try await client.stopLXC(node: actionNode, vmid: actionVmid)
+                    case (.lxc, .shutdown):  completedReference = try await client.shutdownLXC(node: actionNode, vmid: actionVmid)
+                    case (.lxc, .reboot):    completedReference = try await client.rebootLXC(node: actionNode, vmid: actionVmid)
+                    default: throw ProxmoxControlledActionError.unsupportedGuestAction
+                    }
+                    await referenceBox.store(completedReference)
+                }
+                guard result.state == ActionExecutionState.succeeded, let completedReference = await referenceBox.value() else {
+                    actionError = result.reasonCode
+                    return
+                }
+                reference = completedReference
+            } else {
+                switch (guestType, action) {
+                case (.qemu, .template): reference = try await client.convertVMToTemplate(node: currentNodeName, vmid: vmid)
+                case (.lxc, .template):  reference = try await client.convertLXCToTemplate(node: currentNodeName, vmid: vmid)
+                default: return
+                }
             }
+
             HapticManager.success()
             await beginTrackingTask(
                 title: action.label(localizer),
@@ -2441,6 +2474,22 @@ private struct GuestPerformanceChart: View {
 
 // MARK: - Guest Action
 
+private enum ProxmoxControlledActionError: Error {
+    case unsupportedGuestAction
+}
+
+private actor ProxmoxActionReferenceBox {
+    private var reference: ProxmoxTaskReference?
+
+    func store(_ reference: ProxmoxTaskReference) {
+        self.reference = reference
+    }
+
+    func value() -> ProxmoxTaskReference? {
+        reference
+    }
+}
+
 private enum GuestAction: Identifiable {
     case start, stop, shutdown, reboot, suspend, resume, template, backup, clone, migrate
 
@@ -2472,6 +2521,18 @@ private enum GuestAction: Identifiable {
         case .backup: return localizer.t.actionBackup
         case .clone: return localizer.t.proxmoxClone
         case .migrate: return localizer.t.proxmoxMigrate
+        }
+    }
+
+    var controlledAction: ProxmoxControlledGuestAction? {
+        switch self {
+        case .start: return .start
+        case .stop: return .stop
+        case .shutdown: return .shutdown
+        case .reboot: return .reboot
+        case .suspend: return .suspend
+        case .resume: return .resume
+        case .template, .backup, .clone, .migrate: return nil
         }
     }
 
