@@ -746,7 +746,7 @@ class ServiceLoginViewModel @Inject constructor(
                         }
                         ServiceType.PROMETHEUS -> {
                             val bearerToken = trimmedApiKey.ifBlank {
-                                existing?.apiKey.orEmpty().takeIf { existing.url == cleanUrl }.orEmpty()
+                                existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
                             }
                             observabilityRepository.authenticatePrometheus(
                                 url = cleanUrl,
@@ -766,7 +766,7 @@ class ServiceLoginViewModel @Inject constructor(
                         }
                         ServiceType.GRAFANA -> {
                             val serviceAccountToken = trimmedApiKey.ifBlank {
-                                existing?.apiKey.orEmpty().takeIf { existing.url == cleanUrl }.orEmpty()
+                                existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
                             }
                             require(serviceAccountToken.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
                             observabilityRepository.authenticateGrafana(
