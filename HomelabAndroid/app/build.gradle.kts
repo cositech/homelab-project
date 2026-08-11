@@ -91,9 +91,9 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-kotlinx-serialization:3.0.0")
 
     // Room
-    implementation("androidx.room:room-runtime:2.7.0")
-    implementation("androidx.room:room-ktx:2.7.0")
-    ksp("androidx.room:room-compiler:2.7.0")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // DataStore (Preferences)
     implementation("androidx.datastore:datastore-preferences:1.1.2")
