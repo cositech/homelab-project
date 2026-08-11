@@ -32,6 +32,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
     case flaresolverr
     case wakapi
     case proxmox
+    case proxmoxBackupServer = "proxmox_backup_server"
     case truenas
     case pterodactyl
     case calagopus
@@ -77,6 +78,8 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
             return .unifiNetwork
         case "proxmox", "proxmox_ve", "proxmoxve", "pve":
             return .proxmox
+        case "pbs", "proxmox_backup", "proxmox_backup_server", "proxmoxbackupserver":
+            return .proxmoxBackupServer
         case "truenas", "truenas_scale", "truenasscale", "truenas_core", "truenascore":
             return .truenas
         case "pterodactyl":
@@ -158,6 +161,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return "FlareSolverr"
         case .wakapi:             return "Wakapi"
         case .proxmox:            return "Proxmox VE"
+        case .proxmoxBackupServer: return "Proxmox Backup Server"
         case .truenas:            return "TrueNAS"
         case .pterodactyl:        return "Pterodactyl"
         case .calagopus:          return "Calagopus"
@@ -197,6 +201,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return t.serviceFlaresolverrDesc
         case .wakapi:             return t.serviceWakapiDesc
         case .proxmox:            return t.serviceProxmoxDesc
+        case .proxmoxBackupServer: return "Read-only datastore capacity and maintenance monitoring"
         case .truenas:            return t.serviceTruenasDesc
         case .pterodactyl:        return t.servicePterodactylDesc
         case .calagopus:          return t.serviceCalagopusDesc
@@ -241,6 +246,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return "flame.fill"
         case .wakapi:             return "timer"
         case .proxmox:            return "cpu"
+        case .proxmoxBackupServer: return "externaldrive.badge.checkmark"
         case .truenas:            return "externaldrive.connected.to.line.below.fill"
         case .pterodactyl:        return "gamecontroller.fill"
         case .calagopus:          return "bird.fill"
@@ -280,6 +286,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/flaresolverr.png"
         case .wakapi:             return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/wakapi.png"
         case .proxmox:            return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/proxmox.png"
+        case .proxmoxBackupServer: return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/proxmox-backup-server.png"
         case .truenas:            return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/truenas-scale.png"
         case .pterodactyl:        return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/pterodactyl.png"
         case .calagopus:          return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/calagopus.png"
@@ -325,6 +332,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       slug = "flaresolverr"
         case .wakapi:             slug = "wakapi"
         case .proxmox:            slug = "proxmox"
+        case .proxmoxBackupServer: slug = "proxmox-backup-server"
         case .truenas:            slug = "truenas-scale"
         case .pterodactyl:        slug = "pterodactyl"
         case .calagopus:          slug = "calagopus"
@@ -378,6 +386,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return "service-flaresolverr"
         case .wakapi:             return "service-wakapi"
         case .proxmox:            return "service-proxmox"
+        case .proxmoxBackupServer: return "service-proxmox"
         case .truenas:            return "service-truenas"
         case .pterodactyl:        return "service-pterodactyl"
         case .calagopus:          return "service-calagopus"
@@ -417,6 +426,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return ServiceColorSet(primary: Color(hex: "#FF4500"), dark: Color(hex: "#CC3700"), bg: Color(hex: "#FF4500").opacity(0.09))
         case .wakapi:             return ServiceColorSet(primary: Color(hex: "#2563EB"), dark: Color(hex: "#1D4ED8"), bg: Color(hex: "#2563EB").opacity(0.09))
         case .proxmox:            return ServiceColorSet(primary: Color(hex: "#D97706"), dark: Color(hex: "#B45309"), bg: Color(hex: "#D97706").opacity(0.06))
+        case .proxmoxBackupServer: return ServiceColorSet(primary: Color(hex: "#D97706"), dark: Color(hex: "#B45309"), bg: Color(hex: "#D97706").opacity(0.06))
         case .truenas:            return ServiceColorSet(primary: .truenasAccessibleAccent, dark: Color(hex: "#006EA3"), bg: Color(hex: "#0095D5").opacity(0.09))
         case .pterodactyl:        return ServiceColorSet(primary: Color(hex: "#0E4BEF"), dark: Color(hex: "#0B38C5"), bg: Color(hex: "#0E4BEF").opacity(0.09))
         case .calagopus:          return ServiceColorSet(primary: Color(hex: "#16A34A"), dark: Color(hex: "#15803D"), bg: Color(hex: "#16A34A").opacity(0.09))
@@ -527,6 +537,8 @@ enum ProviderRegistry {
             switch type {
             case .proxmox:
                 capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
+            case .proxmoxBackupServer:
+                capabilities = [.health, .resources, .events, .metrics]
             case .uptimeKuma:
                 capabilities = [.health, .resources, .events, .metrics]
             default:

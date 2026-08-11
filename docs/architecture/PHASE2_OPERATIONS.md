@@ -13,9 +13,10 @@ Diagnostics expose only scheme, host and explicit port. Search returns an empty 
 - Every configured provider contributes reachability health, a provider-instance asset and safe TLS/capability diagnostics.
 - Proxmox VE additionally contributes nodes, virtual machines, containers and offline-node alerts.
 - Uptime Kuma additionally contributes monitors, down/pending alerts and certificate-expiry warnings.
+- Proxmox Backup Server additionally contributes read-only datastore capacity and maintenance state, with warning and critical capacity alerts.
 
 The workspace is intentionally read-only. Mutating operations remain in the existing service dashboards until Phase 3 introduces policy, confirmation, RBAC and immutable audit records.
 
 ## Follow-up deliveries
 
-Proxmox Backup Server, Prometheus, Grafana, NetBox, Zammad, PegaProx, OPNsense and OneUptime attach through the same snapshot boundary in subsequent Phase-2 pull requests.
+Prometheus, Grafana, NetBox, Zammad, PegaProx, OPNsense and OneUptime attach through the same snapshot boundary in subsequent Phase-2 pull requests.

@@ -49,6 +49,7 @@ struct ServiceLoginView: View {
             || serviceType == .dockhand
             || serviceType == .maltrail
             || serviceType == .uptimeKuma
+            || serviceType == .proxmoxBackupServer
     }
 
     private var usesApiKeyAuth: Bool {
@@ -94,6 +95,14 @@ struct ServiceLoginView: View {
 
         if serviceType == .unifiNetwork {
             return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
+        }
+
+        if serviceType == .proxmoxBackupServer {
+            let tokenId = normalizedOptional(username) ?? existingInstance?.username
+            let tokenSecret = normalizedOptional(password) ?? existingInstance?.password
+            return tokenId?.contains("@") == true
+                && tokenId?.contains("!") == true
+                && tokenSecret?.isEmpty == false
         }
 
         if !isProxmox {
@@ -357,7 +366,9 @@ struct ServiceLoginView: View {
                     let isEmailField = serviceType == .beszel || serviceType == .nginxProxyManager
                     InputField(
                         icon: serviceType == .patchmon ? "key.fill" : (isEmailField ? "envelope.fill" : "person.fill"),
-                        placeholder: serviceType == .patchmon ? localizer.t.loginTokenKey : (isEmailField ? localizer.t.loginEmail : localizer.t.loginUsername),
+                        placeholder: serviceType == .proxmoxBackupServer
+                            ? "PBS token ID (user@realm!token-name)"
+                            : (serviceType == .patchmon ? localizer.t.loginTokenKey : (isEmailField ? localizer.t.loginEmail : localizer.t.loginUsername)),
                         text: $username,
                         keyboardType: isEmailField ? .emailAddress : .default
                     )
@@ -365,9 +376,11 @@ struct ServiceLoginView: View {
 
                 InputField(
                     icon: "lock.fill",
-                    placeholder: isEditing
-                        ? localizer.t.loginPasswordIfChanging
-                        : (serviceType == .patchmon ? localizer.t.loginTokenSecret : localizer.t.loginPassword),
+                    placeholder: serviceType == .proxmoxBackupServer
+                        ? (isEditing ? "PBS token secret (leave blank to keep)" : "PBS token secret")
+                        : (isEditing
+                            ? localizer.t.loginPasswordIfChanging
+                            : (serviceType == .patchmon ? localizer.t.loginTokenSecret : localizer.t.loginPassword)),
                     text: $password,
                     isSecure: !showPassword,
                     showToggle: true,
@@ -488,6 +501,8 @@ struct ServiceLoginView: View {
                                  return localizer.t.loginHintFlaresolverr
         case .wakapi:            return localizer.t.loginHintWakapi
         case .proxmox:           return localizer.t.loginHintProxmox
+        case .proxmoxBackupServer:
+                                 return "Use a least-privilege PBS API token. The initial provider is read-only and does not support password or ticket authentication."
         case .truenas:           return localizer.t.loginHintTruenas
         case .pterodactyl:       return localizer.t.loginHintPterodactyl
         case .calagopus:         return localizer.t.loginHintCalagopus
@@ -576,6 +591,10 @@ struct ServiceLoginView: View {
             } else if proxmoxAuthMode == 1 {
                 proxmoxApiTokenEntryMode = 1
             }
+        } else if serviceType == .proxmoxBackupServer {
+            username = existing.username ?? ""
+            apiKey = ""
+            password = ""
         } else {
             username = existing.username ?? ""
             apiKey = existing.apiKey ?? ""
@@ -1588,6 +1607,32 @@ struct ServiceLoginView: View {
                     password: resolvedPassword
                 )
             }
+
+        case .proxmoxBackupServer:
+            let tokenId = normalizedOptional(username) ?? existingInstance?.username
+            let tokenSecret = normalizedOptional(password) ?? existingInstance?.password
+            guard let tokenId, let tokenSecret else {
+                throw APIError.custom(localizer.t.loginErrorCredentials)
+            }
+            let client = ProxmoxBackupServerAPIClient(instanceId: existingInstanceId ?? UUID())
+            try await client.authenticate(
+                url: url,
+                tokenId: tokenId,
+                tokenSecret: tokenSecret,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
+            )
+            return ServiceInstance(
+                id: existingInstanceId ?? UUID(),
+                type: .proxmoxBackupServer,
+                label: label,
+                url: url,
+                token: "",
+                username: tokenId,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned,
+                password: tokenSecret
+            )
         }
     }
 

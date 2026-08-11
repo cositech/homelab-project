@@ -329,6 +329,8 @@ struct HomeView: View {
         case .lidarr:            LidarrDashboard(instanceId: route.instanceId)
         case .wakapi:            WakapiDashboard(instanceId: route.instanceId)
         case .proxmox:           ProxmoxDashboard(instanceId: route.instanceId)
+        case .proxmoxBackupServer:
+                                 OperationsView()
         case .truenas:           TrueNASDashboard(instanceId: route.instanceId)
         case .pterodactyl:       PterodactylDashboard(instanceId: route.instanceId)
         case .calagopus:         CalagopusDashboard(instanceId: route.instanceId)
@@ -535,6 +537,17 @@ struct HomeView: View {
                     totalRunning += vms.filter { $0.isRunning }.count + lxcs.filter { $0.isRunning }.count
                 }
                 return ServiceSummaryInfo(value: "\(totalRunning)", subValue: "/ \(totalGuests)", label: localizer.t.proxmoxGuestsRunning)
+            case .proxmoxBackupServer:
+                guard let client = await servicesStore.proxmoxBackupServerClient(instanceId: instanceId) else { return nil }
+                let dashboard = try await client.getDashboard()
+                let healthy = dashboard.datastores.filter {
+                    ($0.maintenance?.isEmpty ?? true) && ($0.usageRatio ?? 0) < 0.85
+                }.count
+                return ServiceSummaryInfo(
+                    value: "\(healthy)",
+                    subValue: "/ \(dashboard.datastores.count)",
+                    label: "healthy datastores"
+                )
             case .truenas:
                 guard let client = await servicesStore.truenasClient(instanceId: instanceId) else { return nil }
                 let snapshot = try await client.getDashboardSnapshot()

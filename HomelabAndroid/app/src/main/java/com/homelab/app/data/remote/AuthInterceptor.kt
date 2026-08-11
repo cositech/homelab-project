@@ -518,6 +518,14 @@ class AuthInterceptor @Inject constructor(
                     }
                 }
             }
+            ServiceType.PROXMOX_BACKUP_SERVER -> {
+                if (!hasAuthorization && !instance.username.isNullOrBlank() && !instance.password.isNullOrBlank()) {
+                    builder.addHeader(
+                        "Authorization",
+                        "PBSAPIToken=${instance.username}:${instance.password}"
+                    )
+                }
+            }
             ServiceType.PTERODACTYL,
             ServiceType.CALAGOPUS -> {
                 if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {

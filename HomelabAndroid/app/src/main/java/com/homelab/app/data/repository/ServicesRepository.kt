@@ -136,6 +136,7 @@ class ServicesRepository @Inject constructor(
                     ServiceType.PANGOLIN -> listOf("/v1/orgs", "/v1/openapi.json", "/v1/")
                     ServiceType.WAKAPI -> listOf("/api/health", "/api/summary", "")
                     ServiceType.PROXMOX -> listOf("/api2/json/version", "")
+                    ServiceType.PROXMOX_BACKUP_SERVER -> listOf("/api2/json/version", "")
                     ServiceType.TRUENAS -> listOf("/api/current", "/ui", "")
                     else -> listOf("")
                 }

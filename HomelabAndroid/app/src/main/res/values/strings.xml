@@ -49,6 +49,8 @@
     <string name="service_wakapi_desc">Coding activity tracker</string>
     <string name="service_proxmox">Proxmox VE</string>
     <string name="service_proxmox_desc">Virtual infrastructure management</string>
+    <string name="service_proxmox_backup_server">Proxmox Backup Server</string>
+    <string name="service_proxmox_backup_server_desc">Read-only datastore capacity and maintenance monitoring</string>
     <string name="service_unifi_network">Ubiquiti Network</string>
     <string name="service_unifi_network_desc">UniFi sites, devices, clients and network health</string>
     <string name="login_hint_unifi_network">Use a UniFi API key. For cloud access use https://api.ui.com. For a Dream Machine or local gateway use the console base URL, such as https://192.168.1.1, and enable Network API integrations.</string>
@@ -204,6 +206,9 @@
     <string name="login_proxmox_credentials_hint">Use username, password, realm and optional OTP.</string>
     <string name="login_proxmox_api_token_hint">Use a Proxmox API token in the format user@realm!tokenid=secret.</string>
     <string name="login_proxmox_api_token_placeholder">user@realm!tokenid=secret</string>
+    <string name="login_hint_proxmox_backup_server">Use a least-privilege PBS API token. Token ID format: user@realm!token-name. Recommended roles: Audit on / and DatastoreAudit on the required datastores.</string>
+    <string name="login_pbs_token_id">PBS token ID</string>
+    <string name="login_pbs_token_secret">PBS token secret</string>
     <string name="login_healthchecks_api_key_help">Find the API key in Project → Settings. Read-only keys can only view data; full-access keys enable edits.</string>
     <string name="login_allow_self_signed">Allow self-signed certificates</string>
     <string name="login_require_valid_tls">Require valid TLS certificate</string>

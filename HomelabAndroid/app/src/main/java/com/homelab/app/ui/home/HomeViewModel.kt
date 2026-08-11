@@ -19,6 +19,7 @@ import com.homelab.app.data.repository.PatchmonRepository
 import com.homelab.app.data.repository.PangolinRepository
 import com.homelab.app.data.repository.PlexRepository
 import com.homelab.app.data.repository.ProxmoxRepository
+import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.CalagopusRepository
 import com.homelab.app.data.repository.AdGuardHomeRepository
@@ -69,6 +70,7 @@ class HomeViewModel @Inject constructor(
     private val patchmonRepository: PatchmonRepository,
     private val plexRepository: PlexRepository,
     private val proxmoxRepository: ProxmoxRepository,
+    private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val trueNasRepository: TrueNasRepository,
     private val pangolinRepository: PangolinRepository,
     private val wakapiRepository: com.homelab.app.data.repository.WakapiRepository,
@@ -369,6 +371,13 @@ class HomeViewModel @Inject constructor(
                     totalRunning += vms.count { it.isRunning } + lxcs.count { it.isRunning }
                 }
                 InstanceSummary("$totalRunning", "/ $totalGuests", "proxmox_guests_running")
+            }
+            ServiceType.PROXMOX_BACKUP_SERVER -> {
+                val datastores = proxmoxBackupServerRepository.getDashboard(instanceId).datastores
+                val healthy = datastores.count { datastore ->
+                    datastore.maintenance.isNullOrBlank() && (datastore.usageRatio ?: 0.0) < 0.85
+                }
+                InstanceSummary("$healthy", "/ ${datastores.size}", "datastores_healthy")
             }
             ServiceType.TRUENAS -> {
                 val dashboard = trueNasRepository.getSummary(instanceId)

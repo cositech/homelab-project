@@ -66,6 +66,29 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmox).capabilities.contains(.writeActions))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.metrics))
         XCTAssertFalse(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.resources))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.metrics))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.writeActions))
+    }
+
+    func testProxmoxBackupServerDatastoreDecodingAndAliases() throws {
+        let json = """
+        {
+            "store": "backup-zfs",
+            "total": 1000,
+            "used": 875,
+            "avail": 125,
+            "maintenance-mode": "read-only"
+        }
+        """.data(using: .utf8)!
+
+        let datastore = try JSONDecoder().decode(ProxmoxBackupDatastore.self, from: json)
+
+        XCTAssertEqual(datastore.store, "backup-zfs")
+        XCTAssertEqual(try XCTUnwrap(datastore.usageRatio), 0.875, accuracy: 0.0001)
+        XCTAssertEqual(datastore.maintenance, "read-only")
+        XCTAssertEqual(ServiceType.fromStoredRawValue("pbs"), .proxmoxBackupServer)
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "proxmox-backup-server"), .proxmoxBackupServer)
     }
 
     func testOperationsSearchReturnsMatchingAssetsWithoutUnrelatedRecords() {

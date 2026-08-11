@@ -69,6 +69,8 @@ enum BackupServiceTypeMapper {
         case .flaresolverr:      return "flaresolverr"
         case .wakapi:            return "wakapi"
         case .proxmox:           return "proxmox"
+        case .proxmoxBackupServer:
+                                 return "proxmox_backup_server"
         case .truenas:           return "truenas"
         case .pterodactyl:       return "pterodactyl"
         case .calagopus:         return "calagopus"
@@ -126,6 +128,9 @@ enum BackupServiceTypeMapper {
         case "proxmox",
              "proxmox_ve",
              "pve":                  return .proxmox
+        case "proxmox_backup_server",
+             "proxmox-backup-server",
+             "pbs":                  return .proxmoxBackupServer
         case "truenas",
              "truenas_scale",
              "truenas-scale",

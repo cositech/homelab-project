@@ -30,6 +30,7 @@ private final class ServiceClientManager {
     private var genericClients: [UUID: GenericAPIClient] = [:]
     private var wakapiClients: [UUID: WakapiAPIClient] = [:]
     private var proxmoxClients: [UUID: ProxmoxAPIClient] = [:]
+    private var proxmoxBackupServerClients: [UUID: ProxmoxBackupServerAPIClient] = [:]
     private var truenasClients: [UUID: TrueNASAPIClient] = [:]
     private var pterodactylClients: [UUID: PterodactylAPIClient] = [:]
     private var calagopusClients: [UUID: CalagopusAPIClient] = [:]
@@ -267,6 +268,13 @@ private final class ServiceClientManager {
         return client
     }
 
+    func proxmoxBackupServerClient(id: UUID) -> ProxmoxBackupServerAPIClient {
+        if let client = proxmoxBackupServerClients[id] { return client }
+        let client = ProxmoxBackupServerAPIClient(instanceId: id)
+        proxmoxBackupServerClients[id] = client
+        return client
+    }
+
     func truenasClient(id: UUID) -> TrueNASAPIClient {
         if let client = truenasClients[id] {
             return client
@@ -357,6 +365,8 @@ private final class ServiceClientManager {
             wakapiClients.removeValue(forKey: id)
         case .proxmox:
             proxmoxClients.removeValue(forKey: id)
+        case .proxmoxBackupServer:
+            proxmoxBackupServerClients.removeValue(forKey: id)
         case .truenas:
             truenasClients.removeValue(forKey: id)
         case .pterodactyl:
@@ -397,6 +407,7 @@ private final class ServiceClientManager {
         lidarrClients = lidarrClients.filter { knownInstanceIds.contains($0.key) }
         wakapiClients = wakapiClients.filter { knownInstanceIds.contains($0.key) }
         proxmoxClients = proxmoxClients.filter { knownInstanceIds.contains($0.key) }
+        proxmoxBackupServerClients = proxmoxBackupServerClients.filter { knownInstanceIds.contains($0.key) }
         truenasClients = truenasClients.filter { knownInstanceIds.contains($0.key) }
         pterodactylClients = pterodactylClients.filter { knownInstanceIds.contains($0.key) }
         calagopusClients = calagopusClients.filter { knownInstanceIds.contains($0.key) }
@@ -737,6 +748,11 @@ final class ServicesStore {
         return clientManager.proxmoxClient(id: instance.id)
     }
 
+    func proxmoxBackupServerClient(instanceId: UUID) async -> ProxmoxBackupServerAPIClient? {
+        guard let instance = instancesById[instanceId], instance.type == .proxmoxBackupServer else { return nil }
+        return clientManager.proxmoxBackupServerClient(id: instance.id)
+    }
+
     func truenasClient(instanceId: UUID) async -> TrueNASAPIClient? {
         guard let instance = instancesById[instanceId], instance.type == .truenas else { return nil }
         return clientManager.truenasClient(id: instance.id)
@@ -821,6 +837,8 @@ final class ServicesStore {
             ok = await clientManager.wakapiClient(id: instanceId).ping()
         case .proxmox:
             ok = await clientManager.proxmoxClient(id: instanceId).ping()
+        case .proxmoxBackupServer:
+            ok = await clientManager.proxmoxBackupServerClient(id: instanceId).ping()
         case .truenas:
             ok = await clientManager.truenasClient(id: instanceId).ping()
         case .pterodactyl:
@@ -1330,6 +1348,17 @@ final class ServicesStore {
                     self.persistState()
                 }
             }
+
+        case .proxmoxBackupServer:
+            let client = clientManager.proxmoxBackupServerClient(id: instance.id)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                tokenId: instance.username,
+                tokenSecret: instance.password,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
         }
     }
 

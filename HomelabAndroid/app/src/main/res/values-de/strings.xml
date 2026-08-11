@@ -37,6 +37,11 @@
     <string name="service_gitea">Gitea</string>
     <string name="service_wakapi">Wakapi</string>
     <string name="service_wakapi_desc">Aktivitäts-Tracker für die Programmierung</string>
+    <string name="service_proxmox_backup_server">Proxmox Backup Server</string>
+    <string name="service_proxmox_backup_server_desc">Schreibgeschütztes Monitoring von Datastore-Kapazität und Wartungsstatus</string>
+    <string name="login_hint_proxmox_backup_server">Verwende einen PBS-API-Token mit minimalen Rechten. Token-ID: user@realm!token-name. Empfohlen: Audit auf / und DatastoreAudit auf den benötigten Datastores.</string>
+    <string name="login_pbs_token_id">PBS-Token-ID</string>
+    <string name="login_pbs_token_secret">PBS-Token-Secret</string>
     <string name="service_unifi_network">Ubiquiti Network</string>
     <string name="service_unifi_network_desc">UniFi-Standorte, Geräte, Clients und Netzwerkzustand</string>
     <string name="login_hint_unifi_network">Verwenden Sie einen UniFi-API-Schlüssel. Für Cloud-Zugriff nutzen Sie https://api.ui.com. Für eine Dream Machine oder ein lokales Gateway verwenden Sie die Basis-URL der Konsole, z. B. https://192.168.1.1, und aktivieren Sie Network-API-Integrationen.</string>
