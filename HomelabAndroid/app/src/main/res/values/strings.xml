@@ -1600,6 +1600,8 @@
     <string name="proxmox_overview">Overview</string>
     <string name="proxmox_task_log">View Task Log</string>
     <string name="proxmox_delete_snapshot">Delete Snapshot</string>
+    <string name="proxmox_confirm_action">Confirm %1$s?</string>
+    <string name="proxmox_confirm_action_message">This action changes the guest state and will be recorded in the local audit trail.</string>
     <string name="proxmox_delete_snapshot_confirm">Are you sure you want to delete snapshot \'%1$s\'?</string>
     <string name="proxmox_rollback_snapshot">Rollback Snapshot</string>
     <string name="proxmox_rollback_confirm">Are you sure you want to rollback to snapshot \'%1$s\'? This will restart the VM.</string>

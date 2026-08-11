@@ -1,6 +1,7 @@
 package com.homelab.app.domain.action
 
 import com.homelab.app.domain.provider.ProviderCapability
+import com.homelab.app.ui.proxmox.ProxmoxGuestAction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -163,6 +164,34 @@ class ControlledActionsTest {
 
         assertTrue(propagated)
         assertEquals(ActionExecutionState.CANCELLED, coordinator.auditSnapshot().last().state)
+    }
+
+    @Test
+    fun `proxmox lifecycle request uses normalized provider and target references`() {
+        val request = ProxmoxGuestAction.STOP.controlledRequest(
+            instanceId = "cluster-a",
+            node = "pve01",
+            vmid = 101,
+            isQemu = true,
+            confirmed = true,
+            requestId = "request-proxmox-1",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0001"
+        )
+
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("guest.stop", request.action)
+        assertEquals("qemu/101@pve01", request.targetRef)
+        assertEquals(ActionRisk.HIGH, request.risk)
+        assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `proxmox lifecycle risk controls explicit confirmation`() {
+        assertFalse(ProxmoxGuestAction.START.requiresConfirmation)
+        assertTrue(ProxmoxGuestAction.SHUTDOWN.requiresConfirmation)
+        assertTrue(ProxmoxGuestAction.REBOOT.requiresConfirmation)
+        assertTrue(ProxmoxGuestAction.STOP.requiresConfirmation)
     }
 
 }

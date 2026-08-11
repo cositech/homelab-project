@@ -1558,6 +1558,37 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(records.count, 1)
     }
 
+    func testProxmoxControlledLifecycleRequestUsesNormalizedReferences() throws {
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let requestId = try XCTUnwrap(UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        let idempotencyKey = try XCTUnwrap(UUID(uuidString: "12345678-1234-1234-1234-123456789abc"))
+        let request = ProxmoxControlledGuestAction.stop.request(
+            instanceId: instanceId,
+            node: "pve01",
+            vmid: 101,
+            guestType: .qemu,
+            confirmed: true,
+            requestId: requestId,
+            requestedAt: Date(timeIntervalSince1970: 0),
+            idempotencyKey: idempotencyKey
+        )
+
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "guest.stop")
+        XCTAssertEqual(request.targetRef, "qemu/101@pve01")
+        XCTAssertEqual(request.risk, .high)
+        XCTAssertTrue(request.confirmed)
+    }
+
+    func testProxmoxControlledLifecycleRiskClasses() {
+        XCTAssertEqual(ProxmoxControlledGuestAction.start.risk, .low)
+        XCTAssertEqual(ProxmoxControlledGuestAction.resume.risk, .low)
+        XCTAssertEqual(ProxmoxControlledGuestAction.shutdown.risk, .medium)
+        XCTAssertEqual(ProxmoxControlledGuestAction.reboot.risk, .medium)
+        XCTAssertEqual(ProxmoxControlledGuestAction.suspend.risk, .medium)
+        XCTAssertEqual(ProxmoxControlledGuestAction.stop.risk, .high)
+    }
+
 }
 
 private actor ActionInvocationCounter {

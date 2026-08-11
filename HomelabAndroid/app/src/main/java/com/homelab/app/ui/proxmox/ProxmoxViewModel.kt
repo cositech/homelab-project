@@ -10,11 +10,18 @@ import com.homelab.app.R
 import com.homelab.app.data.remote.dto.proxmox.*
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -22,6 +29,7 @@ class ProxmoxViewModel @Inject constructor(
     application: Application,
     private val proxmoxRepository: ProxmoxRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
@@ -228,16 +236,35 @@ class ProxmoxViewModel @Inject constructor(
         }
     }
 
-    fun performAction(action: ProxmoxGuestAction, node: String, vmid: Int, isQemu: Boolean) {
+    fun performAction(
+        action: ProxmoxGuestAction,
+        node: String,
+        vmid: Int,
+        isQemu: Boolean,
+        confirmed: Boolean = false
+    ) {
         viewModelScope.launch {
             try {
-                when (action) {
-                    ProxmoxGuestAction.START -> if (isQemu) proxmoxRepository.startVM(instanceId, node, vmid) else proxmoxRepository.startLXC(instanceId, node, vmid)
-                    ProxmoxGuestAction.STOP -> if (isQemu) proxmoxRepository.stopVM(instanceId, node, vmid) else proxmoxRepository.stopLXC(instanceId, node, vmid)
-                    ProxmoxGuestAction.SHUTDOWN -> if (isQemu) proxmoxRepository.shutdownVM(instanceId, node, vmid) else proxmoxRepository.shutdownLXC(instanceId, node, vmid)
-                    ProxmoxGuestAction.REBOOT -> if (isQemu) proxmoxRepository.rebootVM(instanceId, node, vmid) else proxmoxRepository.rebootLXC(instanceId, node, vmid)
+                val request = action.controlledRequest(instanceId, node, vmid, isQemu, confirmed)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    when (action) {
+                        ProxmoxGuestAction.START -> if (isQemu) proxmoxRepository.startVM(instanceId, node, vmid) else proxmoxRepository.startLXC(instanceId, node, vmid)
+                        ProxmoxGuestAction.STOP -> if (isQemu) proxmoxRepository.stopVM(instanceId, node, vmid) else proxmoxRepository.stopLXC(instanceId, node, vmid)
+                        ProxmoxGuestAction.SHUTDOWN -> if (isQemu) proxmoxRepository.shutdownVM(instanceId, node, vmid) else proxmoxRepository.shutdownLXC(instanceId, node, vmid)
+                        ProxmoxGuestAction.REBOOT -> if (isQemu) proxmoxRepository.rebootVM(instanceId, node, vmid) else proxmoxRepository.rebootLXC(instanceId, node, vmid)
+                    }
                 }
-                fetchAll()
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchAll()
+                } else {
+                    _actionResultState.value = UiState.Error(
+                        getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    )
+                }
             } catch (e: Exception) {
                 _actionResultState.value = UiState.Error(
                     getApplication<Application>().getString(R.string.error_action_failed, resolvedMessage(e))
@@ -869,8 +896,33 @@ data class ProxmoxDashboardData(
     val onlineNodes: Int get() = nodes.count { it.isOnline }
 }
 
-enum class ProxmoxGuestAction {
-    START, STOP, SHUTDOWN, REBOOT
+enum class ProxmoxGuestAction(val wireName: String, val risk: ActionRisk) {
+    START("guest.start", ActionRisk.LOW),
+    STOP("guest.stop", ActionRisk.HIGH),
+    SHUTDOWN("guest.shutdown", ActionRisk.MEDIUM),
+    REBOOT("guest.reboot", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        node: String,
+        vmid: Int,
+        isQemu: Boolean,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "${if (isQemu) "qemu" else "lxc"}/$vmid@$node",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
 
 data class ProxmoxNodeDetailData(

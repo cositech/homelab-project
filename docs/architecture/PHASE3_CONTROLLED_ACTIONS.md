@@ -17,6 +17,10 @@ The first Phase-3 delivery establishes the same policy and audit contract in bot
 
 ## Scope
 
-This foundation includes policy, serialized execution, dry-run behavior, idempotency and bounded in-memory audit history for Android and iOS. Terminal idempotency results are retained separately for the coordinator lifetime, so audit pruning cannot cause a repeated mutation. It does not yet migrate existing service-specific mutation buttons. Proxmox VE guest lifecycle actions are the first planned provider migration after this contract passes both native test suites.
+This foundation includes policy, serialized execution, dry-run behavior, idempotency and bounded in-memory audit history for Android and iOS. Terminal idempotency results are retained separately for the coordinator lifetime, so audit pruning cannot cause a repeated mutation.
+
+Proxmox VE is the reference-provider migration. Guest start and resume are low risk, graceful shutdown, reboot and suspend are medium risk, and hard stop is high risk. Both clients now route these lifecycle mutations through the coordinator. Android requests explicit confirmation for medium and high risk actions; the existing iOS confirmation dialog marks the same requests as confirmed. Provider task tracking remains unchanged after an approved mutation.
+
+Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger is an operational history, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.
