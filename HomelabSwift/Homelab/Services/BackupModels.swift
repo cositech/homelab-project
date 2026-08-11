@@ -140,7 +140,7 @@ enum BackupServiceTypeMapper {
         case "grafana":              return .grafana
         case "netbox":               return .netbox
         case "zammad":               return .zammad
-        case "pegaprox", "pega_prox": return .pegaprox
+        case "pegaprox", "pega_prox", "pega-prox": return .pegaprox
         case "truenas",
              "truenas_scale",
              "truenas-scale",
