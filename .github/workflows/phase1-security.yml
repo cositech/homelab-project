@@ -18,6 +18,6 @@ jobs:
     name: Phase 1 security invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Validate secure credential, TLS, and provider invariants
         run: bash ./scripts/phase1-security-audit.sh

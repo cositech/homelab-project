@@ -18,7 +18,7 @@ jobs:
     name: Version consistency
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check iOS and Android versions match
         run: |
@@ -70,14 +70,14 @@ jobs:
       run:
         working-directory: HomelabAndroid
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v6.1.0
+      - uses: gradle/actions/setup-gradle@v6.3.0
 
       - name: Compile Debug Kotlin
         run: ./gradlew :app:compileDebugKotlin --console=plain
@@ -90,12 +90,12 @@ jobs:
       run:
         working-directory: HomelabAndroid
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.1.0
+      - uses: gradle/actions/setup-gradle@v6.3.0
       - name: Run Debug unit tests
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
@@ -107,7 +107,7 @@ jobs:
       run:
         working-directory: HomelabSwift
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -139,7 +139,7 @@ jobs:
       run:
         working-directory: HomelabSwift
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Create CI signing config
         run: |
           mkdir -p Config
@@ -161,6 +161,6 @@ jobs:
     name: Phase 0 static audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Validate foundation
         run: bash ./scripts/phase0-audit.sh
