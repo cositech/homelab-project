@@ -17,7 +17,9 @@ for path in \
   "$ANDROID_CLIENT" "$ANDROID_OPERATIONS" "$IOS_CLIENT" "$IOS_OPERATIONS" \
   docs/integrations/providers/netbox.md \
   docs/integrations/providers/zammad.md \
-  docs/integrations/providers/pegaprox.md; do
+  docs/integrations/providers/pegaprox.md \
+  docs/integrations/providers/opnsense.md \
+  docs/integrations/providers/oneuptime.md; do
   test -s "$path" || fail "missing or empty: $path"
 done
 
@@ -37,17 +39,31 @@ for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
   require_pattern "MAX_CLUSTERS|maxClusters" "$path"
   require_pattern "piiRedacted" "$path"
   require_pattern "tenantScoped" "$path"
-  reject_pattern "\\.(post|put|patch|delete)\\(" "$path"
-  reject_pattern "method:[[:space:]]*\\\"(POST|PUT|PATCH|DELETE)\\\"" "$path"
+  reject_pattern "\\.(put|patch|delete)\\(" "$path"
+  reject_pattern "method:[[:space:]]*\\\"(PUT|PATCH|DELETE)\\\"" "$path"
   reject_pattern "/(console|vnc|shell)(/|\\\"|$)" "$path"
+done
+
+for path in "$ANDROID_CLIENT" "$IOS_CLIENT"; do
+  require_pattern "/api/core/firmware/status" "$path"
+  require_pattern "/api/interfaces/overview/interfacesInfo" "$path"
+  require_pattern "/api/monitor/get-list" "$path"
+  require_pattern "/api/alert/get-list" "$path"
+  require_pattern "/api/incident/get-list" "$path"
+  require_pattern "ONEUPTIME_READ_PATHS|oneUptimeReadPaths" "$path"
+  require_pattern "contentRedacted" "$path"
 done
 
 require_pattern "WRITE_ACTIONS !in netbox" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt
 require_pattern "WRITE_ACTIONS !in zammad" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt
 require_pattern "WRITE_ACTIONS !in pegaprox" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt
+require_pattern "WRITE_ACTIONS !in opnsense" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt
+require_pattern "WRITE_ACTIONS !in oneuptime" HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt
 require_pattern "netbox.*writeActions" HomelabSwift/HomelabTests/ModelDecodingTests.swift
 require_pattern "zammad.*writeActions" HomelabSwift/HomelabTests/ModelDecodingTests.swift
 require_pattern "pegaprox.*writeActions" HomelabSwift/HomelabTests/ModelDecodingTests.swift
+require_pattern "opnsense.*writeActions" HomelabSwift/HomelabTests/ModelDecodingTests.swift
+require_pattern "oneuptime.*writeActions" HomelabSwift/HomelabTests/ModelDecodingTests.swift
 require_pattern "resourceType = .*ticket" "$ANDROID_CLIENT"
 require_pattern "resourceType: .*ticket" "$IOS_CLIENT"
 require_pattern "resourceType = .*cluster" "$ANDROID_CLIENT"

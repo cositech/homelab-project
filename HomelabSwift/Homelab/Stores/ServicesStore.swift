@@ -395,7 +395,7 @@ private final class ServiceClientManager {
             prometheusClients.removeValue(forKey: id)
         case .grafana:
             grafanaClients.removeValue(forKey: id)
-        case .netbox, .zammad, .pegaprox:
+        case .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
             infrastructureClients.removeValue(forKey: id)
         case .truenas:
             truenasClients.removeValue(forKey: id)
@@ -797,7 +797,7 @@ final class ServicesStore {
     }
 
     func infrastructureClient(instanceId: UUID) async -> InfrastructureOperationsAPIClient? {
-        guard let instance = instancesById[instanceId], [.netbox, .zammad, .pegaprox].contains(instance.type) else { return nil }
+        guard let instance = instancesById[instanceId], [.netbox, .zammad, .pegaprox, .opnsense, .oneuptime].contains(instance.type) else { return nil }
         return clientManager.infrastructureClient(id: instance.id, type: instance.type)
     }
 
@@ -891,7 +891,7 @@ final class ServicesStore {
             ok = await clientManager.prometheusClient(id: instanceId).ping()
         case .grafana:
             ok = await clientManager.grafanaClient(id: instanceId).ping()
-        case .netbox, .zammad, .pegaprox:
+        case .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
             ok = await clientManager.infrastructureClient(id: instanceId, type: instance.type).ping()
         case .truenas:
             ok = await clientManager.truenasClient(id: instanceId).ping()
@@ -1431,12 +1431,13 @@ final class ServicesStore {
                 allowSelfSigned: instance.allowSelfSigned,
                 tlsPolicy: instance.tlsPolicy
             )
-        case .netbox, .zammad, .pegaprox:
+        case .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
             let client = clientManager.infrastructureClient(id: instance.id, type: instance.type)
             await client.configure(
                 url: instance.url,
                 fallbackUrl: instance.fallbackUrl,
                 apiToken: instance.apiKey,
+                apiSecret: instance.password,
                 allowSelfSigned: instance.allowSelfSigned,
                 tlsPolicy: instance.tlsPolicy
             )

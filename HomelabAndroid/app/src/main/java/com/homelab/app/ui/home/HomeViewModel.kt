@@ -404,6 +404,14 @@ class HomeViewModel @Inject constructor(
                 val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
                 InstanceSummary(health.attributes["clusters"] ?: "0", "/ ${health.attributes["activeAlerts"] ?: "0"}", "clusters / active alerts")
             }
+            ServiceType.OPNSENSE -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["interfaces"] ?: "0", "/ ${health.attributes["interfacesDown"] ?: "0"}", "interfaces / down")
+            }
+            ServiceType.ONEUPTIME -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["monitors"] ?: "0", "/ ${health.attributes["incidents"] ?: "0"}", "monitors / incidents")
+            }
             ServiceType.TRUENAS -> {
                 val dashboard = trueNasRepository.getSummary(instanceId)
                 InstanceSummary("${dashboard.healthyPoolCount}", "/ ${dashboard.pools.size}", "truenas_healthy_pools")

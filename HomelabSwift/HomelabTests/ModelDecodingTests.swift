@@ -80,6 +80,10 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertFalse(ProviderRegistry.descriptor(for: .zammad).capabilities.contains(.writeActions))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .pegaprox).capabilities.contains(.metrics))
         XCTAssertFalse(ProviderRegistry.descriptor(for: .pegaprox).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .opnsense).capabilities.contains(.metrics))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .opnsense).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .oneuptime).capabilities.contains(.events))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .oneuptime).capabilities.contains(.writeActions))
     }
 
     func testProxmoxBackupServerDatastoreDecodingAndAliases() throws {

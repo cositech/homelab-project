@@ -114,7 +114,9 @@ class OperationsViewModel @Inject constructor(
                     }
                     ServiceType.NETBOX,
                     ServiceType.ZAMMAD,
-                    ServiceType.PEGAPROX -> {
+                    ServiceType.PEGAPROX,
+                    ServiceType.OPNSENSE,
+                    ServiceType.ONEUPTIME -> {
                         val payload = infrastructureOperationsRepository.getSnapshot(instance.id)
                         instanceHealth = payload.health
                         assets += payload.assets

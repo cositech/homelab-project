@@ -331,7 +331,7 @@ struct HomeView: View {
         case .proxmox:           ProxmoxDashboard(instanceId: route.instanceId)
         case .proxmoxBackupServer:
                                  OperationsView()
-        case .prometheus, .grafana, .netbox, .zammad, .pegaprox:
+        case .prometheus, .grafana, .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
                                  OperationsView()
         case .truenas:           TrueNASDashboard(instanceId: route.instanceId)
         case .pterodactyl:       PterodactylDashboard(instanceId: route.instanceId)
@@ -559,7 +559,7 @@ struct HomeView: View {
                 guard let client = await servicesStore.grafanaClient(instanceId: instanceId) else { return nil }
                 let overview = try await client.getOverview()
                 return ServiceSummaryInfo(value: "\(overview.dashboards.count)", subValue: "/ \(overview.dataSources.count)", label: "dashboards / data sources")
-            case .netbox, .zammad, .pegaprox:
+            case .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
                 guard let client = await servicesStore.infrastructureClient(instanceId: instanceId) else { return nil }
                 let payload = try await client.getSnapshot()
                 switch type {
@@ -580,6 +580,18 @@ struct HomeView: View {
                         value: payload.health.attributes["clusters"] ?? "0",
                         subValue: "/ \(payload.health.attributes["activeAlerts"] ?? "0")",
                         label: "clusters / active alerts"
+                    )
+                case .opnsense:
+                    return ServiceSummaryInfo(
+                        value: payload.health.attributes["interfaces"] ?? "0",
+                        subValue: "/ \(payload.health.attributes["interfacesDown"] ?? "0")",
+                        label: "interfaces / down"
+                    )
+                case .oneuptime:
+                    return ServiceSummaryInfo(
+                        value: payload.health.attributes["monitors"] ?? "0",
+                        subValue: "/ \(payload.health.attributes["incidents"] ?? "0")",
+                        label: "monitors / incidents"
                     )
                 default:
                     return nil

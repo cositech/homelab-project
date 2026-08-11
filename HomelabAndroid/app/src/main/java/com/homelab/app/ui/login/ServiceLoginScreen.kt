@@ -134,7 +134,9 @@ fun ServiceLoginScreen(
                     ServiceType.GRAFANA,
                     ServiceType.NETBOX,
                     ServiceType.ZAMMAD,
-                    ServiceType.PEGAPROX
+                    ServiceType.PEGAPROX,
+                    ServiceType.OPNSENSE,
+                    ServiceType.ONEUPTIME
                 )) "" else instance.apiKey.orEmpty()
         }
         fallbackUrl = instance.fallbackUrl.orEmpty()
@@ -254,6 +256,8 @@ fun ServiceLoginScreen(
                 ServiceType.NETBOX -> stringResource(R.string.login_hint_netbox)
                 ServiceType.ZAMMAD -> stringResource(R.string.login_hint_zammad)
                 ServiceType.PEGAPROX -> stringResource(R.string.login_hint_pegaprox)
+                ServiceType.OPNSENSE -> stringResource(R.string.login_hint_opnsense)
+                ServiceType.ONEUPTIME -> stringResource(R.string.login_hint_oneuptime)
                 else -> null
             }
 
@@ -527,7 +531,9 @@ fun ServiceLoginScreen(
                 serviceType == ServiceType.GRAFANA ||
                 serviceType == ServiceType.NETBOX ||
                 serviceType == ServiceType.ZAMMAD ||
-                serviceType == ServiceType.PEGAPROX
+                serviceType == ServiceType.PEGAPROX ||
+                serviceType == ServiceType.OPNSENSE ||
+                serviceType == ServiceType.ONEUPTIME
             ) {
                 SecretField(
                     value = apiKey,
@@ -542,6 +548,17 @@ fun ServiceLoginScreen(
                         value = password,
                         onValueChange = { password = it },
                         label = stringResource(R.string.komodo_api_secret),
+                        showSecret = showSecret,
+                        onToggleSecret = { showSecret = !showSecret },
+                        placeholder = if (isEditing) stringResource(R.string.login_keep_secret_placeholder) else null
+                    )
+                }
+
+                if (serviceType == ServiceType.OPNSENSE) {
+                    SecretField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = stringResource(R.string.opnsense_api_secret),
                         showSecret = showSecret,
                         onToggleSecret = { showSecret = !showSecret },
                         placeholder = if (isEditing) stringResource(R.string.login_keep_secret_placeholder) else null

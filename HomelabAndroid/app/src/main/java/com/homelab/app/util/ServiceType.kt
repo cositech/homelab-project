@@ -43,6 +43,8 @@ enum class ServiceType(val displayName: String) {
     NETBOX("NetBox"),
     ZAMMAD("Zammad"),
     PEGAPROX("PegaProx"),
+    OPNSENSE("OPNsense"),
+    ONEUPTIME("OneUptime"),
     TRUENAS("TrueNAS"),
     PTERODACTYL("Pterodactyl"),
     CALAGOPUS("Calagopus"),
@@ -83,6 +85,10 @@ enum class ServiceType(val displayName: String) {
                 "ZAMMAD" -> ZAMMAD
                 "PEGAPROX",
                 "PEGA_PROX" -> PEGAPROX
+                "OPNSENSE",
+                "OPN_SENSE" -> OPNSENSE
+                "ONEUPTIME",
+                "ONE_UPTIME" -> ONEUPTIME
                 "DOCKHAND" -> DOCKHAND
                 "DOCKMON" -> DOCKMON
                 "KOMODO" -> KOMODO

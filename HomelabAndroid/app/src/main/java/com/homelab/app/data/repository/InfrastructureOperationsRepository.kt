@@ -22,7 +22,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import okhttp3.OkHttpClient
+import okhttp3.Credentials
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 data class InfrastructureOperationsPayload(
     val health: ProviderHealth,
@@ -41,18 +44,27 @@ class InfrastructureOperationsRepository @Inject constructor(
         type: ServiceType,
         url: String,
         apiToken: String,
+        apiSecret: String? = null,
         fallbackUrl: String?,
         allowSelfSigned: Boolean
     ) {
         require(type in supportedTypes) { "Unsupported infrastructure provider" }
         require(apiToken.isNotBlank()) { "A read-only API token is required" }
+        if (type == ServiceType.OPNSENSE) require(!apiSecret.isNullOrBlank()) { "An OPNsense API secret is required" }
         val path = when (type) {
             ServiceType.NETBOX -> "/api/status/"
             ServiceType.ZAMMAD -> "/api/v1/users/me"
             ServiceType.PEGAPROX -> "/api/clusters"
+            ServiceType.OPNSENSE -> "/api/core/firmware/status"
+            ServiceType.ONEUPTIME -> "/api/monitor/get-list?skip=0&limit=1"
             else -> error("Unsupported infrastructure provider")
         }
-        request(url, fallbackUrl, path, type, apiToken, tlsClientSelector.forAllowSelfSigned(allowSelfSigned))
+        val client = tlsClientSelector.forAllowSelfSigned(allowSelfSigned)
+        if (type == ServiceType.ONEUPTIME) {
+            oneUptimeRequest(url, fallbackUrl, path, apiToken, ONEUPTIME_MONITOR_BODY, client)
+        } else {
+            request(url, fallbackUrl, path, type, apiToken, client, apiSecret)
+        }
     }
 
     suspend fun getSnapshot(instanceId: String): InfrastructureOperationsPayload {
@@ -66,8 +78,134 @@ class InfrastructureOperationsRepository @Inject constructor(
             ServiceType.NETBOX -> netBoxSnapshot(instance, token, client)
             ServiceType.ZAMMAD -> zammadSnapshot(instance, token, client)
             ServiceType.PEGAPROX -> pegaProxSnapshot(instance, token, client)
+            ServiceType.OPNSENSE -> opnSenseSnapshot(instance, token, instance.password.orEmpty(), client)
+            ServiceType.ONEUPTIME -> oneUptimeSnapshot(instance, token, client)
             else -> error("Unsupported infrastructure provider")
         }
+    }
+
+    private suspend fun opnSenseSnapshot(
+        instance: ServiceInstance,
+        apiKey: String,
+        apiSecret: String,
+        client: OkHttpClient
+    ): InfrastructureOperationsPayload {
+        require(apiSecret.isNotBlank()) { "OPNsense API secret is required" }
+        val firmware = requestObject(instance, "/api/core/firmware/status", apiKey, client, apiSecret)
+        val interfaceRoot = requestObject(instance, "/api/interfaces/overview/interfacesInfo", apiKey, client, apiSecret)
+        val interfaces = when (val value = interfaceRoot["interfaces"] ?: interfaceRoot["rows"]) {
+            is JsonArray -> value.mapNotNull { it as? JsonObject }
+            is JsonObject -> value.values.mapNotNull { it as? JsonObject }
+            else -> interfaceRoot.values.mapNotNull { it as? JsonObject }
+        }.take(MAX_ITEMS)
+        val assets = interfaces.mapIndexedNotNull { index, value ->
+            val id = value.string("identifier") ?: value.string("name") ?: value.string("device") ?: "interface-$index"
+            val name = value.string("description") ?: value.string("name") ?: id
+            val state = value.string("status") ?: if (value.boolean("up")) "up" else "unknown"
+            ProviderResource(
+                providerId = "opnsense",
+                instanceId = instance.id,
+                resourceType = "interface",
+                resourceId = id,
+                name = name,
+                state = state,
+                attributes = buildMap {
+                    value.string("device")?.let { put("device", it) }
+                    value.string("ipv4")?.let { put("ipv4", it) }
+                    value.string("ipv6")?.let { put("ipv6", it) }
+                    value.string("media")?.let { put("media", it) }
+                }
+            )
+        }
+        val down = assets.count { it.state?.lowercase() in setOf("down", "no carrier") }
+        val firmwareOk = firmware.string("status")?.lowercase() in setOf(null, "ok", "none", "done")
+        val state = if (!firmwareOk || down > 0) ProviderHealthState.DEGRADED else ProviderHealthState.HEALTHY
+        return InfrastructureOperationsPayload(
+            health = ProviderHealth(
+                providerId = "opnsense",
+                instanceId = instance.id,
+                state = state,
+                message = "${assets.size} interface(s), $down down",
+                attributes = buildMap {
+                    (firmware.string("product_version") ?: firmware.string("productVersion"))?.let { put("version", it) }
+                    put("interfaces", assets.size.toString())
+                    put("interfacesDown", down.toString())
+                    put("requestMode", "read-only-get")
+                }
+            ),
+            assets = assets,
+            alerts = emptyList()
+        )
+    }
+
+    private suspend fun oneUptimeSnapshot(
+        instance: ServiceInstance,
+        token: String,
+        client: OkHttpClient
+    ): InfrastructureOperationsPayload {
+        val monitors = oneUptimeData(instance, "/api/monitor/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_MONITOR_BODY, client)
+        val alertItems = oneUptimeData(instance, "/api/alert/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_ALERT_BODY, client)
+        val incidents = oneUptimeData(instance, "/api/incident/get-list?skip=0&limit=$ONEUPTIME_LIMIT", token, ONEUPTIME_INCIDENT_BODY, client)
+        val now = System.currentTimeMillis()
+        val assets = monitors.mapNotNull { monitor ->
+            val id = monitor.string("_id") ?: return@mapNotNull null
+            ProviderResource(
+                providerId = "oneuptime",
+                instanceId = instance.id,
+                resourceType = "monitor",
+                resourceId = id,
+                name = monitor.string("name") ?: "Monitor ${id.take(8)}",
+                state = if (monitor.boolean("disableActiveMonitoring")) "disabled" else monitor.string("currentMonitorStatusId") ?: "unknown",
+                attributes = buildMap {
+                    monitor.string("monitorType")?.let { put("monitorType", it) }
+                    monitor.string("projectId")?.let { put("projectId", it) }
+                    put("endpointDetailsRedacted", "true")
+                }
+            )
+        }
+        val events = buildList {
+            alertItems.forEach { alert ->
+                val id = alert.string("_id") ?: return@forEach
+                val number = alert.string("alertNumber") ?: id.take(8)
+                add(ProviderEvent("oneuptime", instance.id, "alert:$id", "warning", "Alert #$number", now, id))
+            }
+            incidents.forEach { incident ->
+                val id = incident.string("_id") ?: return@forEach
+                val number = incident.string("incidentNumber") ?: id.take(8)
+                add(ProviderEvent("oneuptime", instance.id, "incident:$id", "critical", "Incident #$number", now, id))
+            }
+        }
+        val disabled = assets.count { it.state == "disabled" }
+        return InfrastructureOperationsPayload(
+            health = ProviderHealth(
+                providerId = "oneuptime",
+                instanceId = instance.id,
+                state = if (disabled > 0) ProviderHealthState.DEGRADED else ProviderHealthState.HEALTHY,
+                message = "${assets.size} monitor(s), ${alertItems.size} alert(s), ${incidents.size} incident(s)",
+                attributes = mapOf(
+                    "monitors" to assets.size.toString(),
+                    "disabledMonitors" to disabled.toString(),
+                    "alerts" to alertItems.size.toString(),
+                    "incidents" to incidents.size.toString(),
+                    "contentRedacted" to "true",
+                    "requestMode" to "allowlisted-read-post"
+                )
+            ),
+            assets = assets,
+            alerts = events
+        )
+    }
+
+    private suspend fun oneUptimeData(
+        instance: ServiceInstance,
+        path: String,
+        token: String,
+        body: String,
+        client: OkHttpClient
+    ): List<JsonObject> {
+        val root = oneUptimeRequest(instance.url, instance.fallbackUrl, path, token, body, client) as? JsonObject
+            ?: throw IllegalStateException("Expected OneUptime JSON object")
+        return (root["data"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.take(ONEUPTIME_LIMIT)
     }
 
     private suspend fun netBoxSnapshot(
@@ -318,8 +456,8 @@ class InfrastructureOperationsRepository @Inject constructor(
         )
     }
 
-    private suspend fun requestObject(instance: ServiceInstance, path: String, token: String, client: OkHttpClient): JsonObject =
-        request(instance.url, instance.fallbackUrl, path, instance.type, token, client) as? JsonObject
+    private suspend fun requestObject(instance: ServiceInstance, path: String, token: String, client: OkHttpClient, secret: String? = null): JsonObject =
+        request(instance.url, instance.fallbackUrl, path, instance.type, token, client, secret) as? JsonObject
             ?: throw IllegalStateException("Expected JSON object")
 
     private suspend fun requestArray(
@@ -337,14 +475,15 @@ class InfrastructureOperationsRepository @Inject constructor(
         path: String,
         type: ServiceType,
         token: String,
-        client: OkHttpClient
+        client: OkHttpClient,
+        secret: String? = null
     ): JsonElement {
         var lastError: Exception? = null
         listOfNotNull(primaryUrl.trim().takeIf { it.isNotBlank() }, fallbackUrl?.trim()?.takeIf { it.isNotBlank() })
             .distinct()
             .forEach { baseUrl ->
                 try {
-                    return fetch(baseUrl, path, type, token, client)
+                    return fetch(baseUrl, path, type, token, client, secret)
                 } catch (error: Exception) {
                     lastError = error
                 }
@@ -357,14 +496,16 @@ class InfrastructureOperationsRepository @Inject constructor(
         path: String,
         type: ServiceType,
         token: String,
-        client: OkHttpClient
+        client: OkHttpClient,
+        secret: String? = null
     ): JsonElement = withContext(Dispatchers.IO) {
         val builder = Request.Builder()
             .url(baseUrl.trimEnd('/') + path)
             .get()
             .addHeader("Accept", "application/json")
             .addHeader("X-Homelab-Bypass", "true")
-            .addHeader("Authorization", authorization(type, token))
+        if (type == ServiceType.ONEUPTIME) builder.addHeader("ApiKey", token)
+        else builder.addHeader("Authorization", authorization(type, token, secret))
         client.newCall(builder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             when (response.code) {
@@ -375,10 +516,47 @@ class InfrastructureOperationsRepository @Inject constructor(
         }
     }
 
-    private fun authorization(type: ServiceType, token: String): String = when (type) {
+    private suspend fun oneUptimeRequest(
+        primaryUrl: String,
+        fallbackUrl: String?,
+        path: String,
+        token: String,
+        body: String,
+        client: OkHttpClient
+    ): JsonElement {
+        require(path.substringBefore('?') in ONEUPTIME_READ_PATHS) { "OneUptime path is not allowlisted" }
+        var lastError: Exception? = null
+        for (baseUrl in listOfNotNull(primaryUrl.trim().takeIf { it.isNotBlank() }, fallbackUrl?.trim()?.takeIf { it.isNotBlank() }).distinct()) {
+            try {
+                return withContext(Dispatchers.IO) {
+                    val request = Request.Builder()
+                        .url(baseUrl.trimEnd('/') + path)
+                        .post(body.toRequestBody("application/json".toMediaType()))
+                        .addHeader("Accept", "application/json")
+                        .addHeader("ApiKey", token)
+                        .addHeader("X-Homelab-Bypass", "true")
+                        .build()
+                    client.newCall(request).execute().use { response ->
+                        val responseBody = response.body?.string().orEmpty()
+                        when (response.code) {
+                            in 200..299 -> json.parseToJsonElement(responseBody)
+                            401, 403 -> throw IllegalStateException("Read-only provider token rejected or insufficiently scoped")
+                            else -> throw IllegalStateException("Infrastructure provider returned HTTP ${response.code}")
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                lastError = error
+            }
+        }
+        throw lastError ?: IllegalStateException("OneUptime provider request failed")
+    }
+
+    private fun authorization(type: ServiceType, token: String, secret: String? = null): String = when (type) {
         ServiceType.NETBOX -> if (token.startsWith("nbt_")) "Bearer $token" else "Token $token"
         ServiceType.ZAMMAD -> "Token token=$token"
         ServiceType.PEGAPROX -> "Bearer $token"
+        ServiceType.OPNSENSE -> Credentials.basic(token, requireNotNull(secret))
         else -> error("Unsupported infrastructure provider")
     }
 
@@ -407,6 +585,17 @@ class InfrastructureOperationsRepository @Inject constructor(
         private const val MAX_CLUSTERS = 50
         private const val MAX_RESOURCES_PER_CLUSTER = 1_000
         private const val MAX_ALERTS_PER_CLUSTER = 200
-        private val supportedTypes = setOf(ServiceType.NETBOX, ServiceType.ZAMMAD, ServiceType.PEGAPROX)
+        private const val ONEUPTIME_LIMIT = 100
+        private const val ONEUPTIME_MONITOR_BODY = "{\"select\":{\"currentMonitorStatusId\":true,\"disableActiveMonitoring\":true,\"monitorType\":true,\"name\":true,\"projectId\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
+        private const val ONEUPTIME_ALERT_BODY = "{\"select\":{\"alertSeverityId\":true,\"currentAlertStateId\":true,\"projectId\":true,\"alertNumber\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
+        private const val ONEUPTIME_INCIDENT_BODY = "{\"select\":{\"currentIncidentStateId\":true,\"declaredAt\":true,\"incidentSeverityId\":true,\"projectId\":true,\"incidentNumber\":true},\"query\":{},\"sort\":{\"createdAt\":-1}}"
+        private val ONEUPTIME_READ_PATHS = setOf("/api/monitor/get-list", "/api/alert/get-list", "/api/incident/get-list")
+        private val supportedTypes = setOf(
+            ServiceType.NETBOX,
+            ServiceType.ZAMMAD,
+            ServiceType.PEGAPROX,
+            ServiceType.OPNSENSE,
+            ServiceType.ONEUPTIME
+        )
     }
 }
