@@ -351,6 +351,7 @@ class ControlledActionCoordinator(
                 return@withLock result
             }
         }
+        throw IllegalStateException("controlled action retry loop terminated unexpectedly")
     }
 
     suspend fun pendingRecovery(): List<DurableActionQueueEntry> = queue.withLock {
