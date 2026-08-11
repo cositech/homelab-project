@@ -556,7 +556,7 @@ class AuthInterceptor @Inject constructor(
                 }
             }
             ServiceType.ONEUPTIME -> {
-                if (request.header("ApiKey") == null && !instance.apiKey.isNullOrBlank()) {
+                if (builder.build().header("ApiKey") == null && !instance.apiKey.isNullOrBlank()) {
                     builder.addHeader("ApiKey", instance.apiKey)
                 }
             }
