@@ -242,6 +242,7 @@ fun ServiceLoginScreen(
                 ServiceType.TRUENAS -> stringResource(R.string.login_hint_truenas)
                 ServiceType.PTERODACTYL -> stringResource(R.string.login_hint_pterodactyl)
                 ServiceType.CALAGOPUS -> stringResource(R.string.login_hint_calagopus)
+                ServiceType.PROXMOX_BACKUP_SERVER -> stringResource(R.string.login_hint_proxmox_backup_server)
                 else -> null
             }
 
@@ -652,6 +653,7 @@ fun ServiceLoginScreen(
                     val usernameLabel = when {
                         serviceType == ServiceType.PATCHMON -> stringResource(R.string.patchmon_token_key)
                         serviceType == ServiceType.UPTIME_KUMA -> stringResource(R.string.uptime_kuma_username_optional)
+                        serviceType == ServiceType.PROXMOX_BACKUP_SERVER -> stringResource(R.string.login_pbs_token_id)
                         isEmailField -> stringResource(R.string.login_email_label)
                         else -> stringResource(R.string.login_username_label)
                     }
@@ -679,6 +681,8 @@ fun ServiceLoginScreen(
                         stringResource(R.string.patchmon_token_secret)
                     } else if (serviceType == ServiceType.UPTIME_KUMA) {
                         stringResource(R.string.uptime_kuma_password_or_api_key)
+                    } else if (serviceType == ServiceType.PROXMOX_BACKUP_SERVER) {
+                        stringResource(R.string.login_pbs_token_secret)
                     } else {
                         stringResource(R.string.login_password_hint)
                     },

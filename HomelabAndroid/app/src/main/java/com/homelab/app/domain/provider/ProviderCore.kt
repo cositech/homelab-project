@@ -124,6 +124,12 @@ object ProviderRegistry {
                     ProviderCapability.READ_ACTIONS,
                     ProviderCapability.WRITE_ACTIONS
                 )
+                ServiceType.PROXMOX_BACKUP_SERVER -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.EVENTS,
+                    ProviderCapability.METRICS
+                )
                 ServiceType.UPTIME_KUMA -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,

@@ -18,11 +18,28 @@ class ProviderCoreTest {
     fun `reference providers expose normalized capabilities`() {
         val proxmox = ProviderRegistry.capabilities(ServiceType.PROXMOX)
         val kuma = ProviderRegistry.capabilities(ServiceType.UPTIME_KUMA)
+        val pbs = ProviderRegistry.capabilities(ServiceType.PROXMOX_BACKUP_SERVER)
 
         assertTrue(ProviderCapability.RESOURCES in proxmox)
         assertTrue(ProviderCapability.WRITE_ACTIONS in proxmox)
         assertTrue(ProviderCapability.METRICS in kuma)
         assertTrue(ProviderCapability.WRITE_ACTIONS !in kuma)
+        assertTrue(ProviderCapability.RESOURCES in pbs)
+        assertTrue(ProviderCapability.METRICS in pbs)
+        assertTrue(ProviderCapability.WRITE_ACTIONS !in pbs)
+    }
+
+    @Test
+    fun `pbs datastore exposes normalized capacity ratio`() {
+        val datastore = com.homelab.app.data.repository.ProxmoxBackupDatastore(
+            store = "backup-zfs",
+            totalBytes = 1_000,
+            usedBytes = 875,
+            availableBytes = 125,
+            maintenance = null
+        )
+
+        assertEquals(0.875, datastore.usageRatio!!, 0.0001)
     }
 
     @Test

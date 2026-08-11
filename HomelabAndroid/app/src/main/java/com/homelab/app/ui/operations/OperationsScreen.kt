@@ -182,8 +182,8 @@ private fun AssetCard(item: ProviderResource) = OperationCard(
     title = item.name,
     subtitle = "${item.providerId} · ${item.resourceType} · ${item.resourceId}",
     state = when (item.state?.lowercase()) {
-        "offline", "down", "unavailable" -> ProviderHealthState.UNAVAILABLE
-        "degraded", "pending", "paused" -> ProviderHealthState.DEGRADED
+        "offline", "down", "unavailable", "critical" -> ProviderHealthState.UNAVAILABLE
+        "degraded", "pending", "paused", "warning", "maintenance" -> ProviderHealthState.DEGRADED
         "online", "up", "running", "healthy" -> ProviderHealthState.HEALTHY
         else -> ProviderHealthState.UNKNOWN
     },

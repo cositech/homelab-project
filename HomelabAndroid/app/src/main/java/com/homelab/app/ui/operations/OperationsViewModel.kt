@@ -3,6 +3,7 @@ package com.homelab.app.ui.operations
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.repository.ProxmoxRepository
+import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.data.repository.UptimeKumaMonitorStatus
 import com.homelab.app.data.repository.UptimeKumaRepository
@@ -36,6 +37,7 @@ data class OperationsUiState(
 class OperationsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
     private val proxmoxRepository: ProxmoxRepository,
+    private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val uptimeKumaRepository: UptimeKumaRepository
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OperationsUiState())
@@ -87,6 +89,10 @@ class OperationsViewModel @Inject constructor(
                     ServiceType.PROXMOX -> {
                         instanceHealth = proxmoxRepository.getNormalizedHealth(instance.id)
                         appendProxmox(instance, assets, alerts, observedAt)
+                    }
+                    ServiceType.PROXMOX_BACKUP_SERVER -> {
+                        instanceHealth = proxmoxBackupServerRepository.getNormalizedHealth(instance.id)
+                        appendProxmoxBackupServer(instance, assets, alerts, observedAt)
                     }
                     ServiceType.UPTIME_KUMA -> {
                         instanceHealth = uptimeKumaRepository.getNormalizedHealth(instance.id)
@@ -205,6 +211,70 @@ class OperationsViewModel @Inject constructor(
             }
             monitor.certDaysRemaining?.takeIf { it in 0.0..30.0 }?.let { days ->
                 alerts += ProviderEvent("uptime-kuma", instance.id, "monitor:${monitor.id}:certificate", "warning", "${monitor.name} certificate expires in ${days.toInt()} days", observedAt, monitor.id)
+            }
+        }
+    }
+
+    private suspend fun appendProxmoxBackupServer(
+        instance: ServiceInstance,
+        assets: MutableList<ProviderResource>,
+        alerts: MutableList<ProviderEvent>,
+        observedAt: Long
+    ) {
+        val dashboard = proxmoxBackupServerRepository.getDashboard(instance.id)
+        dashboard.datastores.forEach { datastore ->
+            val usageRatio = datastore.usageRatio
+            val inMaintenance = !datastore.maintenance.isNullOrBlank()
+            val state = when {
+                inMaintenance -> "maintenance"
+                usageRatio != null && usageRatio >= 0.95 -> "critical"
+                usageRatio != null && usageRatio >= 0.85 -> "warning"
+                else -> "healthy"
+            }
+            assets += ProviderResource(
+                providerId = "proxmox-backup-server",
+                instanceId = instance.id,
+                resourceType = "datastore",
+                resourceId = datastore.store,
+                name = datastore.store,
+                state = state,
+                attributes = buildMap {
+                    datastore.totalBytes?.let { put("totalBytes", it.toString()) }
+                    datastore.usedBytes?.let { put("usedBytes", it.toString()) }
+                    datastore.availableBytes?.let { put("availableBytes", it.toString()) }
+                    usageRatio?.let { put("usagePercent", "%.1f".format(it * 100.0)) }
+                    datastore.maintenance?.let { put("maintenance", it) }
+                    dashboard.version?.let { put("serverVersion", it) }
+                }
+            )
+            when {
+                inMaintenance -> alerts += ProviderEvent(
+                    "proxmox-backup-server",
+                    instance.id,
+                    "datastore:${datastore.store}:maintenance",
+                    "warning",
+                    "PBS datastore ${datastore.store} is in maintenance",
+                    observedAt,
+                    datastore.store
+                )
+                usageRatio != null && usageRatio >= 0.95 -> alerts += ProviderEvent(
+                    "proxmox-backup-server",
+                    instance.id,
+                    "datastore:${datastore.store}:capacity-critical",
+                    "critical",
+                    "PBS datastore ${datastore.store} is ${"%.1f".format(usageRatio * 100.0)}% full",
+                    observedAt,
+                    datastore.store
+                )
+                usageRatio != null && usageRatio >= 0.85 -> alerts += ProviderEvent(
+                    "proxmox-backup-server",
+                    instance.id,
+                    "datastore:${datastore.store}:capacity-warning",
+                    "warning",
+                    "PBS datastore ${datastore.store} is ${"%.1f".format(usageRatio * 100.0)}% full",
+                    observedAt,
+                    datastore.store
+                )
             }
         }
     }

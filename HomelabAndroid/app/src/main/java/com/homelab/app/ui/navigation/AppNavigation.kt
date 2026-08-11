@@ -102,6 +102,7 @@ private fun dashboardRoute(type: ServiceType, instanceId: String): String {
         ServiceType.WAKAPI -> "wakapi/$instanceId/dashboard"
         ServiceType.PLEX -> "plex/$instanceId/dashboard"
         ServiceType.PROXMOX -> "proxmox/$instanceId/dashboard"
+        ServiceType.PROXMOX_BACKUP_SERVER -> Screen.Operations.route
         ServiceType.TRUENAS -> "truenas/$instanceId/dashboard"
         ServiceType.PTERODACTYL -> "pterodactyl/$instanceId/dashboard"
         ServiceType.CALAGOPUS -> "calagopus/$instanceId/dashboard"

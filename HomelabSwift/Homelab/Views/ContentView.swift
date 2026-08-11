@@ -126,6 +126,13 @@ private final class OperationsWorkspace {
                         assets.append(contentsOf: details.assets)
                         alerts.append(contentsOf: details.alerts)
                     }
+                case .proxmoxBackupServer:
+                    if let client = await servicesStore.proxmoxBackupServerClient(instanceId: instance.id) {
+                        currentHealth = await client.getNormalizedHealth()
+                        let details = try await loadProxmoxBackupServer(client: client, instance: instance, observedAt: observedAt)
+                        assets.append(contentsOf: details.assets)
+                        alerts.append(contentsOf: details.alerts)
+                    }
                 case .uptimeKuma:
                     if let client = await servicesStore.uptimeKumaClient(instanceId: instance.id) {
                         currentHealth = await client.getNormalizedHealth()
@@ -267,6 +274,56 @@ private final class OperationsWorkspace {
         return (assets, alerts)
     }
 
+    private func loadProxmoxBackupServer(
+        client: ProxmoxBackupServerAPIClient,
+        instance: ServiceInstance,
+        observedAt: Date
+    ) async throws -> (assets: [ProviderResource], alerts: [ProviderEvent]) {
+        var assets: [ProviderResource] = []
+        var alerts: [ProviderEvent] = []
+        let dashboard = try await client.getDashboard()
+
+        for datastore in dashboard.datastores {
+            let usage = datastore.usageRatio
+            let maintenance = datastore.maintenance?.isEmpty == false
+            let state: String
+            if maintenance {
+                state = "maintenance"
+            } else if (usage ?? 0) >= 0.95 {
+                state = "critical"
+            } else if (usage ?? 0) >= 0.85 {
+                state = "warning"
+            } else {
+                state = "healthy"
+            }
+
+            var attributes: [String: String] = [:]
+            if let total = datastore.totalBytes { attributes["totalBytes"] = String(total) }
+            if let used = datastore.usedBytes { attributes["usedBytes"] = String(used) }
+            if let available = datastore.availableBytes { attributes["availableBytes"] = String(available) }
+            if let usage { attributes["usagePercent"] = String(format: "%.1f", usage * 100) }
+            if let maintenance = datastore.maintenance, !maintenance.isEmpty { attributes["maintenance"] = maintenance }
+
+            assets.append(ProviderResource(
+                providerId: "proxmox-backup-server",
+                instanceId: instance.id,
+                resourceType: "datastore",
+                resourceId: datastore.store,
+                name: datastore.store,
+                state: state,
+                attributes: attributes
+            ))
+
+            if maintenance {
+                alerts.append(ProviderEvent(providerId: "proxmox-backup-server", instanceId: instance.id, eventId: "datastore:\(datastore.store):maintenance", severity: "warning", message: "PBS datastore \(datastore.store) is in maintenance", occurredAt: observedAt, resourceId: datastore.store))
+            } else if let usage, usage >= 0.85 {
+                let severity = usage >= 0.95 ? "critical" : "warning"
+                alerts.append(ProviderEvent(providerId: "proxmox-backup-server", instanceId: instance.id, eventId: "datastore:\(datastore.store):capacity", severity: severity, message: "PBS datastore \(datastore.store) is \(String(format: "%.1f", usage * 100))% full", occurredAt: observedAt, resourceId: datastore.store))
+            }
+        }
+        return (assets, alerts)
+    }
+
     private func reachabilityHealth(instance: ServiceInstance, providerId: String, reachable: Bool?, observedAt: Date) -> ProviderHealth {
         ProviderHealth(
             providerId: providerId,
@@ -311,7 +368,7 @@ private final class OperationsWorkspace {
     }
 }
 
-private struct OperationsView: View {
+struct OperationsView: View {
     @Environment(ServicesStore.self) private var servicesStore
     @State private var workspace = OperationsWorkspace()
     @State private var section: OperationsSection = .health
@@ -406,7 +463,7 @@ private struct OperationsView: View {
     }
 
     private func assetCard(_ item: ProviderResource) -> some View {
-        let state: ProviderHealthState = ["offline", "down", "unavailable"].contains(item.state?.lowercased() ?? "") ? .unavailable : ["degraded", "pending", "paused"].contains(item.state?.lowercased() ?? "") ? .degraded : ["online", "up", "running", "healthy"].contains(item.state?.lowercased() ?? "") ? .healthy : .unknown
+        let state: ProviderHealthState = ["offline", "down", "unavailable", "critical"].contains(item.state?.lowercased() ?? "") ? .unavailable : ["degraded", "pending", "paused", "warning", "maintenance"].contains(item.state?.lowercased() ?? "") ? .degraded : ["online", "up", "running", "healthy"].contains(item.state?.lowercased() ?? "") ? .healthy : .unknown
         return OperationsCard(title: item.name, subtitle: "\(item.providerId) · \(item.resourceType) · \(item.resourceId)", trailing: item.state ?? item.resourceType, state: state)
     }
 

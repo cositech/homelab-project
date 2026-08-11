@@ -31,6 +31,7 @@ import com.homelab.app.data.repository.UnifiRepository
 import com.homelab.app.data.repository.UptimeKumaRepository
 import com.homelab.app.data.repository.WakapiRepository
 import com.homelab.app.data.repository.ProxmoxRepository
+import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.CalagopusRepository
 import com.homelab.app.domain.model.PiHoleAuthMode
@@ -75,6 +76,7 @@ class ServiceLoginViewModel @Inject constructor(
     private val mediaArrRepository: MediaArrRepository,
     private val wakapiRepository: WakapiRepository,
     private val proxmoxRepository: ProxmoxRepository,
+    private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val trueNasRepository: TrueNasRepository,
     private val pterodactylRepository: PterodactylRepository,
     private val calagopusRepository: CalagopusRepository
@@ -626,6 +628,33 @@ class ServiceLoginViewModel @Inject constructor(
                                     fallbackUrl = cleanFallbackUrl
                                 )
                             }
+                        }
+                        ServiceType.PROXMOX_BACKUP_SERVER -> {
+                            require(trimmedUsername.isNotBlank()) { context.getString(R.string.login_error_username_required) }
+                            val tokenSecret = trimmedPassword.ifBlank {
+                                if (existing != null && existing.url == cleanUrl && existing.username == trimmedUsername) {
+                                    return@ifBlank existing.password.orEmpty()
+                                }
+                                throw IllegalArgumentException(context.getString(R.string.login_error_password_required))
+                            }
+                            require(tokenSecret.isNotBlank()) { context.getString(R.string.login_error_password_required) }
+                            proxmoxBackupServerRepository.authenticate(
+                                url = cleanUrl,
+                                tokenId = trimmedUsername,
+                                tokenSecret = tokenSecret,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                username = trimmedUsername,
+                                password = tokenSecret,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
                         }
                         ServiceType.TRUENAS -> {
                             require(trimmedApiKey.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
