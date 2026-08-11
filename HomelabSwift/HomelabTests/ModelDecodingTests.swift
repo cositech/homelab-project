@@ -1323,4 +1323,261 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(params["force"], "1")
         XCTAssertNil(params["unique"])
     }
+    private func controlledActionRequest(
+        risk: ControlledActionRisk = .medium,
+        dryRun: Bool = false,
+        confirmed: Bool = false,
+        idempotencyKey: String = "0123456789abcdef"
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: "request-1",
+            providerRef: "proxmox:cluster-a",
+            action: "guest.shutdown",
+            targetRef: "qemu/101",
+            risk: risk,
+            requestedAt: "1970-01-01T00:00:01Z",
+            idempotencyKey: idempotencyKey,
+            dryRun: dryRun,
+            confirmed: confirmed
+        )
+    }
+
+    func testControlledActionViewerCannotExecuteWrites() {
+        let decision = ControlledActionPolicy.evaluate(
+            controlledActionRequest(confirmed: true),
+            actorRole: .viewer,
+            providerCapabilities: [.writeActions]
+        )
+
+        XCTAssertEqual(decision.outcome, .denied)
+        XCTAssertEqual(decision.reasonCode, "insufficient-role")
+    }
+
+    func testControlledActionMediumRiskRequiresConfirmation() {
+        let decision = ControlledActionPolicy.evaluate(
+            controlledActionRequest(),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        )
+
+        XCTAssertEqual(decision.outcome, .confirmationRequired)
+        XCTAssertFalse(decision.mayExecute)
+    }
+
+    func testControlledActionHighRiskRequiresAdministrator() {
+        let decision = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .high, confirmed: true),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        )
+
+        XCTAssertEqual(decision.outcome, .denied)
+        XCTAssertEqual(decision.requiredRole, .admin)
+    }
+
+    func testControlledActionDryRunDoesNotInvokeMutation() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 2) }
+        )
+
+        let result = await coordinator.execute(
+            request: controlledActionRequest(dryRun: true),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .dryRun)
+        XCTAssertEqual(invocations, 0)
+    }
+
+    func testControlledActionIdempotencyReturnsTerminalResult() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 3) }
+        )
+        let request = controlledActionRequest(confirmed: true)
+
+        let first = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        let second = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+        let auditRecords = await coordinator.auditSnapshot()
+        let states = auditRecords.map(\.state)
+
+        XCTAssertEqual(first.state, .succeeded)
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(states, [.queued, .succeeded])
+    }
+
+    func testControlledActionProviderCapabilityIsEnforced() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+
+        let result = await coordinator.execute(
+            request: controlledActionRequest(confirmed: true),
+            actorRole: .admin,
+            providerCapabilities: []
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .rejected)
+        XCTAssertEqual(result.reasonCode, "provider-write-capability-required")
+        XCTAssertEqual(invocations, 0)
+    }
+
+
+    func testControlledActionDecodesOmittedOptionalFields() throws {
+        let payload = Data(#"""
+        {
+          "schemaVersion": "1.0",
+          "id": "request-1",
+          "providerRef": "proxmox:cluster-a",
+          "action": "guest.start",
+          "targetRef": "qemu/101",
+          "risk": "low",
+          "requestedAt": "1970-01-01T00:00:01Z",
+          "idempotencyKey": "0123456789abcdef"
+        }
+        """#.utf8)
+
+        let request = try JSONDecoder().decode(ControlledActionRequest.self, from: payload)
+
+        XCTAssertNil(request.tenantRef)
+        XCTAssertEqual(request.parameters, [:])
+        XCTAssertFalse(request.dryRun)
+        XCTAssertFalse(request.confirmed)
+    }
+
+    func testControlledActionSerializesConcurrentMutations() async {
+        let probe = ActionConcurrencyProbe()
+        let coordinator = ControlledActionCoordinator()
+        let firstRequest = controlledActionRequest(confirmed: true, idempotencyKey: "first-key-0000001")
+        let secondRequest = controlledActionRequest(confirmed: true, idempotencyKey: "second-key-000001")
+
+        async let first = coordinator.execute(
+            request: firstRequest,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await probe.begin()
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            await probe.end()
+        }
+        async let second = coordinator.execute(
+            request: secondRequest,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await probe.begin()
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            await probe.end()
+        }
+        _ = await (first, second)
+
+        let maximumConcurrent = await probe.maximumConcurrent
+        XCTAssertEqual(maximumConcurrent, 1)
+    }
+
+    func testControlledActionDeduplicatesConcurrentSameKey() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = controlledActionRequest(confirmed: true)
+
+        async let first = coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        async let second = coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        let results = await (first, second)
+        let invocations = await counter.value
+
+        XCTAssertEqual(results.0, results.1)
+        XCTAssertEqual(invocations, 1)
+    }
+
+    func testControlledActionIdempotencySurvivesAuditPruning() async {
+        let counter = ActionInvocationCounter()
+        let ledger = ControlledActionLedger(maximumRecords: 1)
+        let coordinator = ControlledActionCoordinator(ledger: ledger)
+        let firstRequest = controlledActionRequest(confirmed: true, idempotencyKey: "first-key-0000001")
+        let secondRequest = controlledActionRequest(confirmed: true, idempotencyKey: "second-key-000001")
+
+        _ = await coordinator.execute(
+            request: firstRequest,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        _ = await coordinator.execute(
+            request: secondRequest,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        _ = await coordinator.execute(
+            request: firstRequest,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+        let records = await coordinator.auditSnapshot()
+
+        XCTAssertEqual(invocations, 2)
+        XCTAssertEqual(records.count, 1)
+    }
+
+}
+
+private actor ActionInvocationCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
+    }
+}
+
+private actor ActionConcurrencyProbe {
+    private var active = 0
+    private(set) var maximumConcurrent = 0
+
+    func begin() {
+        active += 1
+        maximumConcurrent = max(maximumConcurrent, active)
+    }
+
+    func end() {
+        active -= 1
+    }
 }

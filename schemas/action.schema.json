@@ -16,6 +16,7 @@
     "requestedAt": {"type": "string", "format": "date-time"},
     "idempotencyKey": {"type": "string", "minLength": 16, "maxLength": 256},
     "parameters": {"type": "object"},
-    "dryRun": {"type": "boolean", "default": false}
+    "dryRun": {"type": "boolean", "default": false},
+    "confirmed": {"type": "boolean", "default": false}
   }
 }

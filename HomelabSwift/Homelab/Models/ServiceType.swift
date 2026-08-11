@@ -661,3 +661,375 @@ public struct ServiceColorSet {
         self.bg = bg
     }
 }
+enum ControlledActionRisk: String, Codable, CaseIterable, Equatable, Sendable {
+    case low
+    case medium
+    case high
+    case critical
+}
+
+enum ControlledActionRole: String, Codable, CaseIterable, Equatable, Sendable {
+    case viewer
+    case operatorRole = "operator"
+    case admin
+
+    var level: Int {
+        switch self {
+        case .viewer: return 0
+        case .operatorRole: return 1
+        case .admin: return 2
+        }
+    }
+}
+
+struct ControlledActionRequest: Codable, Equatable, Sendable {
+    var schemaVersion: String
+    let id: String
+    let providerRef: String
+    var tenantRef: String?
+    let action: String
+    let targetRef: String
+    let risk: ControlledActionRisk
+    let requestedAt: String
+    let idempotencyKey: String
+    var parameters: [String: String]
+    var dryRun: Bool
+    var confirmed: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, id, providerRef, tenantRef, action, targetRef, risk
+        case requestedAt, idempotencyKey, parameters, dryRun, confirmed
+    }
+
+    init(
+        schemaVersion: String = "1.0",
+        id: String,
+        providerRef: String,
+        tenantRef: String? = nil,
+        action: String,
+        targetRef: String,
+        risk: ControlledActionRisk,
+        requestedAt: String,
+        idempotencyKey: String,
+        parameters: [String: String] = [:],
+        dryRun: Bool = false,
+        confirmed: Bool = false
+    ) {
+        self.schemaVersion = schemaVersion
+        self.id = id
+        self.providerRef = providerRef
+        self.tenantRef = tenantRef
+        self.action = action
+        self.targetRef = targetRef
+        self.risk = risk
+        self.requestedAt = requestedAt
+        self.idempotencyKey = idempotencyKey
+        self.parameters = parameters
+        self.dryRun = dryRun
+        self.confirmed = confirmed
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(String.self, forKey: .schemaVersion)
+        id = try container.decode(String.self, forKey: .id)
+        providerRef = try container.decode(String.self, forKey: .providerRef)
+        tenantRef = try container.decodeIfPresent(String.self, forKey: .tenantRef)
+        action = try container.decode(String.self, forKey: .action)
+        targetRef = try container.decode(String.self, forKey: .targetRef)
+        risk = try container.decode(ControlledActionRisk.self, forKey: .risk)
+        requestedAt = try container.decode(String.self, forKey: .requestedAt)
+        idempotencyKey = try container.decode(String.self, forKey: .idempotencyKey)
+        parameters = try container.decodeIfPresent([String: String].self, forKey: .parameters) ?? [:]
+        dryRun = try container.decodeIfPresent(Bool.self, forKey: .dryRun) ?? false
+        confirmed = try container.decodeIfPresent(Bool.self, forKey: .confirmed) ?? false
+    }
+}
+
+enum ActionPolicyOutcome: String, Codable, Equatable, Sendable {
+    case denied
+    case confirmationRequired = "confirmation_required"
+    case approved
+    case dryRunApproved = "dry_run_approved"
+}
+
+struct ActionPolicyDecision: Codable, Equatable, Sendable {
+    let outcome: ActionPolicyOutcome
+    let reasonCode: String
+    let requiredRole: ControlledActionRole
+    let confirmationRequired: Bool
+
+    var mayExecute: Bool { outcome == .approved }
+}
+
+enum ControlledActionPolicy {
+    static func evaluate(
+        _ request: ControlledActionRequest,
+        actorRole: ControlledActionRole,
+        providerCapabilities: Set<ProviderCapability>
+    ) -> ActionPolicyDecision {
+        let requiredRole: ControlledActionRole
+        switch request.risk {
+        case .low, .medium: requiredRole = .operatorRole
+        case .high, .critical: requiredRole = .admin
+        }
+        let confirmationRequired = request.risk != .low
+
+        let invalidReason: String?
+        if request.schemaVersion != "1.0" {
+            invalidReason = "unsupported-schema-version"
+        } else if request.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            invalidReason = "invalid-request-id"
+        } else if request.providerRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            invalidReason = "invalid-provider-ref"
+        } else if request.targetRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            invalidReason = "invalid-target-ref"
+        } else if request.requestedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            invalidReason = "invalid-requested-at"
+        } else if request.action.range(
+            of: "^[a-z][a-z0-9.-]{1,127}$",
+            options: .regularExpression
+        ) == nil {
+            invalidReason = "invalid-action"
+        } else if !(16...256).contains(request.idempotencyKey.count) {
+            invalidReason = "invalid-idempotency-key"
+        } else {
+            invalidReason = nil
+        }
+
+        if let invalidReason {
+            return ActionPolicyDecision(
+                outcome: .denied,
+                reasonCode: invalidReason,
+                requiredRole: requiredRole,
+                confirmationRequired: confirmationRequired
+            )
+        }
+        guard providerCapabilities.contains(.writeActions) else {
+            return ActionPolicyDecision(
+                outcome: .denied,
+                reasonCode: "provider-write-capability-required",
+                requiredRole: requiredRole,
+                confirmationRequired: confirmationRequired
+            )
+        }
+        guard actorRole.level >= requiredRole.level else {
+            return ActionPolicyDecision(
+                outcome: .denied,
+                reasonCode: "insufficient-role",
+                requiredRole: requiredRole,
+                confirmationRequired: confirmationRequired
+            )
+        }
+        if request.dryRun {
+            return ActionPolicyDecision(
+                outcome: .dryRunApproved,
+                reasonCode: "dry-run-validated",
+                requiredRole: requiredRole,
+                confirmationRequired: confirmationRequired
+            )
+        }
+        if confirmationRequired && !request.confirmed {
+            return ActionPolicyDecision(
+                outcome: .confirmationRequired,
+                reasonCode: "explicit-confirmation-required",
+                requiredRole: requiredRole,
+                confirmationRequired: true
+            )
+        }
+        return ActionPolicyDecision(
+            outcome: .approved,
+            reasonCode: "policy-approved",
+            requiredRole: requiredRole,
+            confirmationRequired: confirmationRequired
+        )
+    }
+}
+
+enum ActionExecutionState: String, Codable, Equatable, Sendable {
+    case queued
+    case succeeded
+    case failed
+    case rejected
+    case dryRun = "dry_run"
+}
+
+struct ActionAuditRecord: Codable, Equatable, Sendable {
+    let auditId: UUID
+    let requestId: String
+    let providerRef: String
+    let action: String
+    let targetRef: String
+    let risk: ControlledActionRisk
+    let actorRole: ControlledActionRole
+    let idempotencyKey: String
+    let state: ActionExecutionState
+    let reasonCode: String
+    let recordedAt: Date
+}
+
+actor ControlledActionLedger {
+    private let maximumRecords: Int
+    private var records: [ActionAuditRecord] = []
+
+    init(maximumRecords: Int = 500) {
+        precondition(maximumRecords > 0)
+        self.maximumRecords = maximumRecords
+    }
+
+    func append(_ record: ActionAuditRecord) {
+        records.append(record)
+        if records.count > maximumRecords {
+            records.removeFirst(records.count - maximumRecords)
+        }
+    }
+
+    func snapshot() -> [ActionAuditRecord] {
+        records
+    }
+}
+
+actor ControlledActionExecutionGate {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func withLock<T: Sendable>(_ operation: @Sendable () async -> T) async -> T {
+        await acquire()
+        let result = await operation()
+        release()
+        return result
+    }
+
+    private func acquire() async {
+        if !isLocked {
+            isLocked = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func release() {
+        guard !waiters.isEmpty else {
+            isLocked = false
+            return
+        }
+        waiters.removeFirst().resume()
+    }
+}
+
+actor ControlledActionCoordinator {
+    private let ledger: ControlledActionLedger
+    private let executionGate: ControlledActionExecutionGate
+    private let now: @Sendable () -> Date
+    private var terminalResults: [String: ActionAuditRecord] = [:]
+    private var inFlight: [String: Task<ActionAuditRecord, Never>] = [:]
+
+    init(
+        ledger: ControlledActionLedger = ControlledActionLedger(),
+        executionGate: ControlledActionExecutionGate = ControlledActionExecutionGate(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.ledger = ledger
+        self.executionGate = executionGate
+        self.now = now
+    }
+
+    func execute(
+        request: ControlledActionRequest,
+        actorRole: ControlledActionRole,
+        providerCapabilities: Set<ProviderCapability>,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async -> ActionAuditRecord {
+        if let completed = terminalResults[request.idempotencyKey] {
+            return completed
+        }
+        if let existingTask = inFlight[request.idempotencyKey] {
+            return await existingTask.value
+        }
+
+        let task = Task { [executionGate, ledger, now] in
+            await executionGate.withLock {
+                await Self.perform(
+                    request: request,
+                    actorRole: actorRole,
+                    providerCapabilities: providerCapabilities,
+                    ledger: ledger,
+                    now: now,
+                    operation: operation
+                )
+            }
+        }
+        inFlight[request.idempotencyKey] = task
+        let result = await task.value
+        terminalResults[request.idempotencyKey] = result
+        inFlight[request.idempotencyKey] = nil
+        return result
+    }
+
+    func auditSnapshot() async -> [ActionAuditRecord] {
+        await ledger.snapshot()
+    }
+
+    private static func perform(
+        request: ControlledActionRequest,
+        actorRole: ControlledActionRole,
+        providerCapabilities: Set<ProviderCapability>,
+        ledger: ControlledActionLedger,
+        now: @Sendable () -> Date,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async -> ActionAuditRecord {
+        let decision = ControlledActionPolicy.evaluate(
+            request,
+            actorRole: actorRole,
+            providerCapabilities: providerCapabilities
+        )
+        switch decision.outcome {
+        case .denied, .confirmationRequired:
+            return await audit(request: request, actorRole: actorRole, state: .rejected, reasonCode: decision.reasonCode, ledger: ledger, now: now)
+        case .dryRunApproved:
+            return await audit(request: request, actorRole: actorRole, state: .dryRun, reasonCode: decision.reasonCode, ledger: ledger, now: now)
+        case .approved:
+            _ = await audit(request: request, actorRole: actorRole, state: .queued, reasonCode: "queued", ledger: ledger, now: now)
+            do {
+                try await operation()
+                return await audit(request: request, actorRole: actorRole, state: .succeeded, reasonCode: "completed", ledger: ledger, now: now)
+            } catch {
+                return await audit(
+                    request: request,
+                    actorRole: actorRole,
+                    state: .failed,
+                    reasonCode: String(describing: type(of: error)),
+                    ledger: ledger,
+                    now: now
+                )
+            }
+        }
+    }
+
+    private static func audit(
+        request: ControlledActionRequest,
+        actorRole: ControlledActionRole,
+        state: ActionExecutionState,
+        reasonCode: String,
+        ledger: ControlledActionLedger,
+        now: @Sendable () -> Date
+    ) async -> ActionAuditRecord {
+        let record = ActionAuditRecord(
+            auditId: UUID(),
+            requestId: request.id,
+            providerRef: request.providerRef,
+            action: request.action,
+            targetRef: request.targetRef,
+            risk: request.risk,
+            actorRole: actorRole,
+            idempotencyKey: request.idempotencyKey,
+            state: state,
+            reasonCode: reasonCode,
+            recordedAt: now()
+        )
+        await ledger.append(record)
+        return record
+    }
+}
