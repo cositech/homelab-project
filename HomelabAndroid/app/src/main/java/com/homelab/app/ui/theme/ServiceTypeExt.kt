@@ -42,6 +42,9 @@ val ServiceType.primaryColor: Color
         ServiceType.PROXMOX_BACKUP_SERVER -> if (isThemeDark()) Color(0xFFF59E0B) else Color(0xFFB45309)
         ServiceType.PROMETHEUS -> Color(0xFFE6522C)
         ServiceType.GRAFANA -> Color(0xFFF46800)
+        ServiceType.NETBOX -> Color(0xFF00A651)
+        ServiceType.ZAMMAD -> Color(0xFFCA2317)
+        ServiceType.PEGAPROX -> Color(0xFF5B4BDB)
         ServiceType.JELLYSTAT -> Color(0xFFC93DF6)
         ServiceType.BESZEL -> Color(0xFF8B5CF6)
         ServiceType.GITEA -> Color(0xFF609926)
@@ -84,6 +87,9 @@ val ServiceType.backgroundColor: Color
         ServiceType.PROXMOX_BACKUP_SERVER -> (if (isThemeDark()) Color(0xFFF59E0B) else Color(0xFFB45309)).copy(alpha = 0.07f)
         ServiceType.PROMETHEUS -> Color(0xFFE6522C).copy(alpha = 0.12f)
         ServiceType.GRAFANA -> Color(0xFFF46800).copy(alpha = 0.12f)
+        ServiceType.NETBOX -> Color(0xFF00A651).copy(alpha = 0.12f)
+        ServiceType.ZAMMAD -> Color(0xFFCA2317).copy(alpha = 0.12f)
+        ServiceType.PEGAPROX -> Color(0xFF5B4BDB).copy(alpha = 0.12f)
         ServiceType.PLEX -> Color(0xFFE5A00D).copy(alpha = 0.12f)
         ServiceType.JELLYSTAT -> Color(0xFFC93DF6).copy(alpha = 0.12f)
         ServiceType.BESZEL -> Color(0xFF8B5CF6).copy(alpha = 0.12f)
@@ -126,6 +132,9 @@ val ServiceType.iconUrl: String
         ServiceType.PROXMOX_BACKUP_SERVER -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/proxmox-backup-server.png"
         ServiceType.PROMETHEUS -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/prometheus.png"
         ServiceType.GRAFANA -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/grafana.png"
+        ServiceType.NETBOX -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/netbox.png"
+        ServiceType.ZAMMAD -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/zammad.png"
+        ServiceType.PEGAPROX -> "https://raw.githubusercontent.com/PegaProx/project-pegaprox/main/web/favicon.png"
         ServiceType.PLEX -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/plex.png"
         ServiceType.JELLYSTAT -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/jellystat.png"
         ServiceType.BESZEL -> "https://cdn.jsdelivr.net/gh/selfhst/icons/png/beszel.png"
@@ -258,6 +267,9 @@ val ServiceType.fallbackIcon: ImageVector
         ServiceType.PROXMOX_BACKUP_SERVER -> Icons.Default.Storage
         ServiceType.PROMETHEUS -> Icons.Default.ShowChart
         ServiceType.GRAFANA -> Icons.Default.Dashboard
+        ServiceType.NETBOX -> Icons.Default.Storage
+        ServiceType.ZAMMAD -> Icons.Default.Source
+        ServiceType.PEGAPROX -> Icons.Default.Dns
         ServiceType.TRUENAS -> Icons.Default.Storage
         ServiceType.PTERODACTYL -> Icons.Default.Dns
         ServiceType.CALAGOPUS -> Icons.Default.Dns

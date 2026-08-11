@@ -33,6 +33,7 @@ private final class ServiceClientManager {
     private var proxmoxBackupServerClients: [UUID: ProxmoxBackupServerAPIClient] = [:]
     private var prometheusClients: [UUID: PrometheusAPIClient] = [:]
     private var grafanaClients: [UUID: GrafanaAPIClient] = [:]
+    private var infrastructureClients: [UUID: InfrastructureOperationsAPIClient] = [:]
     private var truenasClients: [UUID: TrueNASAPIClient] = [:]
     private var pterodactylClients: [UUID: PterodactylAPIClient] = [:]
     private var calagopusClients: [UUID: CalagopusAPIClient] = [:]
@@ -291,6 +292,13 @@ private final class ServiceClientManager {
         return client
     }
 
+    func infrastructureClient(id: UUID, type: ServiceType) -> InfrastructureOperationsAPIClient {
+        if let client = infrastructureClients[id] { return client }
+        let client = InfrastructureOperationsAPIClient(instanceId: id, serviceType: type)
+        infrastructureClients[id] = client
+        return client
+    }
+
     func truenasClient(id: UUID) -> TrueNASAPIClient {
         if let client = truenasClients[id] {
             return client
@@ -387,6 +395,8 @@ private final class ServiceClientManager {
             prometheusClients.removeValue(forKey: id)
         case .grafana:
             grafanaClients.removeValue(forKey: id)
+        case .netbox, .zammad, .pegaprox:
+            infrastructureClients.removeValue(forKey: id)
         case .truenas:
             truenasClients.removeValue(forKey: id)
         case .pterodactyl:
@@ -430,6 +440,7 @@ private final class ServiceClientManager {
         proxmoxBackupServerClients = proxmoxBackupServerClients.filter { knownInstanceIds.contains($0.key) }
         prometheusClients = prometheusClients.filter { knownInstanceIds.contains($0.key) }
         grafanaClients = grafanaClients.filter { knownInstanceIds.contains($0.key) }
+        infrastructureClients = infrastructureClients.filter { knownInstanceIds.contains($0.key) }
         truenasClients = truenasClients.filter { knownInstanceIds.contains($0.key) }
         pterodactylClients = pterodactylClients.filter { knownInstanceIds.contains($0.key) }
         calagopusClients = calagopusClients.filter { knownInstanceIds.contains($0.key) }
@@ -785,6 +796,11 @@ final class ServicesStore {
         return clientManager.grafanaClient(id: instance.id)
     }
 
+    func infrastructureClient(instanceId: UUID) async -> InfrastructureOperationsAPIClient? {
+        guard let instance = instancesById[instanceId], [.netbox, .zammad, .pegaprox].contains(instance.type) else { return nil }
+        return clientManager.infrastructureClient(id: instance.id, type: instance.type)
+    }
+
     func truenasClient(instanceId: UUID) async -> TrueNASAPIClient? {
         guard let instance = instancesById[instanceId], instance.type == .truenas else { return nil }
         return clientManager.truenasClient(id: instance.id)
@@ -875,6 +891,8 @@ final class ServicesStore {
             ok = await clientManager.prometheusClient(id: instanceId).ping()
         case .grafana:
             ok = await clientManager.grafanaClient(id: instanceId).ping()
+        case .netbox, .zammad, .pegaprox:
+            ok = await clientManager.infrastructureClient(id: instanceId, type: instance.type).ping()
         case .truenas:
             ok = await clientManager.truenasClient(id: instanceId).ping()
         case .pterodactyl:
@@ -1410,6 +1428,15 @@ final class ServicesStore {
                 url: instance.url,
                 fallbackUrl: instance.fallbackUrl,
                 serviceAccountToken: instance.apiKey,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
+        case .netbox, .zammad, .pegaprox:
+            let client = clientManager.infrastructureClient(id: instance.id, type: instance.type)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                apiToken: instance.apiKey,
                 allowSelfSigned: instance.allowSelfSigned,
                 tlsPolicy: instance.tlsPolicy
             )

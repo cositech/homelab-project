@@ -129,7 +129,13 @@ fun ServiceLoginScreen(
             proxmoxOtp = instance.proxmoxOtp.orEmpty()
         } else {
             username = instance.username.orEmpty()
-            apiKey = if (serviceType in setOf(ServiceType.PROMETHEUS, ServiceType.GRAFANA)) "" else instance.apiKey.orEmpty()
+            apiKey = if (serviceType in setOf(
+                    ServiceType.PROMETHEUS,
+                    ServiceType.GRAFANA,
+                    ServiceType.NETBOX,
+                    ServiceType.ZAMMAD,
+                    ServiceType.PEGAPROX
+                )) "" else instance.apiKey.orEmpty()
         }
         fallbackUrl = instance.fallbackUrl.orEmpty()
         allowSelfSigned = instance.allowSelfSigned
@@ -245,6 +251,9 @@ fun ServiceLoginScreen(
                 ServiceType.PROXMOX_BACKUP_SERVER -> stringResource(R.string.login_hint_proxmox_backup_server)
                 ServiceType.PROMETHEUS -> stringResource(R.string.login_hint_prometheus)
                 ServiceType.GRAFANA -> stringResource(R.string.login_hint_grafana)
+                ServiceType.NETBOX -> stringResource(R.string.login_hint_netbox)
+                ServiceType.ZAMMAD -> stringResource(R.string.login_hint_zammad)
+                ServiceType.PEGAPROX -> stringResource(R.string.login_hint_pegaprox)
                 else -> null
             }
 
@@ -515,7 +524,10 @@ fun ServiceLoginScreen(
                 serviceType == ServiceType.TRUENAS ||
                 serviceType == ServiceType.PTERODACTYL ||
                 serviceType == ServiceType.CALAGOPUS ||
-                serviceType == ServiceType.GRAFANA
+                serviceType == ServiceType.GRAFANA ||
+                serviceType == ServiceType.NETBOX ||
+                serviceType == ServiceType.ZAMMAD ||
+                serviceType == ServiceType.PEGAPROX
             ) {
                 SecretField(
                     value = apiKey,

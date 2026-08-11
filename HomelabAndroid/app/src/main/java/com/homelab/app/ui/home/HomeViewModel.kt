@@ -47,6 +47,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.homelab.app.data.repository.ObservabilityRepository
+import com.homelab.app.data.repository.InfrastructureOperationsRepository
 import kotlin.math.floor
 
 @HiltViewModel
@@ -78,6 +79,7 @@ class HomeViewModel @Inject constructor(
     private val pterodactylRepository: PterodactylRepository,
     private val calagopusRepository: CalagopusRepository,
     private val observabilityRepository: ObservabilityRepository,
+    private val infrastructureOperationsRepository: InfrastructureOperationsRepository,
     private val localPreferencesRepository: LocalPreferencesRepository
 ) : ViewModel() {
 
@@ -389,6 +391,18 @@ class HomeViewModel @Inject constructor(
             ServiceType.GRAFANA -> {
                 val overview = observabilityRepository.getGrafanaOverview(instanceId)
                 InstanceSummary("${overview.dashboards.size}", "/ ${overview.dataSources.size}", "grafana_dashboards_data_sources")
+            }
+            ServiceType.NETBOX -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["devices"] ?: "0", "/ ${health.attributes["virtualMachines"] ?: "0"}", "devices / virtual machines")
+            }
+            ServiceType.ZAMMAD -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["tickets"] ?: "0", "/ ${health.attributes["escalated"] ?: "0"}", "tickets / escalated")
+            }
+            ServiceType.PEGAPROX -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["clusters"] ?: "0", "/ ${health.attributes["activeAlerts"] ?: "0"}", "clusters / active alerts")
             }
             ServiceType.TRUENAS -> {
                 val dashboard = trueNasRepository.getSummary(instanceId)

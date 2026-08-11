@@ -484,6 +484,9 @@ struct BackupView: View {
         case .proxmoxBackupServer: return ServiceType.proxmoxBackupServer.displayName
         case .prometheus: return ServiceType.prometheus.displayName
         case .grafana: return ServiceType.grafana.displayName
+        case .netbox: return ServiceType.netbox.displayName
+        case .zammad: return ServiceType.zammad.displayName
+        case .pegaprox: return ServiceType.pegaprox.displayName
         case .truenas: return ServiceType.truenas.displayName
         case .pterodactyl: return ServiceType.pterodactyl.displayName
         case .calagopus: return ServiceType.calagopus.displayName
