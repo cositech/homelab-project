@@ -19,6 +19,7 @@ import com.homelab.app.data.repository.PatchmonRepository
 import com.homelab.app.data.repository.PangolinRepository
 import com.homelab.app.data.repository.PlexRepository
 import com.homelab.app.data.repository.ProxmoxRepository
+import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.CalagopusRepository
 import com.homelab.app.data.repository.AdGuardHomeRepository
@@ -45,6 +46,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.homelab.app.data.repository.ObservabilityRepository
+import com.homelab.app.data.repository.InfrastructureOperationsRepository
 import kotlin.math.floor
 
 @HiltViewModel
@@ -69,11 +72,14 @@ class HomeViewModel @Inject constructor(
     private val patchmonRepository: PatchmonRepository,
     private val plexRepository: PlexRepository,
     private val proxmoxRepository: ProxmoxRepository,
+    private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val trueNasRepository: TrueNasRepository,
     private val pangolinRepository: PangolinRepository,
     private val wakapiRepository: com.homelab.app.data.repository.WakapiRepository,
     private val pterodactylRepository: PterodactylRepository,
     private val calagopusRepository: CalagopusRepository,
+    private val observabilityRepository: ObservabilityRepository,
+    private val infrastructureOperationsRepository: InfrastructureOperationsRepository,
     private val localPreferencesRepository: LocalPreferencesRepository
 ) : ViewModel() {
 
@@ -369,6 +375,34 @@ class HomeViewModel @Inject constructor(
                     totalRunning += vms.count { it.isRunning } + lxcs.count { it.isRunning }
                 }
                 InstanceSummary("$totalRunning", "/ $totalGuests", "proxmox_guests_running")
+            }
+            ServiceType.PROXMOX_BACKUP_SERVER -> {
+                val datastores = proxmoxBackupServerRepository.getDashboard(instanceId).datastores
+                val healthy = datastores.count { datastore ->
+                    datastore.maintenance.isNullOrBlank() && (datastore.usageRatio ?: 0.0) < 0.85
+                }
+                InstanceSummary("$healthy", "/ ${datastores.size}", "datastores_healthy")
+            }
+            ServiceType.PROMETHEUS -> {
+                val overview = observabilityRepository.getPrometheusOverview(instanceId)
+                val healthy = overview.targets.count { it.health.equals("up", ignoreCase = true) }
+                InstanceSummary("$healthy", "/ ${overview.targets.size}", "prometheus_targets_healthy")
+            }
+            ServiceType.GRAFANA -> {
+                val overview = observabilityRepository.getGrafanaOverview(instanceId)
+                InstanceSummary("${overview.dashboards.size}", "/ ${overview.dataSources.size}", "grafana_dashboards_data_sources")
+            }
+            ServiceType.NETBOX -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["devices"] ?: "0", "/ ${health.attributes["virtualMachines"] ?: "0"}", "devices / virtual machines")
+            }
+            ServiceType.ZAMMAD -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["tickets"] ?: "0", "/ ${health.attributes["escalated"] ?: "0"}", "tickets / escalated")
+            }
+            ServiceType.PEGAPROX -> {
+                val health = infrastructureOperationsRepository.getSnapshot(instanceId).health
+                InstanceSummary(health.attributes["clusters"] ?: "0", "/ ${health.attributes["activeAlerts"] ?: "0"}", "clusters / active alerts")
             }
             ServiceType.TRUENAS -> {
                 val dashboard = trueNasRepository.getSummary(instanceId)

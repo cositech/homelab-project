@@ -129,7 +129,13 @@ fun ServiceLoginScreen(
             proxmoxOtp = instance.proxmoxOtp.orEmpty()
         } else {
             username = instance.username.orEmpty()
-            apiKey = instance.apiKey.orEmpty()
+            apiKey = if (serviceType in setOf(
+                    ServiceType.PROMETHEUS,
+                    ServiceType.GRAFANA,
+                    ServiceType.NETBOX,
+                    ServiceType.ZAMMAD,
+                    ServiceType.PEGAPROX
+                )) "" else instance.apiKey.orEmpty()
         }
         fallbackUrl = instance.fallbackUrl.orEmpty()
         allowSelfSigned = instance.allowSelfSigned
@@ -242,6 +248,12 @@ fun ServiceLoginScreen(
                 ServiceType.TRUENAS -> stringResource(R.string.login_hint_truenas)
                 ServiceType.PTERODACTYL -> stringResource(R.string.login_hint_pterodactyl)
                 ServiceType.CALAGOPUS -> stringResource(R.string.login_hint_calagopus)
+                ServiceType.PROXMOX_BACKUP_SERVER -> stringResource(R.string.login_hint_proxmox_backup_server)
+                ServiceType.PROMETHEUS -> stringResource(R.string.login_hint_prometheus)
+                ServiceType.GRAFANA -> stringResource(R.string.login_hint_grafana)
+                ServiceType.NETBOX -> stringResource(R.string.login_hint_netbox)
+                ServiceType.ZAMMAD -> stringResource(R.string.login_hint_zammad)
+                ServiceType.PEGAPROX -> stringResource(R.string.login_hint_pegaprox)
                 else -> null
             }
 
@@ -511,7 +523,11 @@ fun ServiceLoginScreen(
                 serviceType == ServiceType.WAKAPI ||
                 serviceType == ServiceType.TRUENAS ||
                 serviceType == ServiceType.PTERODACTYL ||
-                serviceType == ServiceType.CALAGOPUS
+                serviceType == ServiceType.CALAGOPUS ||
+                serviceType == ServiceType.GRAFANA ||
+                serviceType == ServiceType.NETBOX ||
+                serviceType == ServiceType.ZAMMAD ||
+                serviceType == ServiceType.PEGAPROX
             ) {
                 SecretField(
                     value = apiKey,
@@ -550,7 +566,8 @@ fun ServiceLoginScreen(
                 // No-op.
             } else if (
                 serviceType == ServiceType.GLUETUN ||
-                serviceType == ServiceType.FLARESOLVERR
+                serviceType == ServiceType.FLARESOLVERR ||
+                serviceType == ServiceType.PROMETHEUS
             ) {
                 SecretField(
                     value = apiKey,
@@ -652,6 +669,7 @@ fun ServiceLoginScreen(
                     val usernameLabel = when {
                         serviceType == ServiceType.PATCHMON -> stringResource(R.string.patchmon_token_key)
                         serviceType == ServiceType.UPTIME_KUMA -> stringResource(R.string.uptime_kuma_username_optional)
+                        serviceType == ServiceType.PROXMOX_BACKUP_SERVER -> stringResource(R.string.login_pbs_token_id)
                         isEmailField -> stringResource(R.string.login_email_label)
                         else -> stringResource(R.string.login_username_label)
                     }
@@ -679,6 +697,8 @@ fun ServiceLoginScreen(
                         stringResource(R.string.patchmon_token_secret)
                     } else if (serviceType == ServiceType.UPTIME_KUMA) {
                         stringResource(R.string.uptime_kuma_password_or_api_key)
+                    } else if (serviceType == ServiceType.PROXMOX_BACKUP_SERVER) {
+                        stringResource(R.string.login_pbs_token_secret)
                     } else {
                         stringResource(R.string.login_password_hint)
                     },

@@ -34,6 +34,7 @@
     <string name="search_placeholder">Search...</string>
     <string name="share">Share</string>
     <string name="nav_home">Home</string>
+    <string name="nav_operations">Operations</string>
     <string name="nav_settings">Settings</string>
 
     <!-- Services -->
@@ -48,6 +49,18 @@
     <string name="service_wakapi_desc">Coding activity tracker</string>
     <string name="service_proxmox">Proxmox VE</string>
     <string name="service_proxmox_desc">Virtual infrastructure management</string>
+    <string name="service_proxmox_backup_server">Proxmox Backup Server</string>
+    <string name="service_proxmox_backup_server_desc">Read-only datastore capacity and maintenance monitoring</string>
+    <string name="service_prometheus">Prometheus</string>
+    <string name="service_prometheus_desc">Read-only scrape target health and active alert monitoring</string>
+    <string name="service_grafana">Grafana</string>
+    <string name="service_grafana_desc">Read-only dashboard and data source inventory</string>
+    <string name="service_netbox">NetBox</string>
+    <string name="service_netbox_desc">Read-only device and virtual machine inventory</string>
+    <string name="service_zammad">Zammad</string>
+    <string name="service_zammad_desc">Read-only, PII-redacted ticket operations view</string>
+    <string name="service_pegaprox">PegaProx</string>
+    <string name="service_pegaprox_desc">Tenant-scoped cluster, guest and active alert monitoring</string>
     <string name="service_unifi_network">Ubiquiti Network</string>
     <string name="service_unifi_network_desc">UniFi sites, devices, clients and network health</string>
     <string name="login_hint_unifi_network">Use a UniFi API key. For cloud access use https://api.ui.com. For a Dream Machine or local gateway use the console base URL, such as https://192.168.1.1, and enable Network API integrations.</string>
@@ -203,6 +216,16 @@
     <string name="login_proxmox_credentials_hint">Use username, password, realm and optional OTP.</string>
     <string name="login_proxmox_api_token_hint">Use a Proxmox API token in the format user@realm!tokenid=secret.</string>
     <string name="login_proxmox_api_token_placeholder">user@realm!tokenid=secret</string>
+    <string name="login_hint_proxmox_backup_server">Use a least-privilege PBS API token. Token ID format: user@realm!token-name. Recommended roles: Audit on / and DatastoreAudit on the required datastores.</string>
+    <string name="login_hint_prometheus">The bearer token is optional. Only build info, active targets, and active alerts are read; arbitrary PromQL is not executed.</string>
+    <string name="login_hint_grafana">Use an organization-scoped, read-only service account token with dashboard search and data source read permissions.</string>
+    <string name="login_hint_netbox">Use a read-only NetBox v2 token where possible. Results are capped and configuration contexts are excluded.</string>
+    <string name="login_hint_zammad">Use an access token restricted to the required groups. Ticket content, customers and article bodies are not stored in operations data.</string>
+    <string name="login_hint_pegaprox">Use a restricted pgx_ API token. Cluster and VM visibility is accepted only from PegaProx server-side RBAC and tenant filtering.</string>
+    <string name="prometheus_targets_healthy">healthy targets</string>
+    <string name="grafana_dashboards_data_sources">dashboards / data sources</string>
+    <string name="login_pbs_token_id">PBS token ID</string>
+    <string name="login_pbs_token_secret">PBS token secret</string>
     <string name="login_healthchecks_api_key_help">Find the API key in Project → Settings. Read-only keys can only view data; full-access keys enable edits.</string>
     <string name="login_allow_self_signed">Allow self-signed certificates</string>
     <string name="login_require_valid_tls">Require valid TLS certificate</string>

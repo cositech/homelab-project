@@ -6,7 +6,7 @@
 - [x] Cross-platform contracts and initial provider specifications
 - [x] CI with tests, builds, schema validation, dependency review, CodeQL, and Dependabot
 - [x] Contribution, security, issue, PR, ADR, and validation workflows
-- [ ] GitHub branch protection and required checks enabled by repository owner
+- [x] GitHub branch protection and required checks enabled by repository owner
 
 Exit gate: static audit passes and GitHub Actions prove Android/iOS tests and builds on the fork.
 
@@ -22,7 +22,15 @@ Exit gate: Phase 1 security invariants, Android/iOS compilation and unit tests, 
 
 ## Phase 2 — Operations views
 
-Global health, alerts, assets, search, provider diagnostics, read-only Proxmox/PBS, Prometheus, Grafana, NetBox, Zammad, PegaProx, OPNsense and OneUptime providers.
+- [x] Cross-platform normalized operations snapshots for health, alerts, assets, search and diagnostics
+- [x] Global Android and iOS operations workspaces with refresh and empty/error states
+- [x] Read-only Proxmox VE and Uptime Kuma resource/alert aggregation
+- [x] Proxmox Backup Server provider
+- [x] Prometheus and Grafana providers
+- [x] NetBox, Zammad and PegaProx providers
+- [ ] OPNsense and OneUptime providers
+
+Exit gate: operations contract tests, Android/iOS compilation and unit tests, security invariants, CodeQL and dependency review pass for every vertical Phase-2 delivery.
 
 ## Phase 3 — Controlled actions
 

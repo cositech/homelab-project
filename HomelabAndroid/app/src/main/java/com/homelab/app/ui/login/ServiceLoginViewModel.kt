@@ -18,6 +18,8 @@ import com.homelab.app.data.repository.MaltrailRepository
 import com.homelab.app.data.repository.MediaArrRepository
 import com.homelab.app.data.repository.AdGuardHomeRepository
 import com.homelab.app.data.repository.NginxProxyManagerRepository
+import com.homelab.app.data.repository.ObservabilityRepository
+import com.homelab.app.data.repository.InfrastructureOperationsRepository
 import com.homelab.app.data.repository.PatchmonRepository
 import com.homelab.app.data.repository.PangolinRepository
 import com.homelab.app.data.repository.PiholeRepository
@@ -31,6 +33,7 @@ import com.homelab.app.data.repository.UnifiRepository
 import com.homelab.app.data.repository.UptimeKumaRepository
 import com.homelab.app.data.repository.WakapiRepository
 import com.homelab.app.data.repository.ProxmoxRepository
+import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.CalagopusRepository
 import com.homelab.app.domain.model.PiHoleAuthMode
@@ -75,9 +78,12 @@ class ServiceLoginViewModel @Inject constructor(
     private val mediaArrRepository: MediaArrRepository,
     private val wakapiRepository: WakapiRepository,
     private val proxmoxRepository: ProxmoxRepository,
+    private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val trueNasRepository: TrueNasRepository,
     private val pterodactylRepository: PterodactylRepository,
-    private val calagopusRepository: CalagopusRepository
+    private val calagopusRepository: CalagopusRepository,
+    private val observabilityRepository: ObservabilityRepository,
+    private val infrastructureOperationsRepository: InfrastructureOperationsRepository
 ) : ViewModel() {
 
     private val existingInstanceId: String? = savedStateHandle["instanceId"]
@@ -627,6 +633,33 @@ class ServiceLoginViewModel @Inject constructor(
                                 )
                             }
                         }
+                        ServiceType.PROXMOX_BACKUP_SERVER -> {
+                            require(trimmedUsername.isNotBlank()) { context.getString(R.string.login_error_username_required) }
+                            val tokenSecret = trimmedPassword.ifBlank {
+                                if (existing != null && existing.url == cleanUrl && existing.username == trimmedUsername) {
+                                    return@ifBlank existing.password.orEmpty()
+                                }
+                                throw IllegalArgumentException(context.getString(R.string.login_error_password_required))
+                            }
+                            require(tokenSecret.isNotBlank()) { context.getString(R.string.login_error_password_required) }
+                            proxmoxBackupServerRepository.authenticate(
+                                url = cleanUrl,
+                                tokenId = trimmedUsername,
+                                tokenSecret = tokenSecret,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                username = trimmedUsername,
+                                password = tokenSecret,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                        }
                         ServiceType.TRUENAS -> {
                             require(trimmedApiKey.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
                             trueNasRepository.authenticate(
@@ -711,6 +744,71 @@ class ServiceLoginViewModel @Inject constructor(
                                 url = cleanUrl,
                                 apiKey = trimmedApiKey.ifBlank { null },
                                 fallbackUrl = cleanFallbackUrl
+                            )
+                        }
+                        ServiceType.PROMETHEUS -> {
+                            val bearerToken = trimmedApiKey.ifBlank {
+                                existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
+                            }
+                            observabilityRepository.authenticatePrometheus(
+                                url = cleanUrl,
+                                bearerToken = bearerToken.ifBlank { null },
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                apiKey = bearerToken.ifBlank { null },
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                        }
+                        ServiceType.GRAFANA -> {
+                            val serviceAccountToken = trimmedApiKey.ifBlank {
+                                existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
+                            }
+                            require(serviceAccountToken.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
+                            observabilityRepository.authenticateGrafana(
+                                url = cleanUrl,
+                                serviceAccountToken = serviceAccountToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                apiKey = serviceAccountToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                        }
+                        ServiceType.NETBOX,
+                        ServiceType.ZAMMAD,
+                        ServiceType.PEGAPROX -> {
+                            val readOnlyToken = trimmedApiKey.ifBlank {
+                                existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
+                            }
+                            require(readOnlyToken.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
+                            infrastructureOperationsRepository.authenticate(
+                                type = serviceType,
+                                url = cleanUrl,
+                                apiToken = readOnlyToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                apiKey = readOnlyToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
                             )
                         }
                         ServiceType.UNKNOWN -> throw IllegalArgumentException(context.getString(R.string.error_unknown))

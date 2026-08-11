@@ -30,6 +30,10 @@ private final class ServiceClientManager {
     private var genericClients: [UUID: GenericAPIClient] = [:]
     private var wakapiClients: [UUID: WakapiAPIClient] = [:]
     private var proxmoxClients: [UUID: ProxmoxAPIClient] = [:]
+    private var proxmoxBackupServerClients: [UUID: ProxmoxBackupServerAPIClient] = [:]
+    private var prometheusClients: [UUID: PrometheusAPIClient] = [:]
+    private var grafanaClients: [UUID: GrafanaAPIClient] = [:]
+    private var infrastructureClients: [UUID: InfrastructureOperationsAPIClient] = [:]
     private var truenasClients: [UUID: TrueNASAPIClient] = [:]
     private var pterodactylClients: [UUID: PterodactylAPIClient] = [:]
     private var calagopusClients: [UUID: CalagopusAPIClient] = [:]
@@ -267,6 +271,34 @@ private final class ServiceClientManager {
         return client
     }
 
+    func proxmoxBackupServerClient(id: UUID) -> ProxmoxBackupServerAPIClient {
+        if let client = proxmoxBackupServerClients[id] { return client }
+        let client = ProxmoxBackupServerAPIClient(instanceId: id)
+        proxmoxBackupServerClients[id] = client
+        return client
+    }
+
+    func prometheusClient(id: UUID) -> PrometheusAPIClient {
+        if let client = prometheusClients[id] { return client }
+        let client = PrometheusAPIClient(instanceId: id)
+        prometheusClients[id] = client
+        return client
+    }
+
+    func grafanaClient(id: UUID) -> GrafanaAPIClient {
+        if let client = grafanaClients[id] { return client }
+        let client = GrafanaAPIClient(instanceId: id)
+        grafanaClients[id] = client
+        return client
+    }
+
+    func infrastructureClient(id: UUID, type: ServiceType) -> InfrastructureOperationsAPIClient {
+        if let client = infrastructureClients[id] { return client }
+        let client = InfrastructureOperationsAPIClient(instanceId: id, serviceType: type)
+        infrastructureClients[id] = client
+        return client
+    }
+
     func truenasClient(id: UUID) -> TrueNASAPIClient {
         if let client = truenasClients[id] {
             return client
@@ -357,6 +389,14 @@ private final class ServiceClientManager {
             wakapiClients.removeValue(forKey: id)
         case .proxmox:
             proxmoxClients.removeValue(forKey: id)
+        case .proxmoxBackupServer:
+            proxmoxBackupServerClients.removeValue(forKey: id)
+        case .prometheus:
+            prometheusClients.removeValue(forKey: id)
+        case .grafana:
+            grafanaClients.removeValue(forKey: id)
+        case .netbox, .zammad, .pegaprox:
+            infrastructureClients.removeValue(forKey: id)
         case .truenas:
             truenasClients.removeValue(forKey: id)
         case .pterodactyl:
@@ -397,6 +437,10 @@ private final class ServiceClientManager {
         lidarrClients = lidarrClients.filter { knownInstanceIds.contains($0.key) }
         wakapiClients = wakapiClients.filter { knownInstanceIds.contains($0.key) }
         proxmoxClients = proxmoxClients.filter { knownInstanceIds.contains($0.key) }
+        proxmoxBackupServerClients = proxmoxBackupServerClients.filter { knownInstanceIds.contains($0.key) }
+        prometheusClients = prometheusClients.filter { knownInstanceIds.contains($0.key) }
+        grafanaClients = grafanaClients.filter { knownInstanceIds.contains($0.key) }
+        infrastructureClients = infrastructureClients.filter { knownInstanceIds.contains($0.key) }
         truenasClients = truenasClients.filter { knownInstanceIds.contains($0.key) }
         pterodactylClients = pterodactylClients.filter { knownInstanceIds.contains($0.key) }
         calagopusClients = calagopusClients.filter { knownInstanceIds.contains($0.key) }
@@ -737,6 +781,26 @@ final class ServicesStore {
         return clientManager.proxmoxClient(id: instance.id)
     }
 
+    func proxmoxBackupServerClient(instanceId: UUID) async -> ProxmoxBackupServerAPIClient? {
+        guard let instance = instancesById[instanceId], instance.type == .proxmoxBackupServer else { return nil }
+        return clientManager.proxmoxBackupServerClient(id: instance.id)
+    }
+
+    func prometheusClient(instanceId: UUID) async -> PrometheusAPIClient? {
+        guard let instance = instancesById[instanceId], instance.type == .prometheus else { return nil }
+        return clientManager.prometheusClient(id: instance.id)
+    }
+
+    func grafanaClient(instanceId: UUID) async -> GrafanaAPIClient? {
+        guard let instance = instancesById[instanceId], instance.type == .grafana else { return nil }
+        return clientManager.grafanaClient(id: instance.id)
+    }
+
+    func infrastructureClient(instanceId: UUID) async -> InfrastructureOperationsAPIClient? {
+        guard let instance = instancesById[instanceId], [.netbox, .zammad, .pegaprox].contains(instance.type) else { return nil }
+        return clientManager.infrastructureClient(id: instance.id, type: instance.type)
+    }
+
     func truenasClient(instanceId: UUID) async -> TrueNASAPIClient? {
         guard let instance = instancesById[instanceId], instance.type == .truenas else { return nil }
         return clientManager.truenasClient(id: instance.id)
@@ -821,6 +885,14 @@ final class ServicesStore {
             ok = await clientManager.wakapiClient(id: instanceId).ping()
         case .proxmox:
             ok = await clientManager.proxmoxClient(id: instanceId).ping()
+        case .proxmoxBackupServer:
+            ok = await clientManager.proxmoxBackupServerClient(id: instanceId).ping()
+        case .prometheus:
+            ok = await clientManager.prometheusClient(id: instanceId).ping()
+        case .grafana:
+            ok = await clientManager.grafanaClient(id: instanceId).ping()
+        case .netbox, .zammad, .pegaprox:
+            ok = await clientManager.infrastructureClient(id: instanceId, type: instance.type).ping()
         case .truenas:
             ok = await clientManager.truenasClient(id: instanceId).ping()
         case .pterodactyl:
@@ -1330,6 +1402,44 @@ final class ServicesStore {
                     self.persistState()
                 }
             }
+
+        case .proxmoxBackupServer:
+            let client = clientManager.proxmoxBackupServerClient(id: instance.id)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                tokenId: instance.username,
+                tokenSecret: instance.password,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
+        case .prometheus:
+            let client = clientManager.prometheusClient(id: instance.id)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                bearerToken: instance.apiKey,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
+        case .grafana:
+            let client = clientManager.grafanaClient(id: instance.id)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                serviceAccountToken: instance.apiKey,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
+        case .netbox, .zammad, .pegaprox:
+            let client = clientManager.infrastructureClient(id: instance.id, type: instance.type)
+            await client.configure(
+                url: instance.url,
+                fallbackUrl: instance.fallbackUrl,
+                apiToken: instance.apiKey,
+                allowSelfSigned: instance.allowSelfSigned,
+                tlsPolicy: instance.tlsPolicy
+            )
         }
     }
 

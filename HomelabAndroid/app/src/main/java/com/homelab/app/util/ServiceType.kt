@@ -37,6 +37,12 @@ enum class ServiceType(val displayName: String) {
     FLARESOLVERR("FlareSolverr"),
     WAKAPI("Wakapi"),
     PROXMOX("Proxmox VE"),
+    PROXMOX_BACKUP_SERVER("Proxmox Backup Server"),
+    PROMETHEUS("Prometheus"),
+    GRAFANA("Grafana"),
+    NETBOX("NetBox"),
+    ZAMMAD("Zammad"),
+    PEGAPROX("PegaProx"),
     TRUENAS("TrueNAS"),
     PTERODACTYL("Pterodactyl"),
     CALAGOPUS("Calagopus"),
@@ -67,6 +73,16 @@ enum class ServiceType(val displayName: String) {
                 "TECHNITIUM_DNS",
                 "TECHNITIUMDNS" -> TECHNITIUM
                 "PANGOLIN" -> PANGOLIN
+                "PBS",
+                "PROXMOX_BACKUP",
+                "PROXMOX_BACKUP_SERVER",
+                "PROXMOXBACKUPSERVER" -> PROXMOX_BACKUP_SERVER
+                "PROMETHEUS" -> PROMETHEUS
+                "GRAFANA" -> GRAFANA
+                "NETBOX" -> NETBOX
+                "ZAMMAD" -> ZAMMAD
+                "PEGAPROX",
+                "PEGA_PROX" -> PEGAPROX
                 "DOCKHAND" -> DOCKHAND
                 "DOCKMON" -> DOCKMON
                 "KOMODO" -> KOMODO

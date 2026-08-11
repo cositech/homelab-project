@@ -49,4 +49,20 @@ final class BackupModelsTests: XCTestCase {
         XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "truenas_core"), .truenas)
         XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "truenas-core"), .truenas)
     }
+
+    func testObservabilityBackupMapperRoundTrip() {
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .prometheus), "prometheus")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "prometheus"), .prometheus)
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .grafana), "grafana")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "grafana"), .grafana)
+    }
+
+    func testInfrastructureOperationsBackupMapperRoundTrip() {
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .netbox), "netbox")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "netbox"), .netbox)
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .zammad), "zammad")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "zammad"), .zammad)
+        XCTAssertEqual(BackupServiceTypeMapper.backupKey(for: .pegaprox), "pegaprox")
+        XCTAssertEqual(BackupServiceTypeMapper.serviceType(from: "pega-prox"), .pegaprox)
+    }
 }

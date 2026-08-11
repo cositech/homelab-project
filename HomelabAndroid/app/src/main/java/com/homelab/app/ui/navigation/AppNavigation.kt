@@ -24,10 +24,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -70,6 +72,7 @@ sealed class Screen(
     val inactiveIcon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Home : Screen("home", R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home)
+    data object Operations : Screen("operations", R.string.nav_operations, Icons.Filled.Search, Icons.Outlined.Search)
     data object Media : Screen("media", R.string.nav_media, Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow)
     data object Bookmarks : Screen("bookmarks", R.string.nav_bookmarks, Icons.Filled.Bookmark, Icons.Outlined.Bookmark)
     data object Settings : Screen("settings", R.string.nav_settings, Icons.Filled.Settings, Icons.Outlined.Settings)
@@ -99,6 +102,12 @@ private fun dashboardRoute(type: ServiceType, instanceId: String): String {
         ServiceType.WAKAPI -> "wakapi/$instanceId/dashboard"
         ServiceType.PLEX -> "plex/$instanceId/dashboard"
         ServiceType.PROXMOX -> "proxmox/$instanceId/dashboard"
+        ServiceType.PROXMOX_BACKUP_SERVER -> Screen.Operations.route
+        ServiceType.PROMETHEUS,
+        ServiceType.GRAFANA,
+        ServiceType.NETBOX,
+        ServiceType.ZAMMAD,
+        ServiceType.PEGAPROX -> Screen.Operations.route
         ServiceType.TRUENAS -> "truenas/$instanceId/dashboard"
         ServiceType.PTERODACTYL -> "pterodactyl/$instanceId/dashboard"
         ServiceType.CALAGOPUS -> "calagopus/$instanceId/dashboard"
@@ -131,7 +140,7 @@ private fun loginRoute(type: ServiceType, instanceId: String? = null): String {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val items = listOf(Screen.Home, Screen.Media, Screen.Bookmarks, Screen.Settings)
+    val items = listOf(Screen.Home, Screen.Operations, Screen.Media, Screen.Bookmarks, Screen.Settings)
     var configuredServicesUnlocked by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
@@ -233,6 +242,10 @@ fun AppNavigation() {
                         navController.navigate(loginRoute(type, instanceId))
                     }
                 )
+            }
+
+            composable(Screen.Operations.route) {
+                com.homelab.app.ui.operations.OperationsScreen()
             }
 
             composable(Screen.Media.route) {

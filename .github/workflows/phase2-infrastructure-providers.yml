@@ -1,0 +1,18 @@
+name: Phase 2 Infrastructure Providers
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  infrastructure-provider-invariants:
+    name: Phase 2 infrastructure provider invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate read-only NetBox, Zammad, and PegaProx contracts
+        run: bash ./scripts/phase2-infrastructure-providers-audit.sh

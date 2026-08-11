@@ -518,8 +518,34 @@ class AuthInterceptor @Inject constructor(
                     }
                 }
             }
+            ServiceType.PROXMOX_BACKUP_SERVER -> {
+                if (!hasAuthorization && !instance.username.isNullOrBlank() && !instance.password.isNullOrBlank()) {
+                    builder.addHeader(
+                        "Authorization",
+                        "PBSAPIToken=${instance.username}:${instance.password}"
+                    )
+                }
+            }
             ServiceType.PTERODACTYL,
-            ServiceType.CALAGOPUS -> {
+            ServiceType.CALAGOPUS,
+            ServiceType.PROMETHEUS,
+            ServiceType.GRAFANA -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
+                    builder.addHeader("Authorization", "Bearer ${instance.apiKey}")
+                }
+            }
+            ServiceType.NETBOX -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
+                    val prefix = if (instance.apiKey.startsWith("nbt_")) "Bearer" else "Token"
+                    builder.addHeader("Authorization", "$prefix ${instance.apiKey}")
+                }
+            }
+            ServiceType.ZAMMAD -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
+                    builder.addHeader("Authorization", "Token token=${instance.apiKey}")
+                }
+            }
+            ServiceType.PEGAPROX -> {
                 if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
                     builder.addHeader("Authorization", "Bearer ${instance.apiKey}")
                 }
