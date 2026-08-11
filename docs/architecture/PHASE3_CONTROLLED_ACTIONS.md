@@ -1,6 +1,6 @@
 # Phase 3 controlled actions
 
-The first Phase-3 delivery establishes the same policy and audit contract in both native clients before any additional provider mutation is exposed through the global operations workspace.
+Phase 3 establishes one policy, durable execution and audit contract in both native clients before additional provider mutations are exposed through the global operations workspace.
 
 ## Invariants
 
@@ -14,13 +14,34 @@ The first Phase-3 delivery establishes the same policy and audit contract in bot
 8. Audit records are append-only value objects. They contain normalized identifiers and reason codes, but no parameters, credentials, headers or response bodies.
 9. Failed operations record an error type or bounded reason code rather than an exception message that could contain provider data.
 10. Arbitrary shell and script execution remain excluded by ADR-0008.
+11. An approved request is persisted before its provider mutation starts. Terminal results are retained with the idempotency key, so a coordinator restart does not replay a completed mutation.
+12. Durable entries persist normalized identity only. Action parameters are stripped before storage; credentials, request headers and provider response bodies are never queued.
+13. Only explicitly retryable transport failures for low- and medium-risk actions are retried automatically. The default policy permits three attempts with capped exponential backoff.
+14. High- and critical-risk failures never retry automatically. A retryable failure at those risk levels requires manual review.
+15. An action found in `executing` state after process restart has an indeterminate provider outcome and transitions to `manual_review`. It is never replayed automatically.
 
-## Scope
+## Durable state model
 
-This foundation includes policy, serialized execution, dry-run behavior, idempotency and bounded in-memory audit history for Android and iOS. Terminal idempotency results are retained separately for the coordinator lifetime, so audit pruning cannot cause a repeated mutation.
+```text
+queued -> executing -> succeeded
+             |
+             +-> retry_wait -> executing       (low/medium, bounded)
+             |
+             +-> failed                         (non-retryable)
+             |
+             +-> manual_review                  (high/critical or retry exhausted)
 
-Proxmox VE is the reference-provider migration. Guest start and resume are low risk, graceful shutdown, reboot and suspend are medium risk, and hard stop is high risk. Both clients now route these lifecycle mutations through the coordinator. Android requests explicit confirmation for medium and high risk actions; the existing iOS confirmation dialog marks the same requests as confirmed. Provider task tracking remains unchanged after an approved mutation.
+process restart while executing -> manual_review
+```
+
+Android stores the bounded queue in the existing Preferences DataStore. iOS uses a bounded Codable payload in UserDefaults. Both implementations retain at most 500 entries and fail before mutation when persistence cannot complete. The in-memory store remains available for deterministic unit tests.
+
+Recovery is deliberately conservative. Queued or retry-wait entries can only continue when the caller rebinds the typed provider operation. Indeterminate entries require an operator decision; there is no background replay of a closure or reconstructed arbitrary payload. This does not claim distributed exactly-once execution: gateway deployments should add server-side idempotency and provider task reconciliation.
+
+## Provider scope
+
+Proxmox VE is the reference-provider migration. Guest start and resume are low risk, graceful shutdown, reboot and suspend are medium risk, and hard stop is high risk. Both clients route these lifecycle mutations through the coordinator. Android requests explicit confirmation for medium and high risk actions; the existing iOS confirmation dialog marks the same requests as confirmed. Provider task tracking remains unchanged after an approved mutation.
 
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
-The bounded mobile ledger is an operational history, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.
+The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.

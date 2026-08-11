@@ -97,7 +97,7 @@ class ControlledActionsTest {
         assertEquals(first, second)
         assertEquals(1, invocations)
         assertEquals(
-            listOf(ActionExecutionState.QUEUED, ActionExecutionState.SUCCEEDED),
+            listOf(ActionExecutionState.QUEUED, ActionExecutionState.EXECUTING, ActionExecutionState.SUCCEEDED),
             coordinator.auditSnapshot().map { it.state }
         )
     }
@@ -192,6 +192,104 @@ class ControlledActionsTest {
         assertTrue(ProxmoxGuestAction.SHUTDOWN.requiresConfirmation)
         assertTrue(ProxmoxGuestAction.REBOOT.requiresConfirmation)
         assertTrue(ProxmoxGuestAction.STOP.requiresConfirmation)
+    }
+
+    @Test
+    fun `retryable low risk failure uses bounded exponential retry`() = runTest {
+        val delays = mutableListOf<Long>()
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(
+            retryPolicy = ActionRetryPolicy(maximumAttempts = 3, initialDelayMillis = 10, maximumDelayMillis = 40),
+            now = { 5_000 },
+            waitBeforeRetry = { delays += it }
+        )
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW, confirmed = true),
+            ActionRole.OPERATOR,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            if (invocations < 3) {
+                throw ActionOperationException("provider-unavailable", ActionFailureDisposition.RETRYABLE)
+            }
+        }
+
+        assertEquals(ActionExecutionState.SUCCEEDED, result.state)
+        assertEquals(3, invocations)
+        assertEquals(listOf(10L, 20L), delays)
+    }
+
+    @Test
+    fun `high risk transport failure requires manual review without retry`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.HIGH, confirmed = true),
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException("transport-error", ActionFailureDisposition.RETRYABLE)
+        }
+
+        assertEquals(ActionExecutionState.MANUAL_REVIEW, result.state)
+        assertEquals(1, invocations)
+        assertEquals("automatic-retry-forbidden-transport-error", result.reasonCode)
+    }
+
+    @Test
+    fun `terminal idempotency result survives coordinator reconstruction`() = runTest {
+        val store = InMemoryDurableActionQueueStore()
+        val confirmed = request(risk = ActionRisk.LOW, confirmed = true)
+        var invocations = 0
+
+        ControlledActionCoordinator(durableStore = store).execute(
+            confirmed, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { invocations += 1 }
+
+        val recovered = ControlledActionCoordinator(durableStore = store).execute(
+            confirmed, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { invocations += 1 }
+
+        assertEquals(ActionExecutionState.SUCCEEDED, recovered.state)
+        assertEquals(1, invocations)
+    }
+
+    @Test
+    fun `interrupted execution recovers as manual review`() = runTest {
+        val interrupted = DurableActionQueueEntry(
+            request = request(risk = ActionRisk.LOW, confirmed = true),
+            actorRole = ActionRole.OPERATOR,
+            state = ActionExecutionState.EXECUTING,
+            attemptCount = 1,
+            reasonCode = "executing",
+            updatedAtEpochMillis = 1_000
+        )
+        val coordinator = ControlledActionCoordinator(
+            durableStore = InMemoryDurableActionQueueStore(listOf(interrupted)),
+            now = { 2_000 }
+        )
+
+        val recovered = coordinator.pendingRecovery().single()
+
+        assertEquals(ActionExecutionState.MANUAL_REVIEW, recovered.state)
+        assertEquals("interrupted-execution", recovered.reasonCode)
+    }
+
+    @Test
+    fun `durable queue omits action parameters`() = runTest {
+        val store = InMemoryDurableActionQueueStore()
+        val coordinator = ControlledActionCoordinator(durableStore = store)
+
+        coordinator.execute(
+            request(risk = ActionRisk.LOW, confirmed = true).copy(parameters = mapOf("secret" to "value")),
+            ActionRole.OPERATOR,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {}
+
+        assertTrue(store.snapshot().single().request.parameters.isEmpty())
     }
 
 }

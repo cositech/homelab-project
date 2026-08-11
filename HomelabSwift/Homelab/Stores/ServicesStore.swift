@@ -462,7 +462,9 @@ final class ServicesStore {
     private var lastReachabilityCheck: Date?
     private var healthCheckTask: Task<Void, Never>?
     private let clientManager = ServiceClientManager()
-    let controlledActionCoordinator = ControlledActionCoordinator()
+    let controlledActionCoordinator = ControlledActionCoordinator(
+        durableStore: UserDefaultsDurableActionQueueStore()
+    )
 
     var connectedCount: Int { instancesById.count }
     var allInstances: [ServiceInstance] {
