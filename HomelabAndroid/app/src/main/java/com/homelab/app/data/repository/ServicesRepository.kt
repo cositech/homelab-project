@@ -139,6 +139,9 @@ class ServicesRepository @Inject constructor(
                     ServiceType.PROXMOX_BACKUP_SERVER -> listOf("/api2/json/version", "")
                     ServiceType.PROMETHEUS -> listOf("/api/v1/status/buildinfo")
                     ServiceType.GRAFANA -> listOf("/api/health")
+                    ServiceType.NETBOX -> listOf("/api/status/")
+                    ServiceType.ZAMMAD -> listOf("/api/v1/users/me")
+                    ServiceType.PEGAPROX -> listOf("/api/clusters")
                     ServiceType.TRUENAS -> listOf("/api/current", "/ui", "")
                     else -> listOf("")
                 }

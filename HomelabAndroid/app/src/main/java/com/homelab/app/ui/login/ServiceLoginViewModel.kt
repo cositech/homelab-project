@@ -19,6 +19,7 @@ import com.homelab.app.data.repository.MediaArrRepository
 import com.homelab.app.data.repository.AdGuardHomeRepository
 import com.homelab.app.data.repository.NginxProxyManagerRepository
 import com.homelab.app.data.repository.ObservabilityRepository
+import com.homelab.app.data.repository.InfrastructureOperationsRepository
 import com.homelab.app.data.repository.PatchmonRepository
 import com.homelab.app.data.repository.PangolinRepository
 import com.homelab.app.data.repository.PiholeRepository
@@ -81,7 +82,8 @@ class ServiceLoginViewModel @Inject constructor(
     private val trueNasRepository: TrueNasRepository,
     private val pterodactylRepository: PterodactylRepository,
     private val calagopusRepository: CalagopusRepository,
-    private val observabilityRepository: ObservabilityRepository
+    private val observabilityRepository: ObservabilityRepository,
+    private val infrastructureOperationsRepository: InfrastructureOperationsRepository
 ) : ViewModel() {
 
     private val existingInstanceId: String? = savedStateHandle["instanceId"]
@@ -781,6 +783,30 @@ class ServiceLoginViewModel @Inject constructor(
                                 label = normalizedLabel,
                                 url = cleanUrl,
                                 apiKey = serviceAccountToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                        }
+                        ServiceType.NETBOX,
+                        ServiceType.ZAMMAD,
+                        ServiceType.PEGAPROX -> {
+                            val readOnlyToken = trimmedApiKey.ifBlank {
+                                existing?.takeIf { it.url == cleanUrl }?.apiKey.orEmpty()
+                            }
+                            require(readOnlyToken.isNotBlank()) { context.getString(R.string.login_error_api_key_required) }
+                            infrastructureOperationsRepository.authenticate(
+                                type = serviceType,
+                                url = cleanUrl,
+                                apiToken = readOnlyToken,
+                                fallbackUrl = cleanFallbackUrl,
+                                allowSelfSigned = allowSelfSigned
+                            )
+                            ServiceInstance(
+                                id = instanceId,
+                                type = serviceType,
+                                label = normalizedLabel,
+                                url = cleanUrl,
+                                apiKey = readOnlyToken,
                                 fallbackUrl = cleanFallbackUrl,
                                 allowSelfSigned = allowSelfSigned
                             )

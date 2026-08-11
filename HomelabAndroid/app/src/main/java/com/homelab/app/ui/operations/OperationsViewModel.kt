@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.ObservabilityRepository
+import com.homelab.app.data.repository.InfrastructureOperationsRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.data.repository.UptimeKumaMonitorStatus
 import com.homelab.app.data.repository.UptimeKumaRepository
@@ -40,7 +41,8 @@ class OperationsViewModel @Inject constructor(
     private val proxmoxRepository: ProxmoxRepository,
     private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val uptimeKumaRepository: UptimeKumaRepository,
-    private val observabilityRepository: ObservabilityRepository
+    private val observabilityRepository: ObservabilityRepository,
+    private val infrastructureOperationsRepository: InfrastructureOperationsRepository
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OperationsUiState())
     val uiState: StateFlow<OperationsUiState> = _uiState.asStateFlow()
@@ -109,6 +111,14 @@ class OperationsViewModel @Inject constructor(
                         val overview = observabilityRepository.getGrafanaOverview(instance.id)
                         instanceHealth = observabilityRepository.normalizeGrafanaHealth(instance.id, overview)
                         appendGrafana(instance, overview, assets)
+                    }
+                    ServiceType.NETBOX,
+                    ServiceType.ZAMMAD,
+                    ServiceType.PEGAPROX -> {
+                        val payload = infrastructureOperationsRepository.getSnapshot(instance.id)
+                        instanceHealth = payload.health
+                        assets += payload.assets
+                        alerts += payload.alerts
                     }
                     else -> Unit
                 }

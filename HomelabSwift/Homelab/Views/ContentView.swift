@@ -154,6 +154,13 @@ private final class OperationsWorkspace {
                         currentHealth = await client.normalizedHealth(for: overview)
                         assets.append(contentsOf: loadGrafana(overview: overview, instance: instance))
                     }
+                case .netbox, .zammad, .pegaprox:
+                    if let client = await servicesStore.infrastructureClient(instanceId: instance.id) {
+                        let payload = try await client.getSnapshot()
+                        currentHealth = payload.health
+                        assets.append(contentsOf: payload.assets)
+                        alerts.append(contentsOf: payload.alerts)
+                    }
                 default:
                     break
                 }

@@ -74,6 +74,12 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.resources))
         XCTAssertFalse(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.events))
         XCTAssertFalse(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .netbox).capabilities.contains(.resources))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .netbox).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .zammad).capabilities.contains(.events))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .zammad).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .pegaprox).capabilities.contains(.metrics))
+        XCTAssertFalse(ProviderRegistry.descriptor(for: .pegaprox).capabilities.contains(.writeActions))
     }
 
     func testProxmoxBackupServerDatastoreDecodingAndAliases() throws {

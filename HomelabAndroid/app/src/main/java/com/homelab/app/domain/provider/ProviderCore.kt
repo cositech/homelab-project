@@ -141,6 +141,23 @@ object ProviderRegistry {
                     ProviderCapability.RESOURCES,
                     ProviderCapability.METRICS
                 )
+                ServiceType.NETBOX -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES
+                )
+                ServiceType.ZAMMAD -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.EVENTS,
+                    ProviderCapability.READ_ACTIONS
+                )
+                ServiceType.PEGAPROX -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.RESOURCES,
+                    ProviderCapability.EVENTS,
+                    ProviderCapability.METRICS,
+                    ProviderCapability.READ_ACTIONS
+                )
                 ServiceType.UPTIME_KUMA -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,

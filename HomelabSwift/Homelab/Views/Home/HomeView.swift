@@ -331,7 +331,7 @@ struct HomeView: View {
         case .proxmox:           ProxmoxDashboard(instanceId: route.instanceId)
         case .proxmoxBackupServer:
                                  OperationsView()
-        case .prometheus, .grafana:
+        case .prometheus, .grafana, .netbox, .zammad, .pegaprox:
                                  OperationsView()
         case .truenas:           TrueNASDashboard(instanceId: route.instanceId)
         case .pterodactyl:       PterodactylDashboard(instanceId: route.instanceId)
@@ -559,6 +559,31 @@ struct HomeView: View {
                 guard let client = await servicesStore.grafanaClient(instanceId: instanceId) else { return nil }
                 let overview = try await client.getOverview()
                 return ServiceSummaryInfo(value: "\(overview.dashboards.count)", subValue: "/ \(overview.dataSources.count)", label: "dashboards / data sources")
+            case .netbox, .zammad, .pegaprox:
+                guard let client = await servicesStore.infrastructureClient(instanceId: instanceId) else { return nil }
+                let payload = try await client.getSnapshot()
+                switch type {
+                case .netbox:
+                    return ServiceSummaryInfo(
+                        value: payload.health.attributes["devices"] ?? "0",
+                        subValue: "/ \(payload.health.attributes["virtualMachines"] ?? "0")",
+                        label: "devices / virtual machines"
+                    )
+                case .zammad:
+                    return ServiceSummaryInfo(
+                        value: payload.health.attributes["tickets"] ?? "0",
+                        subValue: "/ \(payload.health.attributes["escalated"] ?? "0")",
+                        label: "tickets / escalated"
+                    )
+                case .pegaprox:
+                    return ServiceSummaryInfo(
+                        value: payload.health.attributes["clusters"] ?? "0",
+                        subValue: "/ \(payload.health.attributes["activeAlerts"] ?? "0")",
+                        label: "clusters / active alerts"
+                    )
+                default:
+                    return nil
+                }
             case .truenas:
                 guard let client = await servicesStore.truenasClient(instanceId: instanceId) else { return nil }
                 let snapshot = try await client.getDashboardSnapshot()

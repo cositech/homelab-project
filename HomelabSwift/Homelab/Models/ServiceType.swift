@@ -35,6 +35,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
     case proxmoxBackupServer = "proxmox_backup_server"
     case prometheus
     case grafana
+    case netbox
+    case zammad
+    case pegaprox
     case truenas
     case pterodactyl
     case calagopus
@@ -86,6 +89,12 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
             return .prometheus
         case "grafana":
             return .grafana
+        case "netbox":
+            return .netbox
+        case "zammad":
+            return .zammad
+        case "pegaprox", "pega_prox":
+            return .pegaprox
         case "truenas", "truenas_scale", "truenasscale", "truenas_core", "truenascore":
             return .truenas
         case "pterodactyl":
@@ -170,6 +179,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: return "Proxmox Backup Server"
         case .prometheus:         return "Prometheus"
         case .grafana:            return "Grafana"
+        case .netbox:             return "NetBox"
+        case .zammad:             return "Zammad"
+        case .pegaprox:           return "PegaProx"
         case .truenas:            return "TrueNAS"
         case .pterodactyl:        return "Pterodactyl"
         case .calagopus:          return "Calagopus"
@@ -212,6 +224,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: return "Read-only datastore capacity and maintenance monitoring"
         case .prometheus:         return "Read-only scrape target and active alert monitoring"
         case .grafana:            return "Read-only dashboard and data source inventory"
+        case .netbox:             return "Read-only device and virtual machine inventory"
+        case .zammad:             return "Read-only, PII-redacted ticket operations view"
+        case .pegaprox:           return "Tenant-scoped cluster, guest and active alert monitoring"
         case .truenas:            return t.serviceTruenasDesc
         case .pterodactyl:        return t.servicePterodactylDesc
         case .calagopus:          return t.serviceCalagopusDesc
@@ -259,6 +274,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: return "externaldrive.badge.checkmark"
         case .prometheus:         return "waveform.path.ecg"
         case .grafana:            return "chart.xyaxis.line"
+        case .netbox:             return "server.rack"
+        case .zammad:             return "ticket.fill"
+        case .pegaprox:           return "point.3.connected.trianglepath.dotted"
         case .truenas:            return "externaldrive.connected.to.line.below.fill"
         case .pterodactyl:        return "gamecontroller.fill"
         case .calagopus:          return "bird.fill"
@@ -301,6 +319,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/proxmox-backup-server.png"
         case .prometheus:         return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/prometheus.png"
         case .grafana:            return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/grafana.png"
+        case .netbox:             return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/netbox.png"
+        case .zammad:             return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/zammad.png"
+        case .pegaprox:           return "https://raw.githubusercontent.com/PegaProx/project-pegaprox/main/web/favicon.png"
         case .truenas:            return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/truenas-scale.png"
         case .pterodactyl:        return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/pterodactyl.png"
         case .calagopus:          return "https://cdn.jsdelivr.net/gh/selfhst/icons/png/calagopus.png"
@@ -349,6 +370,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: slug = "proxmox-backup-server"
         case .prometheus:         slug = "prometheus"
         case .grafana:            slug = "grafana"
+        case .netbox:             slug = "netbox"
+        case .zammad:             slug = "zammad"
+        case .pegaprox:           slug = "pegaprox"
         case .truenas:            slug = "truenas-scale"
         case .pterodactyl:        slug = "pterodactyl"
         case .calagopus:          slug = "calagopus"
@@ -405,6 +429,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: return "service-proxmox"
         case .prometheus:         return "service-prometheus"
         case .grafana:            return "service-grafana"
+        case .netbox:             return "service-netbox"
+        case .zammad:             return "service-zammad"
+        case .pegaprox:           return "service-pegaprox"
         case .truenas:            return "service-truenas"
         case .pterodactyl:        return "service-pterodactyl"
         case .calagopus:          return "service-calagopus"
@@ -447,6 +474,9 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .proxmoxBackupServer: return ServiceColorSet(primary: Color(hex: "#D97706"), dark: Color(hex: "#B45309"), bg: Color(hex: "#D97706").opacity(0.06))
         case .prometheus:         return ServiceColorSet(primary: Color(hex: "#E6522C"), dark: Color(hex: "#B93F22"), bg: Color(hex: "#E6522C").opacity(0.09))
         case .grafana:            return ServiceColorSet(primary: Color(hex: "#F46800"), dark: Color(hex: "#C45100"), bg: Color(hex: "#F46800").opacity(0.09))
+        case .netbox:             return ServiceColorSet(primary: Color(hex: "#00A651"), dark: Color(hex: "#007A3D"), bg: Color(hex: "#00A651").opacity(0.09))
+        case .zammad:             return ServiceColorSet(primary: Color(hex: "#CA2317"), dark: Color(hex: "#991B12"), bg: Color(hex: "#CA2317").opacity(0.09))
+        case .pegaprox:           return ServiceColorSet(primary: Color(hex: "#5B4BDB"), dark: Color(hex: "#4338A8"), bg: Color(hex: "#5B4BDB").opacity(0.09))
         case .truenas:            return ServiceColorSet(primary: .truenasAccessibleAccent, dark: Color(hex: "#006EA3"), bg: Color(hex: "#0095D5").opacity(0.09))
         case .pterodactyl:        return ServiceColorSet(primary: Color(hex: "#0E4BEF"), dark: Color(hex: "#0B38C5"), bg: Color(hex: "#0E4BEF").opacity(0.09))
         case .calagopus:          return ServiceColorSet(primary: Color(hex: "#16A34A"), dark: Color(hex: "#15803D"), bg: Color(hex: "#16A34A").opacity(0.09))
@@ -563,6 +593,12 @@ enum ProviderRegistry {
                 capabilities = [.health, .resources, .events, .metrics]
             case .grafana:
                 capabilities = [.health, .resources, .metrics]
+            case .netbox:
+                capabilities = [.health, .resources]
+            case .zammad:
+                capabilities = [.health, .resources, .events, .readActions]
+            case .pegaprox:
+                capabilities = [.health, .resources, .events, .metrics, .readActions]
             case .uptimeKuma:
                 capabilities = [.health, .resources, .events, .metrics]
             default:

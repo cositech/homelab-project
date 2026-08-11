@@ -72,6 +72,9 @@ struct ServiceLoginView: View {
             || serviceType == .pterodactyl
             || serviceType == .calagopus
             || serviceType == .grafana
+            || serviceType == .netbox
+            || serviceType == .zammad
+            || serviceType == .pegaprox
     }
 
     private var usesKomodoAuth: Bool {
@@ -98,7 +101,7 @@ struct ServiceLoginView: View {
             return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
         }
 
-        if serviceType == .grafana {
+        if [.grafana, .netbox, .zammad, .pegaprox].contains(serviceType) {
             return normalizedOptional(apiKey) != nil || (isEditing && existingInstance?.apiKey?.isEmpty == false)
         }
 
@@ -512,6 +515,12 @@ struct ServiceLoginView: View {
                                  return "The bearer token is optional. Only build info, active targets, and active alerts are read; arbitrary PromQL is not executed."
         case .grafana:
                                  return "Use an organization-scoped, read-only service account token with dashboard search and data source read permissions."
+        case .netbox:
+                                 return "Use a read-only NetBox v2 token where possible. Results are capped and configuration contexts are excluded."
+        case .zammad:
+                                 return "Use an access token restricted to the required groups. Ticket content, customers and article bodies are excluded."
+        case .pegaprox:
+                                 return "Use a restricted pgx_ API token. Visibility comes exclusively from server-side RBAC and tenant filtering."
         case .truenas:           return localizer.t.loginHintTruenas
         case .pterodactyl:       return localizer.t.loginHintPterodactyl
         case .calagopus:         return localizer.t.loginHintCalagopus
@@ -604,7 +613,7 @@ struct ServiceLoginView: View {
             username = existing.username ?? ""
             apiKey = ""
             password = ""
-        } else if serviceType == .prometheus || serviceType == .grafana {
+        } else if [.prometheus, .grafana, .netbox, .zammad, .pegaprox].contains(serviceType) {
             username = existing.username ?? ""
             apiKey = ""
             password = ""
@@ -1681,6 +1690,29 @@ struct ServiceLoginView: View {
             return ServiceInstance(
                 id: existingInstanceId ?? UUID(),
                 type: .grafana,
+                label: label,
+                url: url,
+                token: "",
+                apiKey: token,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
+            )
+        case .netbox, .zammad, .pegaprox:
+            let existingToken = existingInstance?.url == url ? existingInstance?.apiKey : nil
+            guard let token = normalizedOptional(apiKey) ?? existingToken else {
+                throw APIError.custom(localizer.t.loginErrorCredentials)
+            }
+            let id = existingInstanceId ?? UUID()
+            let client = InfrastructureOperationsAPIClient(instanceId: id, serviceType: serviceType)
+            try await client.authenticate(
+                url: url,
+                apiToken: token,
+                fallbackUrl: fallbackUrl,
+                allowSelfSigned: allowSelfSigned
+            )
+            return ServiceInstance(
+                id: id,
+                type: serviceType,
                 label: label,
                 url: url,
                 token: "",

@@ -534,6 +534,22 @@ class AuthInterceptor @Inject constructor(
                     builder.addHeader("Authorization", "Bearer ${instance.apiKey}")
                 }
             }
+            ServiceType.NETBOX -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
+                    val prefix = if (instance.apiKey.startsWith("nbt_")) "Bearer" else "Token"
+                    builder.addHeader("Authorization", "$prefix ${instance.apiKey}")
+                }
+            }
+            ServiceType.ZAMMAD -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
+                    builder.addHeader("Authorization", "Token token=${instance.apiKey}")
+                }
+            }
+            ServiceType.PEGAPROX -> {
+                if (!hasAuthorization && !instance.apiKey.isNullOrBlank()) {
+                    builder.addHeader("Authorization", "Bearer ${instance.apiKey}")
+                }
+            }
             else -> {}
         }
     }

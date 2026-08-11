@@ -104,7 +104,10 @@ private fun dashboardRoute(type: ServiceType, instanceId: String): String {
         ServiceType.PROXMOX -> "proxmox/$instanceId/dashboard"
         ServiceType.PROXMOX_BACKUP_SERVER -> Screen.Operations.route
         ServiceType.PROMETHEUS,
-        ServiceType.GRAFANA -> Screen.Operations.route
+        ServiceType.GRAFANA,
+        ServiceType.NETBOX,
+        ServiceType.ZAMMAD,
+        ServiceType.PEGAPROX -> Screen.Operations.route
         ServiceType.TRUENAS -> "truenas/$instanceId/dashboard"
         ServiceType.PTERODACTYL -> "pterodactyl/$instanceId/dashboard"
         ServiceType.CALAGOPUS -> "calagopus/$instanceId/dashboard"
