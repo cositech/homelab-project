@@ -1,0 +1,168 @@
+package com.homelab.app.domain.action
+
+import com.homelab.app.domain.provider.ProviderCapability
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ControlledActionsTest {
+    private fun request(
+        risk: ActionRisk = ActionRisk.MEDIUM,
+        dryRun: Boolean = false,
+        confirmed: Boolean = false,
+        idempotencyKey: String = "0123456789abcdef"
+    ) = ControlledActionRequest(
+        id = "request-1",
+        providerRef = "proxmox:cluster-a",
+        action = "guest.shutdown",
+        targetRef = "qemu/101",
+        risk = risk,
+        requestedAt = "1970-01-01T00:00:01Z",
+        idempotencyKey = idempotencyKey,
+        dryRun = dryRun,
+        confirmed = confirmed
+    )
+
+    @Test
+    fun `viewer cannot execute write actions`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(confirmed = true),
+            ActionRole.VIEWER,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        )
+
+        assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
+        assertEquals("insufficient-role", decision.reasonCode)
+    }
+
+    @Test
+    fun `medium risk requires explicit confirmation`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        )
+
+        assertEquals(ActionPolicyOutcome.CONFIRMATION_REQUIRED, decision.outcome)
+        assertFalse(decision.mayExecute)
+    }
+
+    @Test
+    fun `high risk requires administrator role`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.HIGH, confirmed = true),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        )
+
+        assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
+        assertEquals(ActionRole.ADMIN, decision.requiredRole)
+    }
+
+    @Test
+    fun `dry run validates without invoking provider mutation`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(now = { 2_000 })
+
+        val result = coordinator.execute(
+            request(dryRun = true),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+        }
+
+        assertEquals(ActionExecutionState.DRY_RUN, result.state)
+        assertEquals(0, invocations)
+    }
+
+    @Test
+    fun `idempotency returns previous terminal result`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(now = { 3_000 })
+        val confirmed = request(confirmed = true)
+
+        val first = coordinator.execute(confirmed, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)) {
+            invocations += 1
+        }
+        val second = coordinator.execute(confirmed, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)) {
+            invocations += 1
+        }
+
+        assertEquals(ActionExecutionState.SUCCEEDED, first.state)
+        assertEquals(first, second)
+        assertEquals(1, invocations)
+        assertEquals(
+            listOf(ActionExecutionState.QUEUED, ActionExecutionState.SUCCEEDED),
+            coordinator.auditSnapshot().map { it.state }
+        )
+    }
+
+    @Test
+    fun `provider capability is enforced before execution`() = runTest {
+        var invoked = false
+        val coordinator = ControlledActionCoordinator()
+
+        val result = coordinator.execute(
+            request(confirmed = true),
+            ActionRole.ADMIN,
+            providerCapabilities = emptySet()
+        ) {
+            invoked = true
+        }
+
+        assertEquals(ActionExecutionState.REJECTED, result.state)
+        assertEquals("provider-write-capability-required", result.reasonCode)
+        assertFalse(invoked)
+        assertTrue(coordinator.auditSnapshot().isNotEmpty())
+    }
+
+    @Test
+    fun `idempotency survives bounded audit pruning`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(
+            ledger = ControlledActionLedger(maximumRecords = 1),
+            now = { 4_000 }
+        )
+        val firstRequest = request(confirmed = true, idempotencyKey = "first-key-0000001")
+        val secondRequest = request(confirmed = true, idempotencyKey = "second-key-000001")
+
+        coordinator.execute(firstRequest, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)) {
+            invocations += 1
+        }
+        coordinator.execute(secondRequest, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)) {
+            invocations += 1
+        }
+        coordinator.execute(firstRequest, ActionRole.OPERATOR, setOf(ProviderCapability.WRITE_ACTIONS)) {
+            invocations += 1
+        }
+
+        assertEquals(2, invocations)
+        assertEquals(1, coordinator.auditSnapshot().size)
+    }
+
+    @Test
+    fun `coroutine cancellation is audited and propagated`() = runTest {
+        val coordinator = ControlledActionCoordinator()
+        var propagated = false
+
+        try {
+            coordinator.execute(
+                request(confirmed = true),
+                ActionRole.OPERATOR,
+                setOf(ProviderCapability.WRITE_ACTIONS)
+            ) {
+                throw CancellationException("cancel test")
+            }
+        } catch (_: CancellationException) {
+            propagated = true
+        }
+
+        assertTrue(propagated)
+        assertEquals(ActionExecutionState.CANCELLED, coordinator.auditSnapshot().last().state)
+    }
+
+}

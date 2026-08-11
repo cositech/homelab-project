@@ -34,7 +34,14 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
 
 ## Phase 3 — Controlled actions
 
-Typed actions, risk classification, confirmation, RBAC, idempotency, immutable audit records, dry-run support, action queue and failure recovery.
+- [x] Cross-platform typed request, risk, role and policy contracts
+- [x] Explicit confirmation, dry-run and provider write-capability gates
+- [x] Serialized execution, idempotency and bounded append-only mobile audit history
+- [ ] Proxmox VE guest lifecycle reference migration
+- [ ] Durable queue recovery and retry policy
+- [ ] Remaining provider actions migrated by risk class
+
+Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.
 
 ## Phase 4 — Correlation and MSP mode
 
