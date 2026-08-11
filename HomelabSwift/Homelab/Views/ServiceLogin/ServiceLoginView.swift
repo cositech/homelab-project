@@ -1748,9 +1748,9 @@ struct ServiceLoginView: View {
                 url: url,
                 token: "",
                 apiKey: token,
-                password: apiSecret,
                 fallbackUrl: fallbackUrl,
-                allowSelfSigned: allowSelfSigned
+                allowSelfSigned: allowSelfSigned,
+                password: apiSecret
             )
         }
     }

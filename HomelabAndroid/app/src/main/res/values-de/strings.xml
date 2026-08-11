@@ -59,8 +59,6 @@
     <string name="login_hint_pegaprox">Verwende einen eingeschränkten pgx_-API-Token. Cluster- und VM-Sichtbarkeit wird ausschließlich aus serverseitigem RBAC und Tenant-Filtering von PegaProx übernommen.</string>
     <string name="login_hint_opnsense">Verwende ein eigenes OPNsense-API-Schlüsselpaar, das nur Rechte für Firmware-Status und Interface-Übersicht besitzt.</string>
     <string name="login_hint_oneuptime">Verwende einen schreibgeschützten OneUptime-API-Key. Die App ruft nur fest definierte Monitor-, Alert- und Incident-Listen ab und redigiert Alert-Inhalte.</string>
-    <string name="login_hint_opnsense">Verwende ein eigenes OPNsense-API-Schlüsselpaar, das nur Rechte für Firmware-Status und Interface-Übersicht besitzt.</string>
-    <string name="login_hint_oneuptime">Verwende einen schreibgeschützten OneUptime-API-Key. Die App ruft nur fest definierte Monitor-, Alert- und Incident-Listen ab und redigiert Alert-Inhalte.</string>
     <string name="prometheus_targets_healthy">gesunde Targets</string>
     <string name="grafana_dashboards_data_sources">Dashboards / Datenquellen</string>
     <string name="login_pbs_token_id">PBS-Token-ID</string>
@@ -1464,7 +1462,6 @@
     <string name="service_komodo_desc">Docker-Flottenverwaltung und Deployment-Überwachung</string>
     <string name="login_hint_komodo">Verwenden Sie die Komodo-Basis-URL mit API-Schlüssel und API-Secret. Homelab ruft die Komodo-/read-RPC-Endpunkte auf.</string>
     <string name="komodo_api_secret">API-Secret</string>
-    <string name="opnsense_api_secret">OPNsense-API-Secret</string>
     <string name="opnsense_api_secret">OPNsense-API-Secret</string>
     <string name="komodo_login_error_api_secret_required">Geben Sie das Komodo-API-Secret ein</string>
     <string name="komodo_instance_label">Komodo-Instanz</string>

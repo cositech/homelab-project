@@ -226,8 +226,6 @@
     <string name="login_hint_pegaprox">Use a restricted pgx_ API token. Cluster and VM visibility is accepted only from PegaProx server-side RBAC and tenant filtering.</string>
     <string name="login_hint_opnsense">Use a dedicated OPNsense API key/secret pair assigned only the firmware status and interface overview privileges.</string>
     <string name="login_hint_oneuptime">Use a read-only OneUptime API key. The app only calls fixed monitor, alert and incident list endpoints and redacts alert content.</string>
-    <string name="login_hint_opnsense">Use a dedicated OPNsense API key/secret pair assigned only the firmware status and interface overview privileges.</string>
-    <string name="login_hint_oneuptime">Use a read-only OneUptime API key. The app only calls fixed monitor, alert and incident list endpoints and redacts alert content.</string>
     <string name="prometheus_targets_healthy">healthy targets</string>
     <string name="grafana_dashboards_data_sources">dashboards / data sources</string>
     <string name="login_pbs_token_id">PBS token ID</string>
@@ -1756,7 +1754,6 @@
     <string name="service_komodo_desc">Docker fleet management and deployment monitoring</string>
     <string name="login_hint_komodo">Use your Komodo base URL plus an API key and API secret. Homelab calls the Komodo /read RPC endpoints.</string>
     <string name="komodo_api_secret">API secret</string>
-    <string name="opnsense_api_secret">OPNsense API secret</string>
     <string name="opnsense_api_secret">OPNsense API secret</string>
     <string name="komodo_login_error_api_secret_required">Enter the Komodo API secret</string>
     <string name="komodo_instance_label">Komodo instance</string>
