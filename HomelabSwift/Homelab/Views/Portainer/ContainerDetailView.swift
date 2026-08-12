@@ -93,7 +93,7 @@ struct ContainerDetailView: View {
             Text(actionError ?? localizer.t.errorUnknown)
         }
         .confirmationDialog(
-            pendingAction.map { "Confirm \($0.action.rawValue.capitalized)?" } ?? "",
+            localizer.t.actionConfirm,
             isPresented: Binding(
                 get: { pendingAction != nil },
                 set: { if !$0 { pendingAction = nil } }
@@ -116,7 +116,7 @@ struct ContainerDetailView: View {
             }
             Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
         } message: {
-            Text("This action changes or removes the container and will be recorded in the local audit trail.")
+            Text(pendingAction?.action == .remove ? localizer.t.actionRemoveMessage : localizer.t.actionConfirmMessage)
         }
     }
 
@@ -702,6 +702,7 @@ struct ContainerDetailView: View {
         confirmed: Bool
     ) async {
         guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
+            HapticManager.error()
             actionError = APIError.notConfigured.localizedDescription
             showActionError = true
             return

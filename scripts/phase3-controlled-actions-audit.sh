@@ -18,7 +18,7 @@ swift_portainer_list="HomelabSwift/Homelab/Views/Portainer/ContainerListView.swi
 swift_portainer_detail="HomelabSwift/Homelab/Views/Portainer/ContainerDetailView.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 

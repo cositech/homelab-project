@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.homelab.app.R
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.remote.dto.portainer.ContainerDetail
 import com.homelab.app.data.remote.dto.portainer.ContainerStats
@@ -144,7 +145,7 @@ class ContainerDetailViewModel @Inject constructor(
                 }
                 if (result.state == ActionExecutionState.SUCCEEDED) fetchContainerDetails()
                 else {
-                    _error.value = result.reasonCode
+                    _error.value = context.getString(R.string.error_action_failed, result.reasonCode)
                     _isLoading.value = false
                 }
             } catch (e: Exception) {
