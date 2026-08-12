@@ -1,6 +1,9 @@
 package com.homelab.app.domain.action
 
+import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.domain.provider.ProviderCapability
+import com.homelab.app.domain.provider.ProviderRegistry
+import com.homelab.app.util.ServiceType
 import com.homelab.app.ui.proxmox.ProxmoxGuestAction
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -341,6 +344,39 @@ class ControlledActionsTest {
         assertEquals(ActionExecutionState.REJECTED, result.state)
         assertEquals("idempotency-key-conflict", result.reasonCode)
         assertFalse(invoked)
+    }
+
+    @Test
+    fun `portainer container actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, ContainerAction.start.risk)
+        assertEquals(ActionRisk.MEDIUM, ContainerAction.stop.risk)
+        assertEquals(ActionRisk.MEDIUM, ContainerAction.restart.risk)
+        assertEquals(ActionRisk.HIGH, ContainerAction.kill.risk)
+        assertTrue(ContainerAction.pause.requiresConfirmation)
+        assertFalse(ContainerAction.start.requiresConfirmation)
+
+        val request = ContainerAction.stop.controlledRequest(
+            instanceId = "instance-1",
+            endpointId = 7,
+            containerId = "container-42",
+            confirmed = true,
+            requestId = "request-portainer",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("portainer:instance-1", request.providerRef)
+        assertEquals("container.stop", request.action)
+        assertEquals("endpoint/7/container/container-42", request.targetRef)
+        assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `portainer provider declares controlled write actions`() {
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.PORTAINER)
+        )
     }
 
 }

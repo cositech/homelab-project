@@ -93,6 +93,7 @@ fun ContainerDetailScreen(
     }
     
     var selectedTabIndex by remember(tabs) { mutableIntStateOf(0) }
+    var pendingAction by remember { mutableStateOf<ContainerAction?>(null) }
 
     LaunchedEffect(selectedTabIndex, tabs) {
         val tabResId = tabs.getOrNull(selectedTabIndex)
@@ -100,6 +101,25 @@ fun ContainerDetailScreen(
             R.string.portainer_stats -> viewModel.fetchStats()
             R.string.portainer_logs -> viewModel.fetchLogs()
         }
+    }
+
+    pendingAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.portainer_confirm_action, action.displayName)) },
+            text = { Text(stringResource(R.string.portainer_confirm_action_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAction = null
+                    viewModel.executeAction(action, confirmed = true)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -137,7 +157,10 @@ fun ContainerDetailScreen(
                 container?.let { detail ->
                     ContainerHeaderCard(
                         detail = detail,
-                        onAction = { viewModel.executeAction(it) },
+                        onAction = { action ->
+                            if (action.requiresConfirmation) pendingAction = action
+                            else viewModel.executeAction(action)
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(12.dp))

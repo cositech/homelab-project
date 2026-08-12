@@ -296,4 +296,15 @@ enum ContainerAction: String, CaseIterable {
     var isDestructive: Bool {
         self == .kill || self == .stop
     }
+
+    var controlledAction: PortainerControlledContainerAction {
+        switch self {
+        case .start: return .start
+        case .stop: return .stop
+        case .restart: return .restart
+        case .kill: return .kill
+        case .pause: return .pause
+        case .unpause: return .resume
+        }
+    }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import com.homelab.app.MainDispatcherRule
 import com.homelab.app.data.repository.PortainerRepository
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -27,6 +28,7 @@ class ContainerListViewModelTest {
         val context = mockk<Context>(relaxed = true)
         val viewModel = ContainerListViewModel(
             repository = repository,
+            controlledActionCoordinator = ControlledActionCoordinator(),
             context = context,
             savedStateHandle = SavedStateHandle(
                 mapOf(

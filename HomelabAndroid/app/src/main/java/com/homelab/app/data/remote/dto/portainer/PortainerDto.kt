@@ -1,5 +1,9 @@
 package com.homelab.app.data.remote.dto.portainer
 
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.UUID
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -274,11 +278,37 @@ data class UpdateStackRequest(
     val prune: Boolean = false
 )
 
-enum class ContainerAction(val displayName: String, val isDestructive: Boolean) {
-    start("Start", false),
-    stop("Stop", true),
-    restart("Restart", false),
-    kill("Kill", true),
-    pause("Pause", false),
-    unpause("Resume", false)
+enum class ContainerAction(
+    val displayName: String,
+    val isDestructive: Boolean,
+    val wireName: String,
+    val risk: ActionRisk
+) {
+    start("Start", false, "container.start", ActionRisk.LOW),
+    stop("Stop", true, "container.stop", ActionRisk.MEDIUM),
+    restart("Restart", false, "container.restart", ActionRisk.MEDIUM),
+    kill("Kill", true, "container.kill", ActionRisk.HIGH),
+    pause("Pause", false, "container.pause", ActionRisk.MEDIUM),
+    unpause("Resume", false, "container.resume", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        endpointId: Int,
+        containerId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "portainer:$instanceId",
+        action = wireName,
+        targetRef = "endpoint/$endpointId/container/$containerId",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
