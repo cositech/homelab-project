@@ -22,8 +22,13 @@ swift_adguard_dashboard="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeDashb
 android_pihole_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/pihole/PiholeDomainDto.kt"
 android_pihole_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pihole/PiholeViewModel.kt"
 android_pihole_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pihole/PiholeDomainListScreen.kt"
+android_pihole_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/PiholeApi.kt"
+android_pihole_repository="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/PiholeRepository.kt"
+android_fallback_interceptor="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/SmartFallbackInterceptor.kt"
+android_fallback_tests="HomelabAndroid/app/src/test/java/com/homelab/app/data/remote/SmartFallbackInterceptorTest.kt"
 swift_pihole_models="HomelabSwift/Homelab/Models/PiholeDomain.swift"
 swift_pihole_ui="HomelabSwift/Homelab/Views/PiHole/PiholeDomainListView.swift"
+swift_pihole_api="HomelabSwift/Homelab/Networking/PiHole/PiHoleAPIClient.swift"
 android_healthchecks_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/healthchecks/HealthchecksDto.kt"
 swift_healthchecks_models="HomelabSwift/Homelab/Models/Healthchecks/HealthchecksModels.swift"
 android_healthchecks_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksDetailViewModel.kt"
@@ -33,7 +38,7 @@ swift_healthchecks_detail="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksD
 swift_healthchecks_editor="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksCheckEditor.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$swift_pihole_models" "$swift_pihole_ui" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -123,6 +128,22 @@ for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descripto
 done
 grep -Fq 'pihole domain actions require confirmation and have stable identity' "$android_tests"
 grep -Fq 'testPiholeDomainActionsRequireConfirmationAndHaveStableIdentity' "$swift_tests"
+for pattern in 'X-Homelab-No-Fallback' '!noFallback'; do
+  grep -Fq "$pattern" "$android_fallback_interceptor"
+done
+grep -Fq 'no fallback header prevents mutation replay and is not sent upstream' "$android_fallback_tests"
+grep -Fq '@Header("X-Homelab-No-Fallback")' "$android_pihole_api"
+for pattern in 'shouldUseLegacyDomainMutation' 'setOf(404, 405, 501)' 'if (!shouldUseLegacyDomainMutation(e)) throw e'; do
+  grep -Fq "$pattern" "$android_pihole_repository"
+done
+grep -Fq 'lowercase(Locale.ROOT)' "$android_pihole_models"
+for pattern in 'shouldUseLegacyDomainMutation' '[404, 405, 501]' 'fallbackURL: ""'; do
+  grep -Fq "$pattern" "$swift_pihole_api"
+done
+for pattern in 'let selectedList = selectedTab' 'client.addDomain(domain: normalizedDomain, to: selectedList)' '.whitespacesAndNewlines'; do
+  grep -Fq "$pattern" "$swift_pihole_ui"
+done
+grep -Fq 'testPiholeLegacyMutationFallbackRequiresUnsupportedEndpointStatus' "$swift_tests"
 for pattern in 'check.create' 'check.update' 'check.channels.update' 'check.pause' 'check.resume' 'check.delete' 'ActionRisk.HIGH' 'controlledRequest'; do
   grep -Fq "$pattern" "$android_healthchecks_models"
 done

@@ -179,16 +179,17 @@ class PiholeViewModel @Inject constructor(
         listType: PiholeDomainListType,
         confirmed: Boolean
     ) {
+        val normalizedDomain = domain.trim()
         viewModelScope.launch {
             try {
                 val result = controlledActionCoordinator.execute(
-                    request = action.controlledRequest(instanceId, domain, listType, confirmed),
+                    request = action.controlledRequest(instanceId, normalizedDomain, listType, confirmed),
                     actorRole = ActionRole.ADMIN,
                     providerCapabilities = ProviderRegistry.capabilities(ServiceType.PIHOLE)
                 ) {
                     when (action) {
-                        PiholeControlledDomainAction.ADD -> repository.addDomain(instanceId, domain, listType)
-                        PiholeControlledDomainAction.REMOVE -> repository.removeDomain(instanceId, domain, listType)
+                        PiholeControlledDomainAction.ADD -> repository.addDomain(instanceId, normalizedDomain, listType)
+                        PiholeControlledDomainAction.REMOVE -> repository.removeDomain(instanceId, normalizedDomain, listType)
                     }
                 }
                 if (result.state == ActionExecutionState.SUCCEEDED) {

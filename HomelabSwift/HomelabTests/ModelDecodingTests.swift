@@ -1825,6 +1825,14 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ProviderRegistry.descriptor(for: .pihole).capabilities.contains(.writeActions))
     }
 
+    func testPiholeLegacyMutationFallbackRequiresUnsupportedEndpointStatus() {
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 404, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 405, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 501, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 500, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(URLError(.timedOut)))
+    }
+
     func testAdGuardProtectionActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(AdGuardControlledProtectionAction.enable.risk, .low)
         XCTAssertEqual(AdGuardControlledProtectionAction.disable.risk, .medium)

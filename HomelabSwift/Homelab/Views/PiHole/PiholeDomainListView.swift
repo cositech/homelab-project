@@ -151,7 +151,8 @@ struct PiholeDomainListView: View {
 
     private func addDomain() async {
         guard !newDomainText.isEmpty else { return }
-        let url = newDomainText.trimmingCharacters(in: .whitespaces)
+        let normalizedDomain = newDomainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedList = selectedTab
         do {
             guard let client = await servicesStore.piholeClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
@@ -159,14 +160,14 @@ struct PiholeDomainListView: View {
             let result = await servicesStore.controlledActionCoordinator.execute(
                 request: PiholeControlledDomainAction.add.request(
                     instanceId: instanceId,
-                    domain: url,
-                    listType: selectedTab,
+                    domain: normalizedDomain,
+                    listType: selectedList,
                     confirmed: true
                 ),
                 actorRole: .admin,
                 providerCapabilities: ProviderRegistry.descriptor(for: .pihole).capabilities
             ) {
-                try await client.addDomain(domain: url, to: selectedTab)
+                try await client.addDomain(domain: normalizedDomain, to: selectedList)
             }
             guard result.state == .succeeded else {
                 throw APIError.custom(String(format: localizer.t.errorActionFailed, result.reasonCode))
@@ -179,6 +180,7 @@ struct PiholeDomainListView: View {
 
     private func removeDomain(_ item: PiholeDomain, confirmed: Bool) async {
         guard let type = item.type else { return }
+        let normalizedDomain = item.domain.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             guard let client = await servicesStore.piholeClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
@@ -186,14 +188,14 @@ struct PiholeDomainListView: View {
             let result = await servicesStore.controlledActionCoordinator.execute(
                 request: PiholeControlledDomainAction.remove.request(
                     instanceId: instanceId,
-                    domain: item.domain,
+                    domain: normalizedDomain,
                     listType: type,
                     confirmed: confirmed
                 ),
                 actorRole: .admin,
                 providerCapabilities: ProviderRegistry.descriptor(for: .pihole).capabilities
             ) {
-                try await client.removeDomain(domain: item.domain, from: type)
+                try await client.removeDomain(domain: normalizedDomain, from: type)
             }
             guard result.state == .succeeded else {
                 throw APIError.custom(String(format: localizer.t.errorActionFailed, result.reasonCode))

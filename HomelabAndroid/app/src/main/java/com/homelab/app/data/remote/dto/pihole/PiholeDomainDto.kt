@@ -3,6 +3,7 @@ package com.homelab.app.data.remote.dto.pihole
 import com.homelab.app.domain.action.ActionRisk
 import com.homelab.app.domain.action.ControlledActionRequest
 import java.time.Instant
+import java.util.Locale
 import java.util.UUID
 
 import kotlinx.serialization.Serializable
@@ -42,7 +43,7 @@ enum class PiholeControlledDomainAction(val wireName: String) {
         id = requestId,
         providerRef = "pi-hole:" + instanceId,
         action = wireName,
-        targetRef = "domain/" + listType.value + "/" + domain.trim().lowercase(),
+        targetRef = "domain/" + listType.value + "/" + domain.trim().lowercase(Locale.ROOT),
         risk = risk,
         requestedAt = requestedAt,
         idempotencyKey = idempotencyKey,

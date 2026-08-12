@@ -28,6 +28,10 @@ class SmartFallbackInterceptor @Inject constructor(
 
         val instanceIdHeader = request.header("X-Homelab-Instance-Id")
         val bypassHeader = request.header("X-Homelab-Bypass")
+        val noFallback = request.header("X-Homelab-No-Fallback") == "true"
+        if (request.header("X-Homelab-No-Fallback") != null) {
+            request = request.newBuilder().removeHeader("X-Homelab-No-Fallback").build()
+        }
 
         if (bypassHeader == "true" || instanceIdHeader.isNullOrBlank()) {
             return chain.proceed(request)
@@ -61,7 +65,7 @@ class SmartFallbackInterceptor @Inject constructor(
             var response = chain.proceed(request)
             
             // 4. Fallback in caso di fallimento su rete locale
-            if (!response.isSuccessful && response.code in 500..504 && isConnectedToHomeWifi && fallbackUrl != null) {
+            if (!noFallback && !response.isSuccessful && response.code in 500..504 && isConnectedToHomeWifi && fallbackUrl != null) {
                 if (primaryUrl != null) {
                     val fbUrl = rewriteUrl(
                         originalUrl = request.url,
@@ -81,7 +85,7 @@ class SmartFallbackInterceptor @Inject constructor(
             // login page). This is an application-level error, not a network-level failure — do
             // NOT retry with the fallback URL, just propagate the error immediately.
             if (e is HtmlResponseException) throw e
-            if (isConnectedToHomeWifi && fallbackUrl != null) {
+            if (!noFallback && isConnectedToHomeWifi && fallbackUrl != null) {
                 if (primaryUrl != null) {
                     val fbUrl = rewriteUrl(
                         originalUrl = request.url,
