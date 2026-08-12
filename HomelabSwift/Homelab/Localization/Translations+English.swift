@@ -1141,6 +1141,7 @@ extension Translations {
         errorUnauthorized: "Unauthorized. Please reconnect.",
         errorBothFailed: "Connection failed on both primary and fallback URLs. Check your network.",
         errorUnknown: "Unknown error",
+        errorActionFailed: "Action failed (%@).",
         errorAtsRequiresSecure: "HTTP connection blocked. Your installation environment (e.g. LiveContainer) may not allow plain HTTP. Use HTTPS instead.",
         unknown: "Unknown",
         none: "none",

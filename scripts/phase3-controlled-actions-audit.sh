@@ -17,12 +17,15 @@ swift_portainer_models="HomelabSwift/Homelab/Models/Portainer/PortainerModels.sw
 swift_portainer_list="HomelabSwift/Homelab/Views/Portainer/ContainerListView.swift"
 swift_portainer_detail="HomelabSwift/Homelab/Views/Portainer/ContainerDetailView.swift"
 android_healthchecks_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/healthchecks/HealthchecksDto.kt"
+swift_healthchecks_models="HomelabSwift/Homelab/Models/Healthchecks/HealthchecksModels.swift"
 android_healthchecks_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksDetailViewModel.kt"
+android_healthchecks_editor="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksEditorViewModel.kt"
 android_healthchecks_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksScreens.kt"
 swift_healthchecks_detail="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksDetail.swift"
+swift_healthchecks_editor="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksCheckEditor.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -80,20 +83,27 @@ done
 grep -Fq 'testPortainerContainerActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'portainer container actions have stable risk classification and identity' "$android_tests"
 
-for pattern in 'check.pause' 'check.resume' 'check.delete' 'ActionRisk.HIGH' 'controlledRequest'; do
+for pattern in 'check.create' 'check.update' 'check.channels.update' 'check.pause' 'check.resume' 'check.delete' 'ActionRisk.HIGH' 'controlledRequest'; do
   grep -Fq "$pattern" "$android_healthchecks_models"
 done
 for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)' 'confirmed: Boolean'; do
   grep -Fq "$pattern" "$android_healthchecks_detail"
 done
+for pattern in 'controlledActionCoordinator.execute' 'HealthchecksControlledCheckAction.CREATE' 'HealthchecksControlledCheckAction.UPDATE' 'confirmed: Boolean'; do
+  grep -Fq "$pattern" "$android_healthchecks_editor"
+done
 for pattern in 'showToggleDialog' 'togglePause(confirmed = true)' 'deleteCheck(confirmed = true'; do
   grep -Fq "$pattern" "$android_healthchecks_ui"
 done
-for pattern in 'HealthchecksControlledCheckAction' 'case .pause, .resume: return .medium' 'case .delete: return .high'; do
+grep -Fq 'struct HealthchecksCheckPayload: Encodable, Sendable' "$swift_healthchecks_models"
+for pattern in 'HealthchecksControlledCheckAction' 'case .update, .updateChannels, .pause, .resume: return .medium' 'case .create, .delete: return .high'; do
   grep -Fq "$pattern" "$swift_core"
 done
-for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .healthchecks).capabilities' 'confirmed: true'; do
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .healthchecks).capabilities' 'confirmed: true' 'HealthchecksControlledCheckAction.updateChannels'; do
   grep -Fq "$pattern" "$swift_healthchecks_detail"
+done
+for pattern in 'controlledActionCoordinator.execute' 'HealthchecksControlledCheckAction' 'confirmed: true' 'existingUUID == nil ? .create : .update'; do
+  grep -Fq "$pattern" "$swift_healthchecks_editor"
 done
 grep -Fq 'testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'healthchecks check actions have stable risk classification and identity' "$android_tests"

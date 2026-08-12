@@ -1143,6 +1143,7 @@ extension Translations {
         errorUnauthorized: "No autorizado. Por favor, vuelve a conectarte.",
         errorBothFailed: "La conexión falló tanto en la URL principal como en la de respaldo. Comprueba tu red.",
         errorUnknown: "Error desconocido",
+        errorActionFailed: "La acción ha fallado (%@).",
         errorAtsRequiresSecure: "Conexión HTTP bloqueada. Tu entorno de instalación (ej. LiveContainer) puede no permitir HTTP. Usa HTTPS.",
         unknown: "Desconocido",
         none: "ninguno",

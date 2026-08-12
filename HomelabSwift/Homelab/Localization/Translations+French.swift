@@ -1143,6 +1143,7 @@ extension Translations {
         errorUnauthorized: "Non autorisé. Veuillez vous reconnecter.",
         errorBothFailed: "La connexion a échoué sur l'URL principale et l'URL de secours. Vérifiez votre réseau.",
         errorUnknown: "Erreur inconnue",
+        errorActionFailed: "Opération échouée (%@).",
         errorAtsRequiresSecure: "Connexion HTTP bloquée. Votre environnement d'installation (ex. LiveContainer) peut bloquer HTTP. Utilisez HTTPS.",
         unknown: "Inconnu",
         none: "aucun",

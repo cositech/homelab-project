@@ -1141,6 +1141,7 @@ extension Translations {
         errorUnauthorized: "Non autorizzato. Effettua nuovamente l'accesso.",
         errorBothFailed: "Connessione fallita sia su URL primario che secondario. Controlla la rete.",
         errorUnknown: "Sconosciuto",
+        errorActionFailed: "Azione non riuscita (%@).",
         errorAtsRequiresSecure: "Connessione HTTP bloccata. L'ambiente di installazione (es. LiveContainer) potrebbe non permettere HTTP. Usa HTTPS.",
         unknown: "Sconosciuto",
         none: "nessuno",

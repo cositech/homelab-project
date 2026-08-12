@@ -1799,6 +1799,15 @@ final class ModelDecodingTests: XCTestCase {
     }
 
     func testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(HealthchecksControlledCheckAction.create.risk, .high)
+        XCTAssertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                risk: HealthchecksControlledCheckAction.create.risk,
+                completedAttempts: 1
+            )
+        )
+        XCTAssertEqual(HealthchecksControlledCheckAction.update.risk, .medium)
+        XCTAssertEqual(HealthchecksControlledCheckAction.updateChannels.risk, .medium)
         XCTAssertEqual(HealthchecksControlledCheckAction.pause.risk, .medium)
         XCTAssertEqual(HealthchecksControlledCheckAction.resume.risk, .medium)
         XCTAssertEqual(HealthchecksControlledCheckAction.delete.risk, .high)
@@ -1816,6 +1825,10 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(request.action, "check.delete")
         XCTAssertEqual(request.targetRef, "check/check-42")
         XCTAssertTrue(request.confirmed)
+        XCTAssertEqual(
+            HealthchecksControlledCheckAction.updateChannels.actionName,
+            "check.channels.update"
+        )
     }
 
     func testHealthchecksProviderDeclaresControlledWriteActions() {

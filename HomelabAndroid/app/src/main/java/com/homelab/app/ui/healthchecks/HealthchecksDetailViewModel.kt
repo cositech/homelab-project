@@ -163,7 +163,12 @@ class HealthchecksDetailViewModel @Inject constructor(
         }
     }
 
-    fun updateChannels(selected: List<String>, custom: String, onComplete: () -> Unit) {
+    fun updateChannels(
+        selected: List<String>,
+        custom: String,
+        confirmed: Boolean = false,
+        onComplete: () -> Unit
+    ) {
         val current = _detail.value ?: return
         val uuid = current.uuid ?: return
         val customTokens = custom.split(",")
@@ -172,9 +177,27 @@ class HealthchecksDetailViewModel @Inject constructor(
         val combined = (selected + customTokens).distinct().joinToString(",").ifBlank { "" }
         viewModelScope.launch {
             try {
-                repository.updateCheck(instanceId, uuid, payloadFromCheck(current, combined.ifBlank { null }))
-                fetchDetail()
-                onComplete()
+                val result = controlledActionCoordinator.execute(
+                    request = HealthchecksControlledCheckAction.UPDATE_CHANNELS.controlledRequest(
+                        instanceId = instanceId,
+                        checkId = uuid,
+                        confirmed = confirmed
+                    ),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)
+                ) {
+                    repository.updateCheck(
+                        instanceId,
+                        uuid,
+                        payloadFromCheck(current, combined.ifBlank { null })
+                    )
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchDetail()
+                    onComplete()
+                } else {
+                    _actionError.value = context.getString(R.string.error_action_failed, result.reasonCode)
+                }
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
             }

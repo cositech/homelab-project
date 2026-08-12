@@ -601,6 +601,8 @@ struct HealthchecksCheckDetail: View {
                 try await client.resumeCheck(id: uuid)
             case .delete:
                 try await client.deleteCheck(id: uuid)
+            case .create, .update, .updateChannels:
+                throw APIError.custom("Unsupported Healthchecks detail action")
             }
         }
 
@@ -829,17 +831,33 @@ private struct HealthchecksIntegrationsEditor: View {
             channels: channelsValue
         )
 
-        do {
-            guard let client = await servicesStore.healthchecksClient(instanceId: instanceId) else {
-                errorMessage = localizer.t.errorNotConfigured
-                return
-            }
-            try await client.updateCheck(id: uuid, payload: payload)
-            await onComplete()
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+        guard let client = await servicesStore.healthchecksClient(instanceId: instanceId) else {
+            HapticManager.error()
+            errorMessage = localizer.t.errorNotConfigured
+            return
         }
+
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: HealthchecksControlledCheckAction.updateChannels.request(
+                instanceId: instanceId,
+                checkId: uuid,
+                confirmed: true
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .healthchecks).capabilities
+        ) {
+            try await client.updateCheck(id: uuid, payload: payload)
+        }
+
+        guard result.state == .succeeded else {
+            HapticManager.error()
+            errorMessage = String(format: localizer.t.errorActionFailed, result.reasonCode)
+            return
+        }
+
+        HapticManager.success()
+        await onComplete()
+        dismiss()
     }
 
     private func parseChannelTokens(_ raw: String) -> [String] {

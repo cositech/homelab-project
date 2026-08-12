@@ -744,14 +744,14 @@ enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendab
 }
 
 enum HealthchecksControlledCheckAction: String, CaseIterable, Equatable, Sendable {
-    case pause, resume, delete
+    case create, update, updateChannels = "channels.update", pause, resume, delete
 
     var actionName: String { "check.\(rawValue)" }
 
     var risk: ControlledActionRisk {
         switch self {
-        case .pause, .resume: return .medium
-        case .delete: return .high
+        case .update, .updateChannels, .pause, .resume: return .medium
+        case .create, .delete: return .high
         }
     }
 

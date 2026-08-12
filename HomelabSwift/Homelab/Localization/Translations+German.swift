@@ -1143,6 +1143,7 @@ extension Translations {
         errorUnauthorized: "Nicht autorisiert. Bitte erneut verbinden.",
         errorBothFailed: "Verbindung sowohl über primäre als auch über Fallback-URL fehlgeschlagen. Überprüfen Sie Ihr Netzwerk.",
         errorUnknown: "Unbekannter Fehler",
+        errorActionFailed: "Aktion fehlgeschlagen (%@).",
         errorAtsRequiresSecure: "HTTP-Verbindung blockiert. Ihre Installationsumgebung (z.B. LiveContainer) erlaubt möglicherweise kein HTTP. Verwenden Sie HTTPS.",
         unknown: "Unbekannt",
         none: "keine",
