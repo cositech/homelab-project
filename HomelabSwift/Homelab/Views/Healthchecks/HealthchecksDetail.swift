@@ -849,7 +849,7 @@ private struct HealthchecksIntegrationsEditor: View {
 
         guard result.state == .succeeded else {
             HapticManager.error()
-            errorMessage = result.reasonCode
+            errorMessage = String(format: localizer.t.errorActionFailed, result.reasonCode)
             return
         }
 

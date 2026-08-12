@@ -1211,6 +1211,7 @@ struct Translations {
     let errorUnauthorized: String
     let errorBothFailed: String
     let errorUnknown: String
+    let errorActionFailed: String
     let errorAtsRequiresSecure: String
     let unknown: String
     let none: String

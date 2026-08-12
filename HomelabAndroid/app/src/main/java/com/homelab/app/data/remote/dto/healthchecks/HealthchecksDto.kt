@@ -131,7 +131,7 @@ enum class HealthchecksControlledCheckAction(
     val wireName: String,
     val risk: ActionRisk
 ) {
-    CREATE("check.create", ActionRisk.MEDIUM),
+    CREATE("check.create", ActionRisk.HIGH),
     UPDATE("check.update", ActionRisk.MEDIUM),
     UPDATE_CHANNELS("check.channels.update", ActionRisk.MEDIUM),
     PAUSE("check.pause", ActionRisk.MEDIUM),

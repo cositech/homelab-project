@@ -750,8 +750,8 @@ enum HealthchecksControlledCheckAction: String, CaseIterable, Equatable, Sendabl
 
     var risk: ControlledActionRisk {
         switch self {
-        case .create, .update, .updateChannels, .pause, .resume: return .medium
-        case .delete: return .high
+        case .update, .updateChannels, .pause, .resume: return .medium
+        case .create, .delete: return .high
         }
     }
 

@@ -96,7 +96,7 @@ for pattern in 'showToggleDialog' 'togglePause(confirmed = true)' 'deleteCheck(c
   grep -Fq "$pattern" "$android_healthchecks_ui"
 done
 grep -Fq 'struct HealthchecksCheckPayload: Encodable, Sendable' "$swift_healthchecks_models"
-for pattern in 'HealthchecksControlledCheckAction' 'case .create, .update, .updateChannels, .pause, .resume: return .medium' 'case .delete: return .high'; do
+for pattern in 'HealthchecksControlledCheckAction' 'case .update, .updateChannels, .pause, .resume: return .medium' 'case .create, .delete: return .high'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .healthchecks).capabilities' 'confirmed: true' 'HealthchecksControlledCheckAction.updateChannels'; do

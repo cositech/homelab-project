@@ -374,7 +374,13 @@ class ControlledActionsTest {
 
     @Test
     fun `healthchecks check actions have stable risk classification and identity`() {
-        assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.CREATE.risk)
+        assertEquals(ActionRisk.HIGH, HealthchecksControlledCheckAction.CREATE.risk)
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                HealthchecksControlledCheckAction.CREATE.risk,
+                completedAttempts = 1
+            )
+        )
         assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.UPDATE.risk)
         assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.UPDATE_CHANNELS.risk)
         assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.PAUSE.risk)
