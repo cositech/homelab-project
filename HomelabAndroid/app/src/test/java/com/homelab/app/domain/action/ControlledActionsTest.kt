@@ -2,6 +2,8 @@ package com.homelab.app.domain.action
 
 import com.homelab.app.data.remote.dto.adguard.AdGuardControlledProtectionAction
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckAction
+import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
+import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
@@ -371,6 +373,37 @@ class ControlledActionsTest {
         assertEquals("container.stop", request.action)
         assertEquals("endpoint/7/container/container-42", request.targetRef)
         assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `pihole domain actions require confirmation and have stable identity`() {
+        assertEquals(ActionRisk.HIGH, PiholeControlledDomainAction.ADD.risk)
+        assertEquals(ActionRisk.MEDIUM, PiholeControlledDomainAction.REMOVE.risk)
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                PiholeControlledDomainAction.ADD.risk,
+                completedAttempts = 0
+            )
+        )
+
+        val request = PiholeControlledDomainAction.REMOVE.controlledRequest(
+            instanceId = "instance-1",
+            domain = "Example.COM",
+            listType = PiholeDomainListType.DENY,
+            confirmed = true,
+            requestId = "request-pihole",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("pi-hole:instance-1", request.providerRef)
+        assertEquals("domain.remove", request.action)
+        assertEquals("domain/deny/example.com", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.PIHOLE)
+        )
     }
 
     @Test

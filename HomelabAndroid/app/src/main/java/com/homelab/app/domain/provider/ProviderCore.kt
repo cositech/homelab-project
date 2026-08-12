@@ -128,6 +128,10 @@ object ProviderRegistry {
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )
+                ServiceType.PIHOLE -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.WRITE_ACTIONS
+                )
                 ServiceType.HEALTHCHECKS -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS

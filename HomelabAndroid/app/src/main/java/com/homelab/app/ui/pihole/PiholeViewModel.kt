@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.pihole.PiholeBlockingStatus
+import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainDto
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.pihole.PiholeHistoryEntry
@@ -14,7 +15,11 @@ import com.homelab.app.data.remote.dto.pihole.PiholeTopClient
 import com.homelab.app.data.remote.dto.pihole.PiholeTopItem
 import com.homelab.app.data.repository.PiholeRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.Logger
 import com.homelab.app.util.ServiceType
@@ -38,6 +43,7 @@ import kotlinx.coroutines.launch
 class PiholeViewModel @Inject constructor(
     private val repository: PiholeRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -159,22 +165,40 @@ class PiholeViewModel @Inject constructor(
         }
     }
 
-    fun addDomain(domain: String, listType: PiholeDomainListType) {
-        viewModelScope.launch {
-            try {
-                repository.addDomain(instanceId, domain, listType)
-                _domainsState.value = UiState.Success(repository.getDomains(instanceId))
-            } catch (error: Exception) {
-                _actionError.value = ErrorHandler.getMessage(context, error)
-            }
-        }
+    fun addDomain(domain: String, listType: PiholeDomainListType, confirmed: Boolean = false) {
+        executeDomainAction(PiholeControlledDomainAction.ADD, domain, listType, confirmed)
     }
 
-    fun removeDomain(domain: String, listType: PiholeDomainListType) {
+    fun removeDomain(domain: String, listType: PiholeDomainListType, confirmed: Boolean = false) {
+        executeDomainAction(PiholeControlledDomainAction.REMOVE, domain, listType, confirmed)
+    }
+
+    private fun executeDomainAction(
+        action: PiholeControlledDomainAction,
+        domain: String,
+        listType: PiholeDomainListType,
+        confirmed: Boolean
+    ) {
         viewModelScope.launch {
             try {
-                repository.removeDomain(instanceId, domain, listType)
-                _domainsState.value = UiState.Success(repository.getDomains(instanceId))
+                val result = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, domain, listType, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.PIHOLE)
+                ) {
+                    when (action) {
+                        PiholeControlledDomainAction.ADD -> repository.addDomain(instanceId, domain, listType)
+                        PiholeControlledDomainAction.REMOVE -> repository.removeDomain(instanceId, domain, listType)
+                    }
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    _domainsState.value = UiState.Success(repository.getDomains(instanceId))
+                } else {
+                    _actionError.value = context.getString(
+                        com.homelab.app.R.string.error_action_failed,
+                        result.reasonCode
+                    )
+                }
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
             }

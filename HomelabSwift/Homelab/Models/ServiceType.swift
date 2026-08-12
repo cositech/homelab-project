@@ -609,6 +609,8 @@ enum ProviderRegistry {
                 capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
             case .adguardHome:
                 capabilities = [.health, .writeActions]
+            case .pihole:
+                capabilities = [.health, .writeActions]
             case .healthchecks:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
