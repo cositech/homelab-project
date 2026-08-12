@@ -45,6 +45,8 @@ Proxmox VE is the reference-provider migration. Guest start and resume are low r
 
 Portainer is the first risk-class migration beyond the reference provider. Container start is low risk; stop, restart, pause and resume are medium risk; kill and removal are high risk. Android list/detail lifecycle actions and iOS list/detail lifecycle actions use the same coordinator, provider capability gate and normalized target identity. iOS container removal is also controlled. Medium and high risk operations require an explicit confirmation dialog before the provider call. Compose edits, rename and other configuration mutations remain outside this vertical and must be migrated separately.
 
+Healthchecks is the first monitoring-provider migration. Check pause and resume are medium risk, while deletion is high risk. Android and iOS detail actions use normalized Healthchecks instance and check UUID target identities, explicit confirmations, the write-capability gate and the shared local audit trail. Check creation, editing and integration-channel mutations remain outside this lifecycle vertical.
+
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.

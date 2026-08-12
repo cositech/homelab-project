@@ -1,5 +1,6 @@
 package com.homelab.app.domain.action
 
+import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckAction
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
@@ -369,6 +370,35 @@ class ControlledActionsTest {
         assertEquals("container.stop", request.action)
         assertEquals("endpoint/7/container/container-42", request.targetRef)
         assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `healthchecks check actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.PAUSE.risk)
+        assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.RESUME.risk)
+        assertEquals(ActionRisk.HIGH, HealthchecksControlledCheckAction.DELETE.risk)
+
+        val request = HealthchecksControlledCheckAction.DELETE.controlledRequest(
+            instanceId = "instance-1",
+            checkId = "check-42",
+            confirmed = true,
+            requestId = "request-healthchecks",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("healthchecks:instance-1", request.providerRef)
+        assertEquals("check.delete", request.action)
+        assertEquals("check/check-42", request.targetRef)
+        assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `healthchecks provider declares controlled write actions`() {
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)
+        )
     }
 
     @Test

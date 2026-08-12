@@ -1909,4 +1909,8 @@
     <string name="truenas_pool_status">Pool status</string>
     <string name="truenas_no_pools">No pools returned by TrueNAS.</string>
     <string name="truenas_no_disks">No disks returned by TrueNAS.</string>
+    <string name="healthchecks_pause_check">Pause check</string>
+    <string name="healthchecks_resume_check">Resume check</string>
+    <string name="healthchecks_confirm_action">Confirm %1$s?</string>
+    <string name="healthchecks_confirm_action_message">This action changes the check state and will be recorded in the local audit trail.</string>
 </resources>

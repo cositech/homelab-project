@@ -16,9 +16,13 @@ android_portainer_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/po
 swift_portainer_models="HomelabSwift/Homelab/Models/Portainer/PortainerModels.swift"
 swift_portainer_list="HomelabSwift/Homelab/Views/Portainer/ContainerListView.swift"
 swift_portainer_detail="HomelabSwift/Homelab/Views/Portainer/ContainerDetailView.swift"
+android_healthchecks_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/healthchecks/HealthchecksDto.kt"
+android_healthchecks_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksDetailViewModel.kt"
+android_healthchecks_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksScreens.kt"
+swift_healthchecks_detail="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksDetail.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -75,6 +79,24 @@ for file in "$swift_portainer_list" "$swift_portainer_detail"; do
 done
 grep -Fq 'testPortainerContainerActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'portainer container actions have stable risk classification and identity' "$android_tests"
+
+for pattern in 'check.pause' 'check.resume' 'check.delete' 'ActionRisk.HIGH' 'controlledRequest'; do
+  grep -Fq "$pattern" "$android_healthchecks_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)' 'confirmed: Boolean'; do
+  grep -Fq "$pattern" "$android_healthchecks_detail"
+done
+for pattern in 'showToggleDialog' 'togglePause(confirmed = true)' 'deleteCheck(confirmed = true'; do
+  grep -Fq "$pattern" "$android_healthchecks_ui"
+done
+for pattern in 'HealthchecksControlledCheckAction' 'case .pause, .resume: return .medium' 'case .delete: return .high'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .healthchecks).capabilities' 'confirmed: true'; do
+  grep -Fq "$pattern" "$swift_healthchecks_detail"
+done
+grep -Fq 'testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'healthchecks check actions have stable risk classification and identity' "$android_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2

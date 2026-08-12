@@ -19,6 +19,7 @@ struct HealthchecksCheckDetail: View {
     @State private var bodyText: String = ""
     @State private var showEditor = false
     @State private var showDeleteConfirm = false
+    @State private var showToggleConfirm = false
     @State private var showActionError = false
     @State private var actionError: String?
     private let smoothAnimation = Animation.spring(response: 0.45, dampingFraction: 0.86)
@@ -62,7 +63,7 @@ struct HealthchecksCheckDetail: View {
                             showEditor = true
                         }
                         Button(detail.isPaused ? localizer.t.actionResume : localizer.t.actionPause) {
-                            Task { await togglePause() }
+                            showToggleConfirm = true
                         }
                         Button(localizer.t.healthchecksDeleteCheck, role: .destructive) {
                             showDeleteConfirm = true
@@ -105,9 +106,17 @@ struct HealthchecksCheckDetail: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .alert(localizer.t.actionConfirm, isPresented: $showToggleConfirm) {
+            Button(detail.isPaused ? localizer.t.actionResume : localizer.t.actionPause) {
+                Task { await togglePause(confirmed: true) }
+            }
+            Button(localizer.t.cancel, role: .cancel) { }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
+        }
         .alert(localizer.t.healthchecksDeleteConfirmTitle, isPresented: $showDeleteConfirm) {
             Button(localizer.t.healthchecksDeleteCheck, role: .destructive) {
-                Task { await deleteCheck() }
+                Task { await deleteCheck(confirmed: true) }
             }
             Button(localizer.t.cancel, role: .cancel) { }
         } message: {
@@ -555,31 +564,58 @@ struct HealthchecksCheckDetail: View {
         }
     }
 
-    private func togglePause() async {
-        guard let uuid = detail.uuid,
-              let client = await servicesStore.healthchecksClient(instanceId: instanceId) else { return }
-        do {
-            if detail.isPaused {
-                try await client.resumeCheck(id: uuid)
-            } else {
-                try await client.pauseCheck(id: uuid)
-            }
-            await fetchDetail()
-        } catch {
-            actionError = error.localizedDescription
-            showActionError = true
-        }
+    private func togglePause(confirmed: Bool) async {
+        let action: HealthchecksControlledCheckAction = detail.isPaused ? .resume : .pause
+        await executeControlledAction(action, confirmed: confirmed)
     }
 
-    private func deleteCheck() async {
-        guard let uuid = detail.uuid,
-              let client = await servicesStore.healthchecksClient(instanceId: instanceId) else { return }
-        do {
-            try await client.deleteCheck(id: uuid)
-            dismiss()
-        } catch {
-            actionError = error.localizedDescription
+    private func deleteCheck(confirmed: Bool) async {
+        await executeControlledAction(.delete, confirmed: confirmed)
+    }
+
+    private func executeControlledAction(
+        _ action: HealthchecksControlledCheckAction,
+        confirmed: Bool
+    ) async {
+        guard let uuid = detail.uuid else { return }
+        guard let client = await servicesStore.healthchecksClient(instanceId: instanceId) else {
+            HapticManager.error()
+            actionError = APIError.notConfigured.localizedDescription
             showActionError = true
+            return
+        }
+
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                checkId: uuid,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .healthchecks).capabilities
+        ) {
+            switch action {
+            case .pause:
+                try await client.pauseCheck(id: uuid)
+            case .resume:
+                try await client.resumeCheck(id: uuid)
+            case .delete:
+                try await client.deleteCheck(id: uuid)
+            }
+        }
+
+        guard result.state == .succeeded else {
+            HapticManager.error()
+            actionError = result.reasonCode
+            showActionError = true
+            return
+        }
+
+        HapticManager.success()
+        if action == .delete {
+            dismiss()
+        } else {
+            await fetchDetail()
         }
     }
 }

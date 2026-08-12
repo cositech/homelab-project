@@ -607,6 +607,8 @@ enum ProviderRegistry {
             switch type {
             case .proxmox, .portainer:
                 capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
+            case .healthchecks:
+                capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]
             case .prometheus:
@@ -733,6 +735,39 @@ enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendab
             providerRef: "portainer:\(instanceId.uuidString.lowercased())",
             action: actionName,
             targetRef: "endpoint/\(endpointId)/container/\(containerId)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum HealthchecksControlledCheckAction: String, CaseIterable, Equatable, Sendable {
+    case pause, resume, delete
+
+    var actionName: String { "check.\(rawValue)" }
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .pause, .resume: return .medium
+        case .delete: return .high
+        }
+    }
+
+    func request(
+        instanceId: UUID,
+        checkId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "healthchecks:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "check/\(checkId)",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,

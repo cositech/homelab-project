@@ -1,5 +1,9 @@
 package com.homelab.app.data.remote.dto.healthchecks
 
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.UUID
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -122,3 +126,30 @@ data class HealthchecksCheckPayload(
     val methods: String? = null,
     val channels: String? = null
 )
+
+enum class HealthchecksControlledCheckAction(
+    val wireName: String,
+    val risk: ActionRisk
+) {
+    PAUSE("check.pause", ActionRisk.MEDIUM),
+    RESUME("check.resume", ActionRisk.MEDIUM),
+    DELETE("check.delete", ActionRisk.HIGH);
+
+    fun controlledRequest(
+        instanceId: String,
+        checkId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "healthchecks:$instanceId",
+        action = wireName,
+        targetRef = "check/$checkId",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
