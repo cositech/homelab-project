@@ -1567,4 +1567,7 @@
     <string name="truenas_pool_status">Pool-Status</string>
     <string name="truenas_no_pools">TrueNAS hat keine Pools zurückgegeben.</string>
     <string name="truenas_no_disks">TrueNAS hat keine Festplatten zurückgegeben.</string>
-</resources>
+    <string name="healthchecks_pause_check">Check pausieren</string>
+    <string name="healthchecks_resume_check">Check fortsetzen</string>
+    <string name="healthchecks_confirm_action">%1$s bestätigen?</string>
+    <string name="healthchecks_confirm_action_message">Diese Aktion ändert den Check-Status und wird im lokalen Audit-Protokoll erfasst.</string></resources>

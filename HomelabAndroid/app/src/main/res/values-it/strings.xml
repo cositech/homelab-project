@@ -1542,4 +1542,7 @@
     <string name="truenas_pool_status">Stato pool</string>
     <string name="truenas_no_pools">Nessun pool restituito da TrueNAS.</string>
     <string name="truenas_no_disks">Nessun disco restituito da TrueNAS.</string>
-</resources>
+    <string name="healthchecks_pause_check">Metti in pausa il controllo</string>
+    <string name="healthchecks_resume_check">Riprendi il controllo</string>
+    <string name="healthchecks_confirm_action">Confermare %1$s?</string>
+    <string name="healthchecks_confirm_action_message">Questa azione modifica lo stato del controllo e verrà registrata nel log di audit locale.</string></resources>

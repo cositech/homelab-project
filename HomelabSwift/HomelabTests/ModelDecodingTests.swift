@@ -1798,6 +1798,32 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
     }
 
+    func testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(HealthchecksControlledCheckAction.pause.risk, .medium)
+        XCTAssertEqual(HealthchecksControlledCheckAction.resume.risk, .medium)
+        XCTAssertEqual(HealthchecksControlledCheckAction.delete.risk, .high)
+
+        let request = HealthchecksControlledCheckAction.delete.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            checkId: "check-42",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "healthchecks:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "check.delete")
+        XCTAssertEqual(request.targetRef, "check/check-42")
+        XCTAssertTrue(request.confirmed)
+    }
+
+    func testHealthchecksProviderDeclaresControlledWriteActions() {
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .healthchecks).capabilities.contains(.writeActions)
+        )
+    }
+
     func testPortainerProviderDeclaresControlledWriteActions() {
         XCTAssertTrue(
             ProviderRegistry.descriptor(for: .portainer).capabilities.contains(.writeActions)

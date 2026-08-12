@@ -1542,4 +1542,7 @@
     <string name="truenas_pool_status">Estado del pool</string>
     <string name="truenas_no_pools">TrueNAS no devolvió pools.</string>
     <string name="truenas_no_disks">TrueNAS no devolvió discos.</string>
-</resources>
+    <string name="healthchecks_pause_check">Pausar comprobación</string>
+    <string name="healthchecks_resume_check">Reanudar comprobación</string>
+    <string name="healthchecks_confirm_action">¿Confirmar %1$s?</string>
+    <string name="healthchecks_confirm_action_message">Esta acción cambia el estado de la comprobación y se registrará en el historial de auditoría local.</string></resources>

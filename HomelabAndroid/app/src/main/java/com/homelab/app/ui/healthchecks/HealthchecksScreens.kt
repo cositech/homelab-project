@@ -443,6 +443,7 @@ fun HealthchecksDetailScreen(
     val pingBody by viewModel.pingBody.collectAsStateWithLifecycle()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showToggleDialog by remember { mutableStateOf(false) }
     var showIntegrationsSheet by remember { mutableStateOf(false) }
 
     val isReadOnly = detail?.uuid == null
@@ -476,12 +477,36 @@ fun HealthchecksDetailScreen(
         )
     }
 
+    if (showToggleDialog && detail != null) {
+        val actionLabel = if (detail!!.isPaused) {
+            stringResource(R.string.healthchecks_resume_check)
+        } else {
+            stringResource(R.string.healthchecks_pause_check)
+        }
+        AlertDialog(
+            onDismissRequest = { showToggleDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.togglePause(confirmed = true)
+                    showToggleDialog = false
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showToggleDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.healthchecks_confirm_action, actionLabel)) },
+            text = { Text(stringResource(R.string.healthchecks_confirm_action_message)) }
+        )
+    }
+
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteCheck(onSuccess = onNavigateBack)
+                    viewModel.deleteCheck(confirmed = true, onSuccess = onNavigateBack)
                     showDeleteDialog = false
                 }) { Text(stringResource(R.string.healthchecks_delete_check)) }
             },
@@ -520,7 +545,7 @@ fun HealthchecksDetailScreen(
                         IconButton(onClick = { onNavigateToEditor(detail!!.apiIdentifier ?: return@IconButton) }) {
                             Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.healthchecks_edit_check))
                         }
-                        IconButton(onClick = { viewModel.togglePause() }) {
+                        IconButton(onClick = { showToggleDialog = true }) {
                             Icon(
                                 if (detail!!.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                                 contentDescription = null

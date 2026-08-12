@@ -4,9 +4,15 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.homelab.app.R
 import com.homelab.app.data.remote.dto.healthchecks.*
 import com.homelab.app.data.repository.HealthchecksRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
+import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,6 +25,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class HealthchecksDetailViewModel @Inject constructor(
     private val repository: HealthchecksRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -98,29 +105,58 @@ class HealthchecksDetailViewModel @Inject constructor(
         _actionError.value = null
     }
 
-    fun togglePause() {
+    fun togglePause(confirmed: Boolean = false) {
         val current = _detail.value ?: return
         val uuid = current.uuid ?: return
+        val action = if (current.isPaused) {
+            HealthchecksControlledCheckAction.RESUME
+        } else {
+            HealthchecksControlledCheckAction.PAUSE
+        }
         viewModelScope.launch {
             try {
-                if (current.isPaused) {
-                    repository.resumeCheck(instanceId, uuid)
-                } else {
-                    repository.pauseCheck(instanceId, uuid)
+                val result = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, uuid, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)
+                ) {
+                    if (action == HealthchecksControlledCheckAction.RESUME) {
+                        repository.resumeCheck(instanceId, uuid)
+                    } else {
+                        repository.pauseCheck(instanceId, uuid)
+                    }
                 }
-                fetchDetail()
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchDetail()
+                } else {
+                    _actionError.value = context.getString(R.string.error_action_failed, result.reasonCode)
+                }
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
             }
         }
     }
 
-    fun deleteCheck(onSuccess: () -> Unit) {
+    fun deleteCheck(confirmed: Boolean = false, onSuccess: () -> Unit) {
         val uuid = _detail.value?.uuid ?: return
         viewModelScope.launch {
             try {
-                repository.deleteCheck(instanceId, uuid)
-                onSuccess()
+                val result = controlledActionCoordinator.execute(
+                    request = HealthchecksControlledCheckAction.DELETE.controlledRequest(
+                        instanceId = instanceId,
+                        checkId = uuid,
+                        confirmed = confirmed
+                    ),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)
+                ) {
+                    repository.deleteCheck(instanceId, uuid)
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    onSuccess()
+                } else {
+                    _actionError.value = context.getString(R.string.error_action_failed, result.reasonCode)
+                }
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
             }
