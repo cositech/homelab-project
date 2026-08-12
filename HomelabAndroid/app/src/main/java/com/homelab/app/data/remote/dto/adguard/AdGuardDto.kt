@@ -1,5 +1,10 @@
 package com.homelab.app.data.remote.dto.adguard
 
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.UUID
+
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -222,3 +227,27 @@ data class AdGuardQueryLogEntry(
     val blocked: Boolean,
     val rule: String? = null
 )
+enum class AdGuardControlledProtectionAction(
+    val wireName: String,
+    val risk: ActionRisk
+) {
+    ENABLE("protection.enable", ActionRisk.LOW),
+    DISABLE("protection.disable", ActionRisk.MEDIUM);
+
+    fun controlledRequest(
+        instanceId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "adguard-home:$instanceId",
+        action = wireName,
+        targetRef = "protection/global",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
