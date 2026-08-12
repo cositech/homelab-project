@@ -607,6 +607,8 @@ enum ProviderRegistry {
             switch type {
             case .proxmox, .portainer:
                 capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
+            case .adguardHome:
+                capabilities = [.health, .writeActions]
             case .healthchecks:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
@@ -743,6 +745,31 @@ enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendab
     }
 }
 
+enum AdGuardControlledProtectionAction: String, CaseIterable, Equatable, Sendable {
+    case enable, disable
+
+    var actionName: String { "protection.\(rawValue)" }
+    var risk: ControlledActionRisk { self == .enable ? .low : .medium }
+
+    func request(
+        instanceId: UUID,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "adguard-home:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "protection/global",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
 enum HealthchecksControlledCheckAction: String, CaseIterable, Equatable, Sendable {
     case create, update, updateChannels = "channels.update", pause, resume, delete
 

@@ -124,6 +124,10 @@ object ProviderRegistry {
                     ProviderCapability.READ_ACTIONS,
                     ProviderCapability.WRITE_ACTIONS
                 )
+                ServiceType.ADGUARD_HOME -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.WRITE_ACTIONS
+                )
                 ServiceType.HEALTHCHECKS -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS

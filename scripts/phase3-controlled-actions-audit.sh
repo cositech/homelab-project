@@ -16,6 +16,9 @@ android_portainer_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/po
 swift_portainer_models="HomelabSwift/Homelab/Models/Portainer/PortainerModels.swift"
 swift_portainer_list="HomelabSwift/Homelab/Views/Portainer/ContainerListView.swift"
 swift_portainer_detail="HomelabSwift/Homelab/Views/Portainer/ContainerDetailView.swift"
+android_adguard_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/adguard/AdGuardDto.kt"
+android_adguard_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/adguard/AdGuardHomeViewModel.kt"
+swift_adguard_dashboard="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeDashboard.swift"
 android_healthchecks_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/healthchecks/HealthchecksDto.kt"
 swift_healthchecks_models="HomelabSwift/Homelab/Models/Healthchecks/HealthchecksModels.swift"
 android_healthchecks_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksDetailViewModel.kt"
@@ -25,7 +28,7 @@ swift_healthchecks_detail="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksD
 swift_healthchecks_editor="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksCheckEditor.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -83,6 +86,20 @@ done
 grep -Fq 'testPortainerContainerActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'portainer container actions have stable risk classification and identity' "$android_tests"
 
+for pattern in 'protection.enable' 'protection.disable' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'controlledRequest'; do
+  grep -Fq "$pattern" "$android_adguard_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.ADGUARD_HOME)' 'confirmed = !enabled'; do
+  grep -Fq "$pattern" "$android_adguard_view_model"
+done
+for pattern in 'AdGuardControlledProtectionAction' 'case .adguardHome:' 'capabilities = [.health, .writeActions]'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .adguardHome).capabilities' 'confirmed: !enabled'; do
+  grep -Fq "$pattern" "$swift_adguard_dashboard"
+done
+grep -Fq 'adguard protection actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'testAdGuardProtectionActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 for pattern in 'check.create' 'check.update' 'check.channels.update' 'check.pause' 'check.resume' 'check.delete' 'ActionRisk.HIGH' 'controlledRequest'; do
   grep -Fq "$pattern" "$android_healthchecks_models"
 done

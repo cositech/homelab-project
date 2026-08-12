@@ -1,5 +1,6 @@
 package com.homelab.app.domain.action
 
+import com.homelab.app.data.remote.dto.adguard.AdGuardControlledProtectionAction
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckAction
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.domain.provider.ProviderCapability
@@ -370,6 +371,29 @@ class ControlledActionsTest {
         assertEquals("container.stop", request.action)
         assertEquals("endpoint/7/container/container-42", request.targetRef)
         assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `adguard protection actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, AdGuardControlledProtectionAction.ENABLE.risk)
+        assertEquals(ActionRisk.MEDIUM, AdGuardControlledProtectionAction.DISABLE.risk)
+
+        val request = AdGuardControlledProtectionAction.DISABLE.controlledRequest(
+            instanceId = "instance-1",
+            confirmed = true,
+            requestId = "request-adguard",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("adguard-home:instance-1", request.providerRef)
+        assertEquals("protection.disable", request.action)
+        assertEquals("protection/global", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.ADGUARD_HOME)
+        )
     }
 
     @Test
