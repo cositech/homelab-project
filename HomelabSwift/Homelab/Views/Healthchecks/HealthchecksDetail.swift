@@ -601,6 +601,8 @@ struct HealthchecksCheckDetail: View {
                 try await client.resumeCheck(id: uuid)
             case .delete:
                 try await client.deleteCheck(id: uuid)
+            case .create, .update, .updateChannels:
+                throw APIError.custom("Unsupported Healthchecks detail action")
             }
         }
 
