@@ -1826,10 +1826,10 @@ final class ModelDecodingTests: XCTestCase {
     }
 
     func testPiholeLegacyMutationFallbackRequiresUnsupportedEndpointStatus() {
-        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 404, body: "")))
-        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 405, body: "")))
-        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 501, body: "")))
-        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(.httpError(statusCode: 500, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 404, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 405, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 501, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 500, body: "")))
         XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(URLError(.timedOut)))
     }
 
