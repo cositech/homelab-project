@@ -1798,6 +1798,26 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
     }
 
+    func testAdGuardProtectionActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(AdGuardControlledProtectionAction.enable.risk, .low)
+        XCTAssertEqual(AdGuardControlledProtectionAction.disable.risk, .medium)
+
+        let request = AdGuardControlledProtectionAction.disable.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "adguard-home:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "protection.disable")
+        XCTAssertEqual(request.targetRef, "protection/global")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .adguardHome).capabilities.contains(.writeActions)
+        )
+    }
     func testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(HealthchecksControlledCheckAction.create.risk, .high)
         XCTAssertFalse(

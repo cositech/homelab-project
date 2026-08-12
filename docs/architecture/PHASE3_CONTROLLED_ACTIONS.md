@@ -47,6 +47,8 @@ Portainer is the first risk-class migration beyond the reference provider. Conta
 
 Healthchecks is the first monitoring-provider migration. Check editing, integration-channel updates, pause and resume are medium risk, while creation and deletion are high risk. Android and iOS editor/detail actions use normalized Healthchecks instance and check UUID target identities (check/new for creation), explicit Save or confirmation actions, the write-capability gate and the shared local audit trail. Creation transport failures are never retried automatically because the provider offers no idempotency token; they enter manual review to prevent duplicate checks. Payload fields remain provider-local and are not persisted in the action audit or durable queue.
 
+AdGuard Home is the first DNS-provider migration. Protection enable is low risk; disable and timed pause are medium risk and use the existing explicit duration or destructive confirmation. Android and iOS route the mutation through the shared coordinator with a normalized protection/global target and the provider write-capability gate.
+
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.

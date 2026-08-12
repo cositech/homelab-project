@@ -564,10 +564,26 @@ struct AdGuardHomeDashboard: View {
                 guard let client = await servicesStore.adguardClient(instanceId: selectedInstanceId) else {
                     throw APIError.notConfigured
                 }
-                if isProtectionEnabled {
-                    try await client.setProtection(enabled: false, durationSeconds: timer)
-                } else {
-                    try await client.setProtection(enabled: true, durationSeconds: nil)
+                let enabled = !isProtectionEnabled
+                let action: AdGuardControlledProtectionAction = enabled ? .enable : .disable
+                let result = await servicesStore.controlledActionCoordinator.execute(
+                    request: action.request(
+                        instanceId: selectedInstanceId,
+                        confirmed: !enabled
+                    ),
+                    actorRole: .admin,
+                    providerCapabilities: ProviderRegistry.descriptor(for: .adguardHome).capabilities
+                ) {
+                    try await client.setProtection(
+                        enabled: enabled,
+                        durationSeconds: enabled ? nil : timer
+                    )
+                }
+                guard result.state == .succeeded else {
+                    toggleError = String(format: localizer.t.errorActionFailed, result.reasonCode)
+                    showToggleError = true
+                    isToggling = false
+                    return
                 }
                 await fetchAll()
             } catch {

@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.adguard.AdGuardBlockedService
 import com.homelab.app.data.remote.dto.adguard.AdGuardBlockedServicesSchedule
+import com.homelab.app.data.remote.dto.adguard.AdGuardControlledProtectionAction
 import com.homelab.app.data.remote.dto.adguard.AdGuardFilter
 import com.homelab.app.data.remote.dto.adguard.AdGuardFilteringStatus
 import com.homelab.app.data.remote.dto.adguard.AdGuardQueryLogEntry
@@ -16,7 +17,11 @@ import com.homelab.app.data.remote.dto.adguard.AdGuardStatus
 import com.homelab.app.data.remote.dto.adguard.AdGuardTopItem
 import com.homelab.app.data.repository.AdGuardHomeRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.Logger
 import com.homelab.app.util.ServiceType
@@ -39,6 +44,7 @@ import kotlinx.coroutines.launch
 class AdGuardHomeViewModel @Inject constructor(
     private val repository: AdGuardHomeRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -156,9 +162,34 @@ class AdGuardHomeViewModel @Inject constructor(
             _isTogglingProtection.value = true
             try {
                 val enabled = if (durationSeconds != null) false else !current
-                repository.setProtection(instanceId, enabled = enabled, durationSeconds = durationSeconds)
-                _status.value = repository.getStatus(instanceId)
-                _stats.value = repository.getStats(instanceId)
+                val action = if (enabled) {
+                    AdGuardControlledProtectionAction.ENABLE
+                } else {
+                    AdGuardControlledProtectionAction.DISABLE
+                }
+                val result = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(
+                        instanceId = instanceId,
+                        confirmed = !enabled
+                    ),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.ADGUARD_HOME)
+                ) {
+                    repository.setProtection(
+                        instanceId,
+                        enabled = enabled,
+                        durationSeconds = durationSeconds
+                    )
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    _status.value = repository.getStatus(instanceId)
+                    _stats.value = repository.getStats(instanceId)
+                } else {
+                    _actionError.value = context.getString(
+                        com.homelab.app.R.string.error_action_failed,
+                        result.reasonCode
+                    )
+                }
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
             } finally {
