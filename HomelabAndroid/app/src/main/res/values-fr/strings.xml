@@ -1545,4 +1545,5 @@
     <string name="healthchecks_pause_check">Mettre le contrôle en pause</string>
     <string name="healthchecks_resume_check">Reprendre le contrôle</string>
     <string name="healthchecks_confirm_action">Confirmer %1$s ?</string>
-    <string name="healthchecks_confirm_action_message">Cette action modifie l’état du contrôle et sera enregistrée dans le journal d’audit local.</string></resources>
+    <string name="healthchecks_confirm_action_message">Cette action modifie l’état du contrôle et sera enregistrée dans le journal d’audit local.</string>
+</resources>
