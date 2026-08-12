@@ -374,6 +374,9 @@ class ControlledActionsTest {
 
     @Test
     fun `healthchecks check actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.CREATE.risk)
+        assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.UPDATE.risk)
+        assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.UPDATE_CHANNELS.risk)
         assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.PAUSE.risk)
         assertEquals(ActionRisk.MEDIUM, HealthchecksControlledCheckAction.RESUME.risk)
         assertEquals(ActionRisk.HIGH, HealthchecksControlledCheckAction.DELETE.risk)
@@ -391,6 +394,10 @@ class ControlledActionsTest {
         assertEquals("check.delete", request.action)
         assertEquals("check/check-42", request.targetRef)
         assertTrue(request.confirmed)
+        assertEquals(
+            "check.channels.update",
+            HealthchecksControlledCheckAction.UPDATE_CHANNELS.wireName
+        )
     }
 
     @Test

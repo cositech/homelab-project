@@ -6,9 +6,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksChannel
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksCheck
+import com.homelab.app.R
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksCheckPayload
+import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckAction
 import com.homelab.app.data.repository.HealthchecksRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
+import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -21,6 +28,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class HealthchecksEditorViewModel @Inject constructor(
     private val repository: HealthchecksRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -62,7 +70,11 @@ class HealthchecksEditorViewModel @Inject constructor(
         }
     }
 
-    fun save(payload: HealthchecksCheckPayload, onComplete: () -> Unit) {
+    fun save(
+        payload: HealthchecksCheckPayload,
+        confirmed: Boolean = false,
+        onComplete: () -> Unit
+    ) {
         viewModelScope.launch {
             _isSaving.value = true
             _error.value = null
@@ -71,12 +83,28 @@ class HealthchecksEditorViewModel @Inject constructor(
                 if (existingCheck?.uuid == null && checkId != null) {
                     throw IllegalStateException("Read-only API key")
                 }
-                if (checkId != null && existingCheck?.uuid != null) {
-                    repository.updateCheck(instanceId, existingCheck.uuid, payload)
+                val action = if (existingCheck?.uuid != null) {
+                    HealthchecksControlledCheckAction.UPDATE
                 } else {
-                    repository.createCheck(instanceId, payload)
+                    HealthchecksControlledCheckAction.CREATE
                 }
-                onComplete()
+                val targetId = existingCheck?.uuid ?: "new"
+                val result = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, targetId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.HEALTHCHECKS)
+                ) {
+                    if (existingCheck?.uuid != null) {
+                        repository.updateCheck(instanceId, existingCheck.uuid, payload)
+                    } else {
+                        repository.createCheck(instanceId, payload)
+                    }
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    onComplete()
+                } else {
+                    _error.value = context.getString(R.string.error_action_failed, result.reasonCode)
+                }
             } catch (error: Exception) {
                 _error.value = ErrorHandler.getMessage(context, error)
             } finally {

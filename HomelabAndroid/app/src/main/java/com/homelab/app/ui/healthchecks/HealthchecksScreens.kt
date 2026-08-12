@@ -524,7 +524,7 @@ fun HealthchecksDetailScreen(
             channels = channels,
             onDismiss = { showIntegrationsSheet = false },
             onSave = { selected, custom ->
-                viewModel.updateChannels(selected, custom) {
+                viewModel.updateChannels(selected, custom, confirmed = true) {
                     showIntegrationsSheet = false
                 }
             }
@@ -747,7 +747,7 @@ fun HealthchecksEditorScreen(
                                 methods = if (postOnly) "POST" else null,
                                 channels = channelsValue
                             )
-                            viewModel.save(payload) { onNavigateBack() }
+                            viewModel.save(payload, confirmed = true) { onNavigateBack() }
                         },
                         enabled = !isSaving && !isReadOnly
                     ) {

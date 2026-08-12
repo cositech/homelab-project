@@ -193,23 +193,40 @@ struct HealthchecksCheckEditor: View {
             channels: channelsValue
         )
 
-        do {
-            guard let client = await servicesStore.healthchecksClient(instanceId: instanceId) else {
-                errorMessage = localizer.t.errorNotConfigured
-                return
-            }
-            if let existing, let uuid = existing.uuid {
+        guard let client = await servicesStore.healthchecksClient(instanceId: instanceId) else {
+            HapticManager.error()
+            errorMessage = localizer.t.errorNotConfigured
+            return
+        }
+
+        let existingUUID = existing?.uuid
+        let action: HealthchecksControlledCheckAction = existingUUID == nil ? .create : .update
+        let targetId = existingUUID ?? "new"
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                checkId: targetId,
+                confirmed: true
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .healthchecks).capabilities
+        ) {
+            if let uuid = existingUUID {
                 try await client.updateCheck(id: uuid, payload: payload)
             } else {
                 try await client.createCheck(payload)
             }
-            await onComplete()
-            dismiss()
-        } catch let apiError as APIError {
-            errorMessage = apiError.localizedDescription
-        } catch {
-            errorMessage = error.localizedDescription
         }
+
+        guard result.state == .succeeded else {
+            HapticManager.error()
+            errorMessage = result.reasonCode
+            return
+        }
+
+        HapticManager.success()
+        await onComplete()
+        dismiss()
     }
 
     private func loadChannels() async {

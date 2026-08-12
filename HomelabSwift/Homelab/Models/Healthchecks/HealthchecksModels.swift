@@ -135,7 +135,7 @@ struct HealthchecksBadgeFormats: Codable, Hashable {
     let shields3: String?
 }
 
-struct HealthchecksCheckPayload: Encodable {
+struct HealthchecksCheckPayload: Encodable, Sendable {
     let name: String?
     let slug: String?
     let tags: String?
