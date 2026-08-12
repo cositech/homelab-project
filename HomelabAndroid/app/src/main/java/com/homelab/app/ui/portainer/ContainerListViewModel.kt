@@ -8,6 +8,11 @@ import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.remote.dto.portainer.ContainerStats
 import com.homelab.app.data.remote.dto.portainer.PortainerContainer
 import com.homelab.app.data.repository.PortainerRepository
+import com.homelab.app.util.ServiceType
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +25,7 @@ enum class ContainerFilter { ALL, RUNNING, STOPPED }
 @HiltViewModel
 class ContainerListViewModel @Inject constructor(
     private val repository: PortainerRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     @param:ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -108,19 +114,26 @@ class ContainerListViewModel @Inject constructor(
         _error.value = null
     }
 
-    fun performAction(containerId: String, action: ContainerAction) {
+    fun performAction(containerId: String, action: ContainerAction, confirmed: Boolean = false) {
         viewModelScope.launch {
             _actionInProgress.value = containerId
             try {
-                when (action) {
-                    ContainerAction.start -> repository.startContainer(instanceId, endpointId, containerId)
-                    ContainerAction.stop -> repository.stopContainer(instanceId, endpointId, containerId)
-                    ContainerAction.restart -> repository.restartContainer(instanceId, endpointId, containerId)
-                    ContainerAction.kill -> repository.killContainer(instanceId, endpointId, containerId)
-                    ContainerAction.pause -> repository.pauseContainer(instanceId, endpointId, containerId)
-                    ContainerAction.unpause -> repository.unpauseContainer(instanceId, endpointId, containerId)
+                val result = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, endpointId, containerId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.PORTAINER)
+                ) {
+                    when (action) {
+                        ContainerAction.start -> repository.startContainer(instanceId, endpointId, containerId)
+                        ContainerAction.stop -> repository.stopContainer(instanceId, endpointId, containerId)
+                        ContainerAction.restart -> repository.restartContainer(instanceId, endpointId, containerId)
+                        ContainerAction.kill -> repository.killContainer(instanceId, endpointId, containerId)
+                        ContainerAction.pause -> repository.pauseContainer(instanceId, endpointId, containerId)
+                        ContainerAction.unpause -> repository.unpauseContainer(instanceId, endpointId, containerId)
+                    }
                 }
-                fetchContainers()
+                if (result.state == ActionExecutionState.SUCCEEDED) fetchContainers()
+                else _error.value = result.reasonCode
             } catch (e: Exception) {
                 _error.value = ErrorHandler.getMessage(context, e)
             } finally {

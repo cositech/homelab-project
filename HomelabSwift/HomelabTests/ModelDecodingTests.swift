@@ -1772,6 +1772,38 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(invocationCount, 0)
     }
 
+    func testPortainerContainerActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(PortainerControlledContainerAction.start.risk, .low)
+        XCTAssertEqual(PortainerControlledContainerAction.stop.risk, .medium)
+        XCTAssertEqual(PortainerControlledContainerAction.restart.risk, .medium)
+        XCTAssertEqual(PortainerControlledContainerAction.kill.risk, .high)
+        XCTAssertEqual(PortainerControlledContainerAction.remove.risk, .high)
+        XCTAssertTrue(PortainerControlledContainerAction.pause.requiresConfirmation)
+        XCTAssertFalse(PortainerControlledContainerAction.start.requiresConfirmation)
+
+        let request = PortainerControlledContainerAction.stop.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            endpointId: 7,
+            containerId: "container-42",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "container.stop")
+        XCTAssertEqual(request.targetRef, "endpoint/7/container/container-42")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
+    }
+
+    func testPortainerProviderDeclaresControlledWriteActions() {
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .portainer).capabilities.contains(.writeActions)
+        )
+    }
+
 }
 
 private actor ActionInvocationCounter {

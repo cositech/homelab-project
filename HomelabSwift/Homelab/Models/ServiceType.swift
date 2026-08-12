@@ -605,7 +605,7 @@ enum ProviderRegistry {
         uniqueKeysWithValues: ServiceType.allCases.map { type in
             let capabilities: Set<ProviderCapability>
             switch type {
-            case .proxmox:
+            case .proxmox, .portainer:
                 capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]
@@ -696,6 +696,43 @@ enum ProxmoxControlledGuestAction: String, CaseIterable, Equatable, Sendable {
             providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
             action: actionName,
             targetRef: "\(guestType.rawValue)/\(vmid)@\(node)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendable {
+    case start, stop, restart, kill, pause, resume, remove
+
+    var actionName: String { "container.\(rawValue)" }
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .start: return .low
+        case .stop, .restart, .pause, .resume: return .medium
+        case .kill, .remove: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        endpointId: Int,
+        containerId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "portainer:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "endpoint/\(endpointId)/container/\(containerId)",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,

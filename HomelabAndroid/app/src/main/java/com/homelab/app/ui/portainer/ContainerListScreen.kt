@@ -93,12 +93,32 @@ fun ContainerListScreen(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingAction by remember { mutableStateOf<Pair<String, ContainerAction>?>(null) }
 
     LaunchedEffect(error) {
         error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    pendingAction?.let { (containerId, action) ->
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.portainer_confirm_action, action.displayName)) },
+            text = { Text(stringResource(R.string.portainer_confirm_action_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAction = null
+                    viewModel.performAction(containerId, action, confirmed = true)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -206,7 +226,10 @@ fun ContainerListScreen(
                             container = container,
                             stats = containerStats[container.id],
                             actionInProgress = actionInProgress == container.id,
-                            onAction = { action -> viewModel.performAction(container.id, action) },
+                            onAction = { action ->
+                                if (action.requiresConfirmation) pendingAction = container.id to action
+                                else viewModel.performAction(container.id, action)
+                            },
                             onClick = { onNavigateToDetail(viewModel.endpointId, container.id) }
                         )
                     }

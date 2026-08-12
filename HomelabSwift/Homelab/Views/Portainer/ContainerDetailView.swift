@@ -24,6 +24,10 @@ struct ContainerDetailView: View {
     @State private var isSavingCompose = false
     @State private var actionError: String?
     @State private var showActionError = false
+    @State private var pendingAction: (
+        action: PortainerControlledContainerAction,
+        apiAction: ContainerAction?
+    )?
 
     private let portainerColor = ServiceType.portainer.colors.primary
 
@@ -87,6 +91,32 @@ struct ContainerDetailView: View {
             Button(localizer.t.confirm, role: .cancel) {}
         } message: {
             Text(actionError ?? localizer.t.errorUnknown)
+        }
+        .confirmationDialog(
+            pendingAction.map { "Confirm \($0.action.rawValue.capitalized)?" } ?? "",
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                pendingAction?.action.rawValue.capitalized ?? "",
+                role: pendingAction?.action.risk == .high ? .destructive : nil
+            ) {
+                guard let pendingAction else { return }
+                self.pendingAction = nil
+                Task {
+                    await executeControlledAction(
+                        pendingAction.action,
+                        apiAction: pendingAction.apiAction,
+                        confirmed: true
+                    )
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text("This action changes or removes the container and will be recorded in the local audit trail.")
         }
     }
 
@@ -177,18 +207,15 @@ struct ContainerDetailView: View {
     private func containerActionButton(_ action: ContainerAction, color: Color) -> some View {
         Button {
             HapticManager.medium()
-            Task {
-                do {
-                    guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
-                        throw APIError.notConfigured
-                    }
-                    try await client.containerAction(endpointId: endpointId, containerId: containerId, action: action)
-                    HapticManager.success()
-                    await fetchDetail()
-                } catch {
-                    HapticManager.error()
-                    actionError = error.localizedDescription
-                    showActionError = true
+            if action.controlledAction.requiresConfirmation {
+                pendingAction = (action.controlledAction, action)
+            } else {
+                Task {
+                    await executeControlledAction(
+                        action.controlledAction,
+                        apiAction: action,
+                        confirmed: false
+                    )
                 }
             }
         } label: {
@@ -210,19 +237,7 @@ struct ContainerDetailView: View {
     private var removeButton: some View {
         Button {
             HapticManager.medium()
-            Task {
-                do {
-                    guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
-                        throw APIError.notConfigured
-                    }
-                    try await client.removeContainer(endpointId: endpointId, containerId: containerId, force: true)
-                    HapticManager.success()
-                } catch {
-                    HapticManager.error()
-                    actionError = error.localizedDescription
-                    showActionError = true
-                }
-            }
+            pendingAction = (.remove, nil)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "trash.fill")
@@ -677,6 +692,54 @@ struct ContainerDetailView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 40)
         }
+    }
+
+    // MARK: - Controlled Actions
+
+    private func executeControlledAction(
+        _ action: PortainerControlledContainerAction,
+        apiAction: ContainerAction?,
+        confirmed: Bool
+    ) async {
+        guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
+            actionError = APIError.notConfigured.localizedDescription
+            showActionError = true
+            return
+        }
+
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                endpointId: endpointId,
+                containerId: containerId,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .portainer).capabilities
+        ) {
+            if let apiAction {
+                try await client.containerAction(
+                    endpointId: endpointId,
+                    containerId: containerId,
+                    action: apiAction
+                )
+            } else if action == .remove {
+                try await client.removeContainer(
+                    endpointId: endpointId,
+                    containerId: containerId,
+                    force: true
+                )
+            }
+        }
+
+        guard result.state == .succeeded else {
+            HapticManager.error()
+            actionError = result.reasonCode
+            showActionError = true
+            return
+        }
+        HapticManager.success()
+        if action != .remove { await fetchDetail() }
     }
 
     // MARK: - Data Fetching

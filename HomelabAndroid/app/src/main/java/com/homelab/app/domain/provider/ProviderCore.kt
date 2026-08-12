@@ -116,7 +116,7 @@ object ProviderRegistry {
         .filter { it != ServiceType.UNKNOWN }
         .associateWith { type ->
             val capabilities = when (type) {
-                ServiceType.PROXMOX -> setOf(
+                ServiceType.PROXMOX, ServiceType.PORTAINER -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,
                     ProviderCapability.EVENTS,

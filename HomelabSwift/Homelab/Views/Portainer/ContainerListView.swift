@@ -18,6 +18,7 @@ struct ContainerListView: View {
     @State private var statsFetchTask: Task<Void, Never>?
     @State private var actionError: String?
     @State private var showActionError = false
+    @State private var pendingAction: (containerId: String, action: ContainerAction)?
 
     private let portainerColor = ServiceType.portainer.colors.primary
 
@@ -101,6 +102,32 @@ struct ContainerListView: View {
             Button(localizer.t.confirm, role: .cancel) { }
         } message: {
             Text(actionError ?? localizer.t.errorUnknown)
+        }
+        .confirmationDialog(
+            pendingAction.map { "Confirm \($0.action.displayName)?" } ?? "",
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                pendingAction?.action.displayName ?? "",
+                role: pendingAction?.action.isDestructive == true ? .destructive : nil
+            ) {
+                guard let pendingAction else { return }
+                self.pendingAction = nil
+                Task {
+                    await executeControlledAction(
+                        containerId: pendingAction.containerId,
+                        action: pendingAction.action,
+                        confirmed: true
+                    )
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text("This action changes the container state and will be recorded in the local audit trail.")
         }
     }
 
@@ -199,22 +226,55 @@ struct ContainerListView: View {
 
     private func handleAction(containerId: String, action: ContainerAction) {
         HapticManager.medium()
-        actionInProgress = containerId
-        Task {
-            do {
-                guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
-                    throw APIError.notConfigured
-                }
-                try await client.containerAction(endpointId: endpointId, containerId: containerId, action: action)
-                HapticManager.success()
-                await fetchContainers()
-            } catch {
-                HapticManager.error()
-                actionError = error.localizedDescription
-                showActionError = true
+        if action.controlledAction.requiresConfirmation {
+            pendingAction = (containerId, action)
+        } else {
+            Task {
+                await executeControlledAction(containerId: containerId, action: action, confirmed: false)
             }
-            actionInProgress = nil
         }
+    }
+
+    private func executeControlledAction(
+        containerId: String,
+        action: ContainerAction,
+        confirmed: Bool
+    ) async {
+        actionInProgress = containerId
+        defer { actionInProgress = nil }
+
+        guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
+            actionError = APIError.notConfigured.localizedDescription
+            showActionError = true
+            return
+        }
+
+        let controlledAction = action.controlledAction
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: controlledAction.request(
+                instanceId: instanceId,
+                endpointId: endpointId,
+                containerId: containerId,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .portainer).capabilities
+        ) {
+            try await client.containerAction(
+                endpointId: endpointId,
+                containerId: containerId,
+                action: action
+            )
+        }
+
+        guard result.state == .succeeded else {
+            HapticManager.error()
+            actionError = result.reasonCode
+            showActionError = true
+            return
+        }
+        HapticManager.success()
+        await fetchContainers()
     }
 
     // MARK: - Fetch
