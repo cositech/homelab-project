@@ -156,7 +156,7 @@ struct DockhandDashboard: View {
             ),
             titleVisibility: .visible
         ) {
-            Button(pendingAction?.label(using: localizer.t) ?? "") {
+            Button(pendingAction?.label(using: localizer.translations) ?? "") {
                 guard let pendingAction else { return }
                 self.pendingAction = nil
                 switch pendingAction {
