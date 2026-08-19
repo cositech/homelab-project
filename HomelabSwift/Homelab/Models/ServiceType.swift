@@ -611,7 +611,7 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .pihole:
                 capabilities = [.health, .writeActions]
-            case .healthchecks:
+            case .healthchecks, .dockhand:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]
@@ -739,6 +739,48 @@ enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendab
             providerRef: "portainer:\(instanceId.uuidString.lowercased())",
             action: actionName,
             targetRef: "endpoint/\(endpointId)/container/\(containerId)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum DockhandControlledAction: String, CaseIterable, Equatable, Sendable {
+    case containerStart = "container.start"
+    case containerStop = "container.stop"
+    case containerRestart = "container.restart"
+    case stackStart = "stack.start"
+    case stackStop = "stack.stop"
+    case stackRestart = "stack.restart"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .containerStart, .stackStart: return .low
+        case .containerStop, .containerRestart, .stackStop, .stackRestart: return .medium
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        environmentId: String?,
+        targetKind: String,
+        targetId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        let environment = environmentId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedTarget = targetId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "dockhand:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "environment/\(environment?.isEmpty == false ? environment! : "default")/\(targetKind)/\(normalizedTarget)",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,

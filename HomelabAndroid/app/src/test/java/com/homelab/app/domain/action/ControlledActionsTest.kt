@@ -5,6 +5,8 @@ import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckA
 import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
+import com.homelab.app.data.repository.DockhandContainerAction
+import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
@@ -229,6 +231,37 @@ class ControlledActionsTest {
     }
 
     @Test
+    fun `dockhand indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val dockhandRequest = DockhandContainerAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            environmentId = "production",
+            containerId = "web-01",
+            confirmed = true,
+            requestId = "request-dockhand-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            dockhandRequest,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "dockhand-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("dockhand-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
     fun `high risk transport failure requires manual review without retry`() = runTest {
         var invocations = 0
         val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
@@ -373,6 +406,42 @@ class ControlledActionsTest {
         assertEquals("container.stop", request.action)
         assertEquals("endpoint/7/container/container-42", request.targetRef)
         assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `dockhand lifecycle actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, DockhandContainerAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, DockhandContainerAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, DockhandStackAction.RESTART.risk)
+        assertFalse(DockhandContainerAction.START.requiresConfirmation)
+        assertTrue(DockhandStackAction.STOP.requiresConfirmation)
+
+        val containerRequest = DockhandContainerAction.RESTART.controlledRequest(
+            instanceId = "INSTANCE-A",
+            environmentId = "Production",
+            containerId = "Web-01",
+            confirmed = true,
+            requestId = "request-dockhand-container",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-container-key-0001"
+        )
+        assertEquals("dockhand:instance-a", containerRequest.providerRef)
+        assertEquals("container.restart", containerRequest.action)
+        assertEquals("environment/production/container/web-01", containerRequest.targetRef)
+        assertTrue(containerRequest.confirmed)
+
+        val stackRequest = DockhandStackAction.START.controlledRequest(
+            instanceId = "INSTANCE-A",
+            environmentId = null,
+            stackName = "Core-Stack",
+            confirmed = false,
+            requestId = "request-dockhand-stack",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-stack-key-000001"
+        )
+        assertEquals("stack.start", stackRequest.action)
+        assertEquals("environment/default/stack/core-stack", stackRequest.targetRef)
+        assertTrue(ProviderRegistry.capabilities(ServiceType.DOCKHAND).contains(ProviderCapability.WRITE_ACTIONS))
     }
 
     @Test

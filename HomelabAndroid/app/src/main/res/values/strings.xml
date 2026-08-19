@@ -1601,6 +1601,8 @@
     <string name="proxmox_task_log">View Task Log</string>
     <string name="proxmox_delete_snapshot">Delete Snapshot</string>
     <string name="portainer_confirm_action">Confirm %1$s?</string>
+    <string name="dockhand_confirm_action">Confirm %1$s?</string>
+    <string name="dockhand_confirm_action_message">This action changes the Dockhand workload state and will be recorded in the local audit trail.</string>
     <string name="portainer_confirm_action_message">This action changes the container state and will be recorded in the local audit trail.</string>
     <string name="proxmox_confirm_action">Confirm %1$s?</string>
     <string name="proxmox_confirm_action_message">This action changes the guest state and will be recorded in the local audit trail.</string>

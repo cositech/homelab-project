@@ -169,6 +169,38 @@ done
 grep -Fq 'testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'healthchecks check actions have stable risk classification and identity' "$android_tests"
 
+android_dockhand_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/DockhandRepository.kt"
+android_dockhand_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/dockhand/DockhandViewModel.kt"
+android_dockhand_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/dockhand/DockhandDashboardScreen.kt"
+android_dockhand_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/DockhandApi.kt"
+swift_dockhand_ui="HomelabSwift/Homelab/Views/Dockhand/DockhandDashboard.swift"
+swift_dockhand_api="HomelabSwift/Homelab/Networking/LinuxUpdate/LinuxUpdateAPIClient.swift"
+
+for required_file in "$android_dockhand_models" "$android_dockhand_view_model" "$android_dockhand_ui" "$android_dockhand_api" "$swift_dockhand_ui" "$swift_dockhand_api"; do
+  test -s "$required_file"
+done
+for pattern in 'container.start' 'container.stop' 'container.restart' 'stack.start' 'stack.stop' 'stack.restart' 'ActionRisk.MEDIUM' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_dockhand_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.DOCKHAND)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'dockhand-provider-reported-failure' 'dockhand-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_dockhand_view_model"
+done
+for pattern in 'pendingContainerAction' 'pendingStackAction' 'confirmed = true'; do
+  grep -Fq "$pattern" "$android_dockhand_ui"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockhand_api")" -eq 6
+grep -Fq 'dockhand lifecycle actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'dockhand indeterminate mutation is non retryable' "$android_tests"
+for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand:'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'PendingDockhandAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockhand).capabilities' 'confirmed: true' '.nonRetryable' 'dockhand-provider-reported-failure' 'dockhand-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$swift_dockhand_ui"
+done
+test "$(grep -Fc 'allowFallback: false' "$swift_dockhand_api")" -eq 2
+grep -Fq 'testDockhandLifecycleActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testDockhandIndeterminateMutationIsNonRetryable' "$swift_tests"
+
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
   exit 1

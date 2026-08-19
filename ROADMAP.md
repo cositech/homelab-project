@@ -44,6 +44,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] Healthchecks check lifecycle, creation, editing and integration channels
   - [x] AdGuard Home protection enable, disable and timed pause
   - [x] Pi-hole allow and deny domain list mutations
+  - [x] Dockhand container and stack lifecycle actions
   - [ ] Remaining container, DNS, monitoring, update and configuration providers
 
 Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.
