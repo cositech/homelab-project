@@ -178,7 +178,8 @@ actor DockmonAPIClient {
                 path: path,
                 method: "POST",
                 headers: authHeaders(apiKey: apiKey),
-                body: body
+                body: body,
+                allowFallback: false
             )
             guard !data.isEmpty else {
                 return DockmonActionResponse()

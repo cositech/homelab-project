@@ -611,7 +611,7 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .pihole:
                 capabilities = [.health, .writeActions]
-            case .healthchecks, .dockhand:
+            case .healthchecks, .dockhand, .dockmon:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]
@@ -781,6 +781,34 @@ enum DockhandControlledAction: String, CaseIterable, Equatable, Sendable {
             providerRef: "dockhand:\(instanceId.uuidString.lowercased())",
             action: rawValue,
             targetRef: "environment/\(environment?.isEmpty == false ? environment! : "default")/\(targetKind)/\(normalizedTarget)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum DockmonControlledAction: String, CaseIterable, Equatable, Sendable {
+    case restart = "container.restart"
+    case update = "container.update"
+
+    var risk: ControlledActionRisk { self == .restart ? .medium : .high }
+    var requiresConfirmation: Bool { true }
+
+    func request(
+        instanceId: UUID,
+        containerId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "dockmon:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "container/\(containerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,

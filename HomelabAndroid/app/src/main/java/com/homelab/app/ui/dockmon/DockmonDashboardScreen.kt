@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,6 +57,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -72,6 +75,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homelab.app.R
 import com.homelab.app.data.repository.DockmonContainer
+import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.DockmonDashboardData
 import com.homelab.app.data.repository.DockmonHost
 import com.homelab.app.ui.common.ErrorScreen
@@ -104,6 +108,7 @@ fun DockmonDashboardScreen(
     val isRunningAction by viewModel.isRunningAction.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val accent = ServiceType.DOCKMON.primaryColor
+    var pendingAction by remember { mutableStateOf<DockmonControlledAction?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collectLatest { message ->
@@ -196,11 +201,35 @@ fun DockmonDashboardScreen(
                 isRunningAction = isRunningAction,
                 onImageDraftChanged = viewModel::updateImageDraft,
                 onRefreshLogs = { viewModel.refreshLogs(forceLoading = true) },
-                onRestart = viewModel::restartSelectedContainer,
-                onUpdate = viewModel::updateSelectedContainer,
+                onRestart = { pendingAction = DockmonControlledAction.RESTART },
+                onUpdate = { pendingAction = DockmonControlledAction.UPDATE },
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
             )
         }
+    }
+    pendingAction?.let { action ->
+        val actionLabel = stringResource(
+            if (action == DockmonControlledAction.RESTART) R.string.dockmon_restart_container
+            else R.string.dockmon_update_container
+        )
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.dockmon_confirm_action, actionLabel)) },
+            text = { Text(stringResource(R.string.dockmon_confirm_action_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingAction = null
+                    if (action == DockmonControlledAction.RESTART) {
+                        viewModel.restartSelectedContainer(confirmed = true)
+                    } else {
+                        viewModel.updateSelectedContainer(confirmed = true)
+                    }
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingAction = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 }
 

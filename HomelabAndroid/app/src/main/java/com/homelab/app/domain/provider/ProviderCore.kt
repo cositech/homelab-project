@@ -136,7 +136,7 @@ object ProviderRegistry {
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )
-                ServiceType.DOCKHAND -> setOf(
+                ServiceType.DOCKHAND, ServiceType.DOCKMON -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )

@@ -6,6 +6,7 @@ import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.repository.DockhandContainerAction
+import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
@@ -442,6 +443,58 @@ class ControlledActionsTest {
         assertEquals("stack.start", stackRequest.action)
         assertEquals("environment/default/stack/core-stack", stackRequest.targetRef)
         assertTrue(ProviderRegistry.capabilities(ServiceType.DOCKHAND).contains(ProviderCapability.WRITE_ACTIONS))
+    }
+
+    @Test
+    fun `dockmon actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.MEDIUM, DockmonControlledAction.RESTART.risk)
+        assertEquals(ActionRisk.HIGH, DockmonControlledAction.UPDATE.risk)
+        assertTrue(DockmonControlledAction.RESTART.requiresConfirmation)
+        assertTrue(DockmonControlledAction.UPDATE.requiresConfirmation)
+
+        val request = DockmonControlledAction.UPDATE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            containerId = "Web-01",
+            confirmed = true,
+            requestId = "request-dockmon-update",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockmon-update-key-0001"
+        )
+        assertEquals("dockmon:instance-a", request.providerRef)
+        assertEquals("container.update", request.action)
+        assertEquals("container/web-01", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.DOCKMON))
+    }
+
+    @Test
+    fun `dockmon indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val request = DockmonControlledAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            containerId = "web-01",
+            confirmed = true,
+            requestId = "request-dockmon-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockmon-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "dockmon-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("dockmon-outcome-indeterminate", result.reasonCode)
     }
 
     @Test

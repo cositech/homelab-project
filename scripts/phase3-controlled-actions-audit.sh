@@ -191,7 +191,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockhand_api")" -eq 6
 grep -Fq 'dockhand lifecycle actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockhand indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand:'; do
+for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'PendingDockhandAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockhand).capabilities' 'confirmed: true' '.nonRetryable' 'dockhand-provider-reported-failure' 'dockhand-outcome-indeterminate'; do
@@ -200,6 +200,38 @@ done
 test "$(grep -Fc 'allowFallback: false' "$swift_dockhand_api")" -eq 2
 grep -Fq 'testDockhandLifecycleActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testDockhandIndeterminateMutationIsNonRetryable' "$swift_tests"
+
+android_dockmon_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/DockmonRepository.kt"
+android_dockmon_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/dockmon/DockmonViewModel.kt"
+android_dockmon_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/dockmon/DockmonDashboardScreen.kt"
+android_dockmon_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/DockmonApi.kt"
+swift_dockmon_ui="HomelabSwift/Homelab/Views/Dockmon/DockmonDashboard.swift"
+swift_dockmon_api="HomelabSwift/Homelab/Networking/Dockmon/DockmonAPIClient.swift"
+
+for required_file in "$android_dockmon_models" "$android_dockmon_view_model" "$android_dockmon_ui" "$android_dockmon_api" "$swift_dockmon_ui" "$swift_dockmon_api"; do
+  test -s "$required_file"
+done
+for pattern in 'container.restart' 'container.update' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_dockmon_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.DOCKMON)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_dockmon_view_model"
+done
+for pattern in 'pendingAction' 'DockmonControlledAction.RESTART' 'confirmed = true'; do
+  grep -Fq "$pattern" "$android_dockmon_ui"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockmon_api")" -eq 2
+grep -Fq 'dockmon actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'dockmon indeterminate mutation is non retryable' "$android_tests"
+for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon:'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'pendingAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$swift_dockmon_ui"
+done
+test "$(grep -Fc 'allowFallback: false' "$swift_dockmon_api")" -eq 1
+grep -Fq 'testDockmonActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testDockmonIndeterminateMutationIsNonRetryable' "$swift_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
