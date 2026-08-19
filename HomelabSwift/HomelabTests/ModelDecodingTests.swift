@@ -1798,6 +1798,41 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
     }
 
+    func testPiholeDomainActionsRequireConfirmationAndHaveStableIdentity() {
+        XCTAssertEqual(PiholeControlledDomainAction.add.risk, .high)
+        XCTAssertEqual(PiholeControlledDomainAction.remove.risk, .medium)
+        XCTAssertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                risk: PiholeControlledDomainAction.add.risk,
+                completedAttempts: 0
+            )
+        )
+
+        let request = PiholeControlledDomainAction.remove.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            domain: "Example.COM",
+            listType: .deny,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "pi-hole:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "domain.remove")
+        XCTAssertEqual(request.targetRef, "domain/deny/example.com")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .pihole).capabilities.contains(.writeActions))
+    }
+
+    func testPiholeLegacyMutationFallbackRequiresUnsupportedEndpointStatus() {
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 404, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 405, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 501, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 500, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(URLError(.timedOut)))
+    }
+
     func testAdGuardProtectionActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(AdGuardControlledProtectionAction.enable.risk, .low)
         XCTAssertEqual(AdGuardControlledProtectionAction.disable.risk, .medium)

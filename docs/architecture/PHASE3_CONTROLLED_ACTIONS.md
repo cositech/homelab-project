@@ -49,6 +49,8 @@ Healthchecks is the first monitoring-provider migration. Check editing, integrat
 
 AdGuard Home is the first DNS-provider migration. Protection enable is low risk; disable and timed pause are medium risk and use the existing explicit duration or destructive confirmation. Android and iOS route the mutation through the shared coordinator with a normalized protection/global target and the provider write-capability gate.
 
+Pi-hole domain-list management is the second DNS-provider migration. Allow-list and deny-list removals are medium-risk configuration mutations; additions are high risk because Pi-hole exposes no provider-side idempotency key and transport retries could create duplicates. Both clients require an explicit Save or delete confirmation, normalize list type and domain into the target identity, and route provider calls through the shared write-capability and audit path. Automatic retries and transport-level URL fallback remain disabled for mutations. Pi-hole v5 legacy mutation endpoints are attempted only after a definitive `404`, `405`, or `501` response from the v6 endpoint; transport errors and server failures never trigger a second write attempt.
+
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.
