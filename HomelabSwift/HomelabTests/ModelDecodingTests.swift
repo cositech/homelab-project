@@ -1798,6 +1798,31 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
     }
 
+    func testDockhandLifecycleActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(DockhandControlledAction.containerStart.risk, .low)
+        XCTAssertEqual(DockhandControlledAction.containerStop.risk, .medium)
+        XCTAssertEqual(DockhandControlledAction.stackRestart.risk, .medium)
+        XCTAssertFalse(DockhandControlledAction.containerStart.requiresConfirmation)
+        XCTAssertTrue(DockhandControlledAction.stackStop.requiresConfirmation)
+
+        let request = DockhandControlledAction.containerRestart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            environmentId: "Production",
+            targetKind: "container",
+            targetId: "Web-01",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "dockhand:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "container.restart")
+        XCTAssertEqual(request.targetRef, "environment/production/container/web-01")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .dockhand).capabilities.contains(.writeActions))
+    }
+
     func testPiholeDomainActionsRequireConfirmationAndHaveStableIdentity() {
         XCTAssertEqual(PiholeControlledDomainAction.add.risk, .high)
         XCTAssertEqual(PiholeControlledDomainAction.remove.risk, .medium)

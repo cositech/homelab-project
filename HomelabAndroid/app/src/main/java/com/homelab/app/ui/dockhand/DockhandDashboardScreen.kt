@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -180,6 +182,34 @@ fun DockhandDashboardScreen(
 
     var selectedTab by rememberSaveable { mutableStateOf(DockhandDashboardTab.OVERVIEW) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var pendingContainerAction by remember { mutableStateOf<DockhandContainerAction?>(null) }
+    var pendingStackAction by remember { mutableStateOf<DockhandStackAction?>(null) }
+
+    val pendingActionName = pendingContainerAction?.name ?: pendingStackAction?.name
+    if (pendingActionName != null) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingContainerAction = null
+                pendingStackAction = null
+            },
+            title = { Text(stringResource(R.string.dockhand_confirm_action, pendingActionName.lowercase())) },
+            text = { Text(stringResource(R.string.dockhand_confirm_action_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingContainerAction?.let { viewModel.runContainerAction(it, confirmed = true) }
+                    pendingStackAction?.let { viewModel.runStackAction(it, confirmed = true) }
+                    pendingContainerAction = null
+                    pendingStackAction = null
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingContainerAction = null
+                    pendingStackAction = null
+                }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -320,7 +350,10 @@ fun DockhandDashboardScreen(
                         state = containerDetailState,
                         isRunningAction = isRunningAction,
                         onRefresh = { viewModel.refreshContainerDetail(forceLoading = false) },
-                        onAction = viewModel::runContainerAction
+                        onAction = { action ->
+                            if (action.requiresConfirmation) pendingContainerAction = action
+                            else viewModel.runContainerAction(action)
+                        }
                     )
                 }
             }
@@ -334,7 +367,10 @@ fun DockhandDashboardScreen(
                         isRunningAction = isRunningAction,
                         isSavingCompose = isSavingCompose,
                         onRefresh = { viewModel.refreshStackDetail(forceLoading = false) },
-                        onAction = viewModel::runStackAction,
+                        onAction = { action ->
+                            if (action.requiresConfirmation) pendingStackAction = action
+                            else viewModel.runStackAction(action)
+                        },
                         onOpenContainer = { containerId ->
                             viewModel.closeStackDetail()
                             viewModel.openContainerDetail(containerId)

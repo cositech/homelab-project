@@ -136,6 +136,10 @@ object ProviderRegistry {
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )
+                ServiceType.DOCKHAND -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.WRITE_ACTIONS
+                )
                 ServiceType.PROXMOX_BACKUP_SERVER -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,

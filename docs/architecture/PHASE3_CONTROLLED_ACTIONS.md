@@ -51,6 +51,8 @@ AdGuard Home is the first DNS-provider migration. Protection enable is low risk;
 
 Pi-hole domain-list management is the second DNS-provider migration. Allow-list and deny-list removals are medium-risk configuration mutations; additions are high risk because Pi-hole exposes no provider-side idempotency key and transport retries could create duplicates. Both clients require an explicit Save or delete confirmation, normalize list type and domain into the target identity, and route provider calls through the shared write-capability and audit path. Automatic retries and transport-level URL fallback remain disabled for mutations. Pi-hole v5 legacy mutation endpoints are attempted only after a definitive `404`, `405`, or `501` response from the v6 endpoint; transport errors and server failures never trigger a second write attempt.
 
+Dockhand is the second container-provider migration. Container and stack start are low risk; stop and restart are medium risk and require explicit confirmation. Both clients use normalized environment and workload identities, the Dockhand write-capability gate and the shared local audit path. Transport-level primary-to-fallback URL replay is disabled for all six lifecycle mutations; read requests retain normal fallback behavior.
+
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.

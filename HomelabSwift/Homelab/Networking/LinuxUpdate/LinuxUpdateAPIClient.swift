@@ -895,7 +895,7 @@ actor DockhandAPIClient {
             label = "Restart"
         }
 
-        let data = try await requestData(path: envPath(path, env: environmentId), method: "POST", includeSynchronousAccept: true)
+        let data = try await requestData(path: envPath(path, env: environmentId), method: "POST", includeSynchronousAccept: true, allowFallback: false)
         return try await resolveActionResult(data: data, label: label)
     }
 
@@ -916,7 +916,7 @@ actor DockhandAPIClient {
             label = "Stack restart"
         }
 
-        let data = try await requestData(path: envPath(path, env: environmentId), method: "POST", includeSynchronousAccept: true)
+        let data = try await requestData(path: envPath(path, env: environmentId), method: "POST", includeSynchronousAccept: true, allowFallback: false)
         return try await resolveActionResult(data: data, label: label)
     }
 
@@ -1601,7 +1601,8 @@ actor DockhandAPIClient {
         path: String,
         method: String = "GET",
         includeSynchronousAccept: Bool = false,
-        body: Data? = nil
+        body: Data? = nil,
+        allowFallback: Bool = true
     ) async throws -> Data {
         var headers = authHeaders()
         if includeSynchronousAccept {
@@ -1611,7 +1612,7 @@ actor DockhandAPIClient {
         do {
             let data = try await engine.requestData(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: headers,
@@ -1625,7 +1626,7 @@ actor DockhandAPIClient {
             headers["Cookie"] = refreshedCookie
             return try await engine.requestData(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: headers,
@@ -1640,7 +1641,7 @@ actor DockhandAPIClient {
             headers["Cookie"] = refreshedCookie
             return try await engine.requestData(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: headers,

@@ -18,7 +18,11 @@ import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.data.repository.DockhandStackDetail
 import com.homelab.app.data.repository.LocalPreferencesRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
@@ -46,6 +50,7 @@ class DockhandViewModel @Inject constructor(
     private val repository: DockhandRepository,
     private val servicesRepository: ServicesRepository,
     private val preferencesRepository: LocalPreferencesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -297,7 +302,7 @@ class DockhandViewModel @Inject constructor(
         }
     }
 
-    fun runContainerAction(action: DockhandContainerAction) {
+    fun runContainerAction(action: DockhandContainerAction, confirmed: Boolean = false) {
         val containerId = _selectedContainerId.value ?: return
         if (_isRunningAction.value) return
 
@@ -305,15 +310,21 @@ class DockhandViewModel @Inject constructor(
             _isRunningAction.value = true
             try {
                 val env = currentContainer()?.environmentId ?: _selectedEnvironmentId.value
-                val result = repository.runContainerAction(
-                    instanceId = instanceId,
-                    env = env,
-                    containerId = containerId,
-                    action = action
-                )
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-                refreshContainerDetail(forceLoading = false)
+                var message: String? = null
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, env, containerId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.DOCKHAND)
+                ) {
+                    message = repository.runContainerAction(instanceId, env, containerId, action).message
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    message?.let(_messages::tryEmit)
+                    fetchDashboard(forceLoading = false)
+                    refreshContainerDetail(forceLoading = false)
+                } else {
+                    _messages.tryEmit(audit.reasonCode)
+                }
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {
@@ -322,22 +333,29 @@ class DockhandViewModel @Inject constructor(
         }
     }
 
-    fun runStackAction(action: DockhandStackAction) {
+    fun runStackAction(action: DockhandStackAction, confirmed: Boolean = false) {
         val stack = selectedStack.value ?: return
         if (_isRunningAction.value) return
 
         viewModelScope.launch {
             _isRunningAction.value = true
             try {
-                val result = repository.runStackAction(
-                    instanceId = instanceId,
-                    env = stack.environmentId ?: _selectedEnvironmentId.value,
-                    stackName = stack.name,
-                    action = action
-                )
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-                refreshStackDetail(forceLoading = false)
+                val env = stack.environmentId ?: _selectedEnvironmentId.value
+                var message: String? = null
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, env, stack.name, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.DOCKHAND)
+                ) {
+                    message = repository.runStackAction(instanceId, env, stack.name, action).message
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    message?.let(_messages::tryEmit)
+                    fetchDashboard(forceLoading = false)
+                    refreshStackDetail(forceLoading = false)
+                } else {
+                    _messages.tryEmit(audit.reasonCode)
+                }
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {

@@ -1569,6 +1569,8 @@
     <string name="truenas_no_disks">TrueNAS hat keine Festplatten zurückgegeben.</string>
     <string name="healthchecks_pause_check">Check pausieren</string>
     <string name="healthchecks_resume_check">Check fortsetzen</string>
+    <string name="dockhand_confirm_action">%1$s bestätigen?</string>
+    <string name="dockhand_confirm_action_message">Diese Aktion ändert den Dockhand-Workload-Status und wird im lokalen Audit-Protokoll erfasst.</string>
     <string name="healthchecks_confirm_action">%1$s bestätigen?</string>
     <string name="healthchecks_confirm_action_message">Diese Aktion ändert den Check-Status und wird im lokalen Audit-Protokoll erfasst.</string>
 </resources>

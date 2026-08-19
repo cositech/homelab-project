@@ -1,6 +1,45 @@
 import SwiftUI
 import UIKit
 
+private actor DockhandActionOutcomeBox {
+    private var outcome: DockhandActionOutcome?
+
+    func store(_ outcome: DockhandActionOutcome) { self.outcome = outcome }
+    func value() -> DockhandActionOutcome? { outcome }
+}
+
+private enum PendingDockhandAction {
+    case container(DockhandContainerActionKind, String)
+    case stack(DockhandStackActionKind, DockhandStackInfo)
+
+    var label: String {
+        switch self {
+        case .container(let action, _): return action.controlledAction.rawValue
+        case .stack(let action, _): return action.controlledAction.rawValue
+        }
+    }
+}
+
+private extension DockhandContainerActionKind {
+    var controlledAction: DockhandControlledAction {
+        switch self {
+        case .start: return .containerStart
+        case .stop: return .containerStop
+        case .restart: return .containerRestart
+        }
+    }
+}
+
+private extension DockhandStackActionKind {
+    var controlledAction: DockhandControlledAction {
+        switch self {
+        case .start: return .stackStart
+        case .stop: return .stackStop
+        case .restart: return .stackRestart
+        }
+    }
+}
+
 struct DockhandDashboard: View {
     let instanceId: UUID
 
@@ -26,6 +65,7 @@ struct DockhandDashboard: View {
     @State private var isRefreshing = false
     @State private var isRunningAction = false
     @State private var actionMessage: String?
+    @State private var pendingAction: PendingDockhandAction?
     @State private var showSettingsSheet = false
     @State private var showFullContainerLogs = false
     @State private var isEditingCompose = false
@@ -106,6 +146,28 @@ struct DockhandDashboard: View {
             dockhandSettingsSheet
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { isPresented in if !isPresented { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(pendingAction?.label ?? "") {
+                guard let pendingAction else { return }
+                self.pendingAction = nil
+                switch pendingAction {
+                case .container(let action, let containerId):
+                    Task { await runContainerAction(action, containerId: containerId, confirmed: true) }
+                case .stack(let action, let stack):
+                    Task { await runStackAction(action, stack: stack, confirmed: true) }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
         .alert(
             ServiceType.dockhand.displayName,
@@ -860,13 +922,13 @@ struct DockhandDashboard: View {
 
                     HStack(spacing: 8) {
                         DockhandStackActionButton(title: localizer.t.actionStart, icon: "play.fill", tint: AppTheme.running, enabled: !isRunningAction && !isSavingCompose) {
-                            Task { await runStackAction(.start, stack: detail.stack) }
+                            requestStackAction(.start, stack: detail.stack)
                         }
                         DockhandStackActionButton(title: localizer.t.actionRestart, icon: "arrow.clockwise", tint: AppTheme.info, enabled: !isRunningAction && !isSavingCompose) {
-                            Task { await runStackAction(.restart, stack: detail.stack) }
+                            requestStackAction(.restart, stack: detail.stack)
                         }
                         DockhandStackActionButton(title: localizer.t.actionStop, icon: "stop.fill", tint: AppTheme.warning, enabled: !isRunningAction && !isSavingCompose) {
-                            Task { await runStackAction(.stop, stack: detail.stack) }
+                            requestStackAction(.stop, stack: detail.stack)
                         }
                     }
 
@@ -1089,13 +1151,13 @@ struct DockhandDashboard: View {
                     Task { await fetchContainerDetail(forceLoading: false) }
                 }
                 DockhandDetailActionButton(title: localizer.t.actionStart, icon: "play.fill", tint: AppTheme.running, enabled: !isRunningAction) {
-                    Task { await runContainerAction(.start, containerId: detail.container.id) }
+                    requestContainerAction(.start, containerId: detail.container.id)
                 }
                 DockhandDetailActionButton(title: localizer.t.actionStop, icon: "stop.fill", tint: AppTheme.warning, enabled: !isRunningAction) {
-                    Task { await runContainerAction(.stop, containerId: detail.container.id) }
+                    requestContainerAction(.stop, containerId: detail.container.id)
                 }
                 DockhandDetailActionButton(title: localizer.t.actionRestart, icon: "arrow.clockwise", tint: AppTheme.info, enabled: !isRunningAction) {
-                    Task { await runContainerAction(.restart, containerId: detail.container.id) }
+                    requestContainerAction(.restart, containerId: detail.container.id)
                 }
             }
 
@@ -1573,7 +1635,15 @@ struct DockhandDashboard: View {
         Task { await fetchContainerDetail(forceLoading: true) }
     }
 
-    private func runContainerAction(_ action: DockhandContainerActionKind, containerId: String) async {
+    private func requestContainerAction(_ action: DockhandContainerActionKind, containerId: String) {
+        if action.controlledAction.requiresConfirmation {
+            pendingAction = .container(action, containerId)
+        } else {
+            Task { await runContainerAction(action, containerId: containerId, confirmed: false) }
+        }
+    }
+
+    private func runContainerAction(_ action: DockhandContainerActionKind, containerId: String, confirmed: Bool) async {
         guard !isRunningAction else { return }
         isRunningAction = true
         defer { isRunningAction = false }
@@ -1582,12 +1652,31 @@ struct DockhandDashboard: View {
             guard let client = await servicesStore.dockhandClient(instanceId: selectedInstanceId) else {
                 throw APIError.notConfigured
             }
-            let result = try await client.runContainerAction(
-                id: containerId,
-                action: action,
-                environmentId: selectedEnvironmentForContainer(containerId)
-            )
-            actionMessage = result.message
+            let environmentId = selectedEnvironmentForContainer(containerId)
+            let outcomeBox = DockhandActionOutcomeBox()
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: action.controlledAction.request(
+                    instanceId: selectedInstanceId,
+                    environmentId: environmentId,
+                    targetKind: "container",
+                    targetId: containerId,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .dockhand).capabilities
+            ) {
+                let outcome = try await client.runContainerAction(
+                    id: containerId,
+                    action: action,
+                    environmentId: environmentId
+                )
+                await outcomeBox.store(outcome)
+            }
+            guard audit.state == .succeeded else {
+                actionMessage = audit.reasonCode
+                return
+            }
+            actionMessage = await outcomeBox.value()?.message
             await fetchDashboard(forceLoading: false)
             await fetchContainerDetail(forceLoading: false)
         } catch let error as APIError {
@@ -1671,7 +1760,15 @@ struct DockhandDashboard: View {
         }
     }
 
-    private func runStackAction(_ action: DockhandStackActionKind, stack: DockhandStackInfo) async {
+    private func requestStackAction(_ action: DockhandStackActionKind, stack: DockhandStackInfo) {
+        if action.controlledAction.requiresConfirmation {
+            pendingAction = .stack(action, stack)
+        } else {
+            Task { await runStackAction(action, stack: stack, confirmed: false) }
+        }
+    }
+
+    private func runStackAction(_ action: DockhandStackActionKind, stack: DockhandStackInfo, confirmed: Bool) async {
         guard !isRunningAction else { return }
         isRunningAction = true
         defer { isRunningAction = false }
@@ -1680,12 +1777,31 @@ struct DockhandDashboard: View {
             guard let client = await servicesStore.dockhandClient(instanceId: selectedInstanceId) else {
                 throw APIError.notConfigured
             }
-            let result = try await client.runStackAction(
-                name: stack.name,
-                action: action,
-                environmentId: stack.environmentId ?? selectedEnvironmentId
-            )
-            actionMessage = result.message
+            let environmentId = stack.environmentId ?? selectedEnvironmentId
+            let outcomeBox = DockhandActionOutcomeBox()
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: action.controlledAction.request(
+                    instanceId: selectedInstanceId,
+                    environmentId: environmentId,
+                    targetKind: "stack",
+                    targetId: stack.name,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .dockhand).capabilities
+            ) {
+                let outcome = try await client.runStackAction(
+                    name: stack.name,
+                    action: action,
+                    environmentId: environmentId
+                )
+                await outcomeBox.store(outcome)
+            }
+            guard audit.state == .succeeded else {
+                actionMessage = audit.reasonCode
+                return
+            }
+            actionMessage = await outcomeBox.value()?.message
             await fetchDashboard(forceLoading: false)
             await fetchStackDetail(forceLoading: false)
         } catch let error as APIError {
