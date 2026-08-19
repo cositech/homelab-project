@@ -12,10 +12,11 @@ private enum PendingDockhandAction {
     case container(DockhandContainerActionKind, String)
     case stack(DockhandStackActionKind, DockhandStackInfo)
 
-    var label: String {
+    func label(using translations: Translations) -> String {
         switch self {
-        case .container(let action, _): return action.controlledAction.rawValue
-        case .stack(let action, _): return action.controlledAction.rawValue
+        case .container(.start, _), .stack(.start, _): return translations.actionStart
+        case .container(.stop, _), .stack(.stop, _): return translations.actionStop
+        case .container(.restart, _), .stack(.restart, _): return translations.actionRestart
         }
     }
 }
@@ -155,7 +156,7 @@ struct DockhandDashboard: View {
             ),
             titleVisibility: .visible
         ) {
-            Button(pendingAction?.label ?? "") {
+            Button(pendingAction?.label(using: localizer.t) ?? "") {
                 guard let pendingAction else { return }
                 self.pendingAction = nil
                 switch pendingAction {
@@ -1665,12 +1666,29 @@ struct DockhandDashboard: View {
                 actorRole: .admin,
                 providerCapabilities: ProviderRegistry.descriptor(for: .dockhand).capabilities
             ) {
-                let outcome = try await client.runContainerAction(
-                    id: containerId,
-                    action: action,
-                    environmentId: environmentId
-                )
-                await outcomeBox.store(outcome)
+                do {
+                    let outcome = try await client.runContainerAction(
+                        id: containerId,
+                        action: action,
+                        environmentId: environmentId
+                    )
+                    guard outcome.success else {
+                        throw ControlledActionOperationError(
+                            reasonCode: "dockhand-provider-reported-failure",
+                            disposition: .nonRetryable
+                        )
+                    }
+                    await outcomeBox.store(outcome)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "dockhand-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
             }
             guard audit.state == .succeeded else {
                 actionMessage = audit.reasonCode
@@ -1790,12 +1808,29 @@ struct DockhandDashboard: View {
                 actorRole: .admin,
                 providerCapabilities: ProviderRegistry.descriptor(for: .dockhand).capabilities
             ) {
-                let outcome = try await client.runStackAction(
-                    name: stack.name,
-                    action: action,
-                    environmentId: environmentId
-                )
-                await outcomeBox.store(outcome)
+                do {
+                    let outcome = try await client.runStackAction(
+                        name: stack.name,
+                        action: action,
+                        environmentId: environmentId
+                    )
+                    guard outcome.success else {
+                        throw ControlledActionOperationError(
+                            reasonCode: "dockhand-provider-reported-failure",
+                            disposition: .nonRetryable
+                        )
+                    }
+                    await outcomeBox.store(outcome)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "dockhand-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
             }
             guard audit.state == .succeeded else {
                 actionMessage = audit.reasonCode

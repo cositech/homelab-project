@@ -19,6 +19,8 @@ import com.homelab.app.data.repository.DockhandStackDetail
 import com.homelab.app.data.repository.LocalPreferencesRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
 import com.homelab.app.domain.action.ActionRole
 import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
@@ -41,6 +43,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -316,7 +319,26 @@ class DockhandViewModel @Inject constructor(
                     actorRole = ActionRole.ADMIN,
                     providerCapabilities = ProviderRegistry.capabilities(ServiceType.DOCKHAND)
                 ) {
-                    message = repository.runContainerAction(instanceId, env, containerId, action).message
+                    try {
+                        val outcome = repository.runContainerAction(instanceId, env, containerId, action)
+                        if (!outcome.success) {
+                            throw ActionOperationException(
+                                "dockhand-provider-reported-failure",
+                                ActionFailureDisposition.NON_RETRYABLE
+                            )
+                        }
+                        message = outcome.message
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "dockhand-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
                 }
                 if (audit.state == ActionExecutionState.SUCCEEDED) {
                     message?.let(_messages::tryEmit)
@@ -325,6 +347,8 @@ class DockhandViewModel @Inject constructor(
                 } else {
                     _messages.tryEmit(audit.reasonCode)
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {
@@ -347,7 +371,26 @@ class DockhandViewModel @Inject constructor(
                     actorRole = ActionRole.ADMIN,
                     providerCapabilities = ProviderRegistry.capabilities(ServiceType.DOCKHAND)
                 ) {
-                    message = repository.runStackAction(instanceId, env, stack.name, action).message
+                    try {
+                        val outcome = repository.runStackAction(instanceId, env, stack.name, action)
+                        if (!outcome.success) {
+                            throw ActionOperationException(
+                                "dockhand-provider-reported-failure",
+                                ActionFailureDisposition.NON_RETRYABLE
+                            )
+                        }
+                        message = outcome.message
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "dockhand-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
                 }
                 if (audit.state == ActionExecutionState.SUCCEEDED) {
                     message?.let(_messages::tryEmit)
@@ -356,6 +399,8 @@ class DockhandViewModel @Inject constructor(
                 } else {
                     _messages.tryEmit(audit.reasonCode)
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {

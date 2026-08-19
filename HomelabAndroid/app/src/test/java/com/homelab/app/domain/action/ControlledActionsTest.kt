@@ -231,6 +231,37 @@ class ControlledActionsTest {
     }
 
     @Test
+    fun `dockhand indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val dockhandRequest = DockhandContainerAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            environmentId = "production",
+            containerId = "web-01",
+            confirmed = true,
+            requestId = "request-dockhand-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            dockhandRequest,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "dockhand-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("dockhand-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
     fun `high risk transport failure requires manual review without retry`() = runTest {
         var invocations = 0
         val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})

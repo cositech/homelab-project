@@ -185,14 +185,19 @@ fun DockhandDashboardScreen(
     var pendingContainerAction by remember { mutableStateOf<DockhandContainerAction?>(null) }
     var pendingStackAction by remember { mutableStateOf<DockhandStackAction?>(null) }
 
-    val pendingActionName = pendingContainerAction?.name ?: pendingStackAction?.name
-    if (pendingActionName != null) {
+    val pendingActionLabel = when (pendingContainerAction ?: pendingStackAction) {
+        DockhandContainerAction.START, DockhandStackAction.START -> stringResource(R.string.dockhand_action_start)
+        DockhandContainerAction.STOP, DockhandStackAction.STOP -> stringResource(R.string.dockhand_action_stop)
+        DockhandContainerAction.RESTART, DockhandStackAction.RESTART -> stringResource(R.string.dockhand_action_restart)
+        else -> null
+    }
+    if (pendingActionLabel != null) {
         AlertDialog(
             onDismissRequest = {
                 pendingContainerAction = null
                 pendingStackAction = null
             },
-            title = { Text(stringResource(R.string.dockhand_confirm_action, pendingActionName.lowercase())) },
+            title = { Text(stringResource(R.string.dockhand_confirm_action, pendingActionLabel)) },
             text = { Text(stringResource(R.string.dockhand_confirm_action_message)) },
             confirmButton = {
                 TextButton(onClick = {
