@@ -10,6 +10,7 @@ import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.NpmProxyHostControlledAction
+import com.homelab.app.data.repository.NpmConfigurationControlledAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
@@ -877,6 +878,41 @@ class ControlledActionsTest {
             ProviderCapability.WRITE_ACTIONS in
                 ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)
         )
+    }
+
+    @Test
+    fun `nginx proxy manager configuration actions have stable risk and identity`() {
+        NpmConfigurationControlledAction.values()
+            .filterNot { it == NpmConfigurationControlledAction.RENEW_CERTIFICATE }
+            .forEach {
+                assertEquals(ActionRisk.HIGH, it.risk)
+                assertTrue(it.requiresConfirmation)
+            }
+        assertEquals(ActionRisk.MEDIUM, NpmConfigurationControlledAction.RENEW_CERTIFICATE.risk)
+        assertTrue(NpmConfigurationControlledAction.RENEW_CERTIFICATE.requiresConfirmation)
+
+        val request = NpmConfigurationControlledAction.DELETE_ACCESS_LIST.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetId = 17,
+            confirmed = true,
+            requestId = "request-npm-access-list",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-access-list-key-01"
+        )
+        val createRequest = NpmConfigurationControlledAction.CREATE_REDIRECTION_HOST.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetId = null,
+            confirmed = true,
+            requestId = "request-npm-redirection",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-redirection-key-01"
+        )
+
+        assertEquals("nginx-proxy-manager:instance-a", request.providerRef)
+        assertEquals("access-list.delete", request.action)
+        assertEquals("access-list/17", request.targetRef)
+        assertEquals("redirection-host/new", createRequest.targetRef)
+        assertTrue(request.confirmed)
     }
 
     @Test

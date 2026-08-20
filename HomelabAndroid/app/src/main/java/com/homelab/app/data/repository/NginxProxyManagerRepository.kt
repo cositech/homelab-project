@@ -54,6 +54,51 @@ enum class NpmProxyHostControlledAction(val wireName: String, val risk: ActionRi
     )
 }
 
+enum class NpmConfigurationControlledAction(
+    val wireName: String,
+    val targetKind: String,
+    val risk: ActionRisk = ActionRisk.HIGH
+) {
+    CREATE_REDIRECTION_HOST("redirection-host.create", "redirection-host"),
+    UPDATE_REDIRECTION_HOST("redirection-host.update", "redirection-host"),
+    DELETE_REDIRECTION_HOST("redirection-host.delete", "redirection-host"),
+    CREATE_STREAM("stream.create", "stream"),
+    UPDATE_STREAM("stream.update", "stream"),
+    DELETE_STREAM("stream.delete", "stream"),
+    CREATE_DEAD_HOST("dead-host.create", "dead-host"),
+    UPDATE_DEAD_HOST("dead-host.update", "dead-host"),
+    DELETE_DEAD_HOST("dead-host.delete", "dead-host"),
+    CREATE_CERTIFICATE("certificate.create", "certificate"),
+    RENEW_CERTIFICATE("certificate.renew", "certificate", ActionRisk.MEDIUM),
+    DELETE_CERTIFICATE("certificate.delete", "certificate"),
+    CREATE_ACCESS_LIST("access-list.create", "access-list"),
+    UPDATE_ACCESS_LIST("access-list.update", "access-list"),
+    DELETE_ACCESS_LIST("access-list.delete", "access-list"),
+    CREATE_USER("user.create", "user"),
+    UPDATE_USER("user.update", "user"),
+    DELETE_USER("user.delete", "user");
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        targetId: Int?,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "nginx-proxy-manager:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = wireName,
+        targetRef = "$targetKind/${targetId ?: "new"}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
 @Singleton
 class NginxProxyManagerRepository @Inject constructor(
     private val api: NginxProxyManagerApi

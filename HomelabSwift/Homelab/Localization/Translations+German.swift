@@ -843,6 +843,8 @@ extension Translations {
         npmDisable: "Deaktivieren",
         npmDisableConfirm: "Anfragen an diesen Proxy-Host werden gestoppt, bis er wieder aktiviert wird.",
         npmDisableConfirmTitle: "Proxy-Host deaktivieren?",
+        npmRenewConfirmTitle: "Zertifikat erneuern?",
+        npmRenewConfirm: "Nginx Proxy Manager fordert ein Ersatzzertifikat an und aktiviert es für diesen Eintrag.",
         npmNoRedirections: "Keine Weiterleitungen konfiguriert.",
         npmNoStreams: "Keine Streams konfiguriert.",
         npmNoDeadHosts: "Keine 404-Hosts konfiguriert.",

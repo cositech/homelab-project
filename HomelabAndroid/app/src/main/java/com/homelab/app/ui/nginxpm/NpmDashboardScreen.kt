@@ -156,6 +156,7 @@ fun NpmDashboardScreen(
     // Delete confirmation dialog state
     var deleteConfirmation by remember { mutableStateOf<DeleteConfirmation?>(null) }
     var pendingDisableProxyHostId by remember { mutableStateOf<Int?>(null) }
+    var pendingRenewCertificateId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.fetchDashboard()
@@ -360,7 +361,7 @@ fun NpmDashboardScreen(
                         )
                         TAB_SSL -> SslTab(
                             certificates = data.certificates,
-                            onRenew = { viewModel.renewCertificate(it.id) },
+                            onRenew = { pendingRenewCertificateId = it.id },
                             onDelete = { cert ->
                                 deleteConfirmation = DeleteConfirmation(
                                     title = cert.niceName.ifBlank { cert.primaryDomain },
@@ -524,6 +525,28 @@ fun NpmDashboardScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDisableProxyHostId = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    val renewCertificateId = pendingRenewCertificateId
+    if (renewCertificateId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRenewCertificateId = null },
+            title = { Text(stringResource(R.string.npm_renew_confirm_title)) },
+            text = { Text(stringResource(R.string.npm_renew_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.renewCertificate(renewCertificateId, confirmed = true)
+                    pendingRenewCertificateId = null
+                }) {
+                    Text(stringResource(R.string.npm_renew))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRenewCertificateId = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

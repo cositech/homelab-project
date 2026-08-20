@@ -952,6 +952,64 @@ enum NpmProxyHostControlledAction: String, CaseIterable, Equatable, Sendable {
     }
 }
 
+enum NpmConfigurationControlledAction: String, CaseIterable, Equatable, Sendable {
+    case createRedirectionHost = "redirection-host.create"
+    case updateRedirectionHost = "redirection-host.update"
+    case deleteRedirectionHost = "redirection-host.delete"
+    case createStream = "stream.create"
+    case updateStream = "stream.update"
+    case deleteStream = "stream.delete"
+    case createDeadHost = "dead-host.create"
+    case updateDeadHost = "dead-host.update"
+    case deleteDeadHost = "dead-host.delete"
+    case createCertificate = "certificate.create"
+    case renewCertificate = "certificate.renew"
+    case deleteCertificate = "certificate.delete"
+    case createAccessList = "access-list.create"
+    case updateAccessList = "access-list.update"
+    case deleteAccessList = "access-list.delete"
+    case createUser = "user.create"
+    case updateUser = "user.update"
+    case deleteUser = "user.delete"
+
+    var targetKind: String {
+        switch self {
+        case .createRedirectionHost, .updateRedirectionHost, .deleteRedirectionHost: return "redirection-host"
+        case .createStream, .updateStream, .deleteStream: return "stream"
+        case .createDeadHost, .updateDeadHost, .deleteDeadHost: return "dead-host"
+        case .createCertificate, .renewCertificate, .deleteCertificate: return "certificate"
+        case .createAccessList, .updateAccessList, .deleteAccessList: return "access-list"
+        case .createUser, .updateUser, .deleteUser: return "user"
+        }
+    }
+
+    var risk: ControlledActionRisk {
+        self == .renewCertificate ? .medium : .high
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetId: Int?,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "nginx-proxy-manager:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "\(targetKind)/\(targetId.map(String.init) ?? "new")",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum AdGuardControlledProtectionAction: String, CaseIterable, Equatable, Sendable {
     case enable, disable
 

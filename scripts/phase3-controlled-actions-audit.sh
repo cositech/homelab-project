@@ -395,26 +395,28 @@ swift_npm_api="HomelabSwift/Homelab/Networking/NginxProxyManager/NginxProxyManag
 for required_file in "$android_npm_models" "$android_npm_view_model" "$android_npm_ui" "$android_npm_api" "$swift_npm_ui" "$swift_npm_api"; do
   test -s "$required_file"
 done
-for pattern in 'proxy-host.create' 'proxy-host.update' 'proxy-host.enable' 'proxy-host.disable' 'proxy-host.delete' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+for pattern in 'proxy-host.create' 'redirection-host.create' 'stream.delete' 'dead-host.update' 'certificate.renew' 'access-list.delete' 'user.delete' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
   grep -Fq "$pattern" "$android_npm_models"
 done
 for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'nginx-proxy-manager-outcome-indeterminate'; do
   grep -Fq "$pattern" "$android_npm_view_model"
 done
-for pattern in 'pendingDisableProxyHostId' 'npm_disable_confirm' 'confirmed = true'; do
+for pattern in 'pendingDisableProxyHostId' 'pendingRenewCertificateId' 'npm_disable_confirm' 'npm_renew_confirm' 'confirmed = true'; do
   grep -Fq "$pattern" "$android_npm_ui"
 done
-test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_npm_api")" -eq 5
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_npm_api")" -eq 23
 grep -Fq 'nginx proxy manager proxy host actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'nginx proxy manager configuration actions have stable risk and identity' "$android_tests"
 grep -Fq 'nginx proxy manager indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'NpmProxyHostControlledAction' 'case create = "proxy-host.create"' 'case disable = "proxy-host.disable"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:'; do
+for pattern in 'NpmProxyHostControlledAction' 'NpmConfigurationControlledAction' 'case create = "proxy-host.create"' 'case renewCertificate = "certificate.renew"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:'; do
   grep -Fq "$pattern" "$swift_core"
 done
-for pattern in 'showingDisableConfirm' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities' 'confirmed: true' '.nonRetryable' 'nginx-proxy-manager-outcome-indeterminate'; do
+for pattern in 'showingDisableConfirm' 'showingRenewConfirm' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities' 'confirmed: true' '.nonRetryable' 'nginx-proxy-manager-outcome-indeterminate'; do
   grep -Fq "$pattern" "$swift_npm_ui"
 done
-test "$(grep -Fc 'allowFallback: false' "$swift_npm_api")" -eq 5
+test "$(grep -Fc 'allowFallback: false' "$swift_npm_api")" -eq 23
 grep -Fq 'testNpmProxyHostActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testNpmConfigurationActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testNpmProxyHostIndeterminateMutationIsNonRetryable' "$swift_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
