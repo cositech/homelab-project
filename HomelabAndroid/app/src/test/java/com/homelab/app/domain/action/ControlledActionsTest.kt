@@ -9,6 +9,7 @@ import com.homelab.app.data.repository.CalagopusPowerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.KomodoStackAction
+import com.homelab.app.data.repository.NpmProxyHostControlledAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
@@ -846,6 +847,66 @@ class ControlledActionsTest {
             ProviderCapability.WRITE_ACTIONS in
                 ProviderRegistry.capabilities(ServiceType.PORTAINER)
         )
+    }
+
+
+    @Test
+    fun `nginx proxy manager proxy host actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.HIGH, NpmProxyHostControlledAction.CREATE.risk)
+        assertEquals(ActionRisk.HIGH, NpmProxyHostControlledAction.UPDATE.risk)
+        assertEquals(ActionRisk.LOW, NpmProxyHostControlledAction.ENABLE.risk)
+        assertEquals(ActionRisk.MEDIUM, NpmProxyHostControlledAction.DISABLE.risk)
+        assertEquals(ActionRisk.HIGH, NpmProxyHostControlledAction.DELETE.risk)
+        assertFalse(NpmProxyHostControlledAction.ENABLE.requiresConfirmation)
+        assertTrue(NpmProxyHostControlledAction.DISABLE.requiresConfirmation)
+
+        val request = NpmProxyHostControlledAction.DELETE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            hostId = 42,
+            confirmed = true,
+            requestId = "request-npm-proxy-host",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-proxy-host-key-001"
+        )
+
+        assertEquals("nginx-proxy-manager:instance-a", request.providerRef)
+        assertEquals("proxy-host.delete", request.action)
+        assertEquals("proxy-host/42", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)
+        )
+    }
+
+    @Test
+    fun `nginx proxy manager indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val request = NpmProxyHostControlledAction.ENABLE.controlledRequest(
+            instanceId = "instance-a",
+            hostId = 42,
+            confirmed = false,
+            requestId = "request-npm-enable",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-proxy-enable-key-01"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "nginx-proxy-manager-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("nginx-proxy-manager-outcome-indeterminate", result.reasonCode)
     }
 
 }

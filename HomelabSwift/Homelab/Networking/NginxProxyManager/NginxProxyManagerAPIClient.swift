@@ -165,11 +165,16 @@ actor NginxProxyManagerAPIClient {
         }
     }
 
-    private func authenticatedRequest<T: Decodable>(path: String, method: String = "GET", body: Data? = nil) async throws -> T {
+    private func authenticatedRequest<T: Decodable>(
+        path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        allowFallback: Bool = true
+    ) async throws -> T {
         return try await withAuthRetry {
             try await engine.request(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: authHeaders(),
@@ -178,11 +183,16 @@ actor NginxProxyManagerAPIClient {
         }
     }
 
-    private func authenticatedVoidRequest(path: String, method: String = "POST", body: Data? = nil) async throws {
+    private func authenticatedVoidRequest(
+        path: String,
+        method: String = "POST",
+        body: Data? = nil,
+        allowFallback: Bool = true
+    ) async throws {
         try await withAuthRetry {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: authHeaders(),
@@ -207,7 +217,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/proxy-hosts",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -215,20 +226,21 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/proxy-hosts/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteProxyHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)", method: "DELETE", allowFallback: false)
     }
 
     func enableProxyHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/enable", method: "POST")
+        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/enable", method: "POST", allowFallback: false)
     }
 
     func disableProxyHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/disable", method: "POST")
+        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/disable", method: "POST", allowFallback: false)
     }
 
     // MARK: - Redirection Hosts

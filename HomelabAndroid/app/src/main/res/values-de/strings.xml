@@ -685,6 +685,9 @@
     <string name="npm_delete">Löschen</string>
     <string name="npm_delete_confirm">Sind Sie sicher, dass Sie dies löschen möchten?</string>
     <string name="npm_delete_confirm_title">Löschen bestätigen</string>
+    <string name="npm_disable">Deaktivieren</string>
+    <string name="npm_disable_confirm_title">Proxy-Host deaktivieren?</string>
+    <string name="npm_disable_confirm">Anfragen an diesen Proxy-Host werden gestoppt, bis er wieder aktiviert wird.</string>
     <string name="npm_no_redirections">Keine Weiterleitungen konfiguriert.</string>
     <string name="npm_no_streams">Keine Streams konfiguriert.</string>
     <string name="npm_no_dead_hosts">Keine 404-Hosts konfiguriert.</string>
