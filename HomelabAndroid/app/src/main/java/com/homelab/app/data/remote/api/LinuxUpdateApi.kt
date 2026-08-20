@@ -30,13 +30,15 @@ interface LinuxUpdateApi {
     @POST("api/systems/check-all")
     suspend fun checkAllSystems(
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @POST("api/cache/refresh")
     suspend fun refreshCache(
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @GET("api/systems/{systemId}")
@@ -50,21 +52,24 @@ interface LinuxUpdateApi {
     suspend fun checkSystem(
         @Path("systemId") systemId: Int,
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @POST("api/systems/{systemId}/upgrade")
     suspend fun upgradeSystem(
         @Path("systemId") systemId: Int,
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @POST("api/systems/{systemId}/full-upgrade")
     suspend fun fullUpgradeSystem(
         @Path("systemId") systemId: Int,
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @POST("api/systems/{systemId}/upgrade-packages")
@@ -72,7 +77,8 @@ interface LinuxUpdateApi {
         @Path("systemId") systemId: Int,
         @Body request: LinuxUpdateUpgradePackagesRequest,
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @POST("api/systems/{systemId}/upgrade/{packageName}")
@@ -80,14 +86,16 @@ interface LinuxUpdateApi {
         @Path("systemId") systemId: Int,
         @Path("packageName") packageName: String,
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateJobStartResponse
 
     @POST("api/systems/{systemId}/reboot")
     suspend fun rebootSystem(
         @Path("systemId") systemId: Int,
         @Header("X-Homelab-Service") service: String = "Linux Update",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): LinuxUpdateRebootResponse
 
     @GET("api/jobs/{jobId}")

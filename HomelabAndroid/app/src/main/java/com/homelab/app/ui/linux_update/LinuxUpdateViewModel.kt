@@ -6,16 +6,25 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.linux_update.LinuxUpdateDashboardStats
 import com.homelab.app.data.remote.dto.linux_update.LinuxUpdateSystem
+import com.homelab.app.data.repository.LinuxUpdateActionResult
+import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.LinuxUpdateSystemDetail
 import com.homelab.app.data.repository.LinuxUpdateRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +42,7 @@ import kotlinx.coroutines.launch
 class LinuxUpdateViewModel @Inject constructor(
     private val repository: LinuxUpdateRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -49,16 +59,18 @@ class LinuxUpdateViewModel @Inject constructor(
         REBOOT
     }
 
-    enum class SystemAction {
-        CHECK,
-        UPGRADE_ALL,
-        FULL_UPGRADE,
-        REBOOT
+    enum class SystemAction(val controlledAction: LinuxUpdateControlledAction) {
+        CHECK(LinuxUpdateControlledAction.CHECK_SYSTEM),
+        UPGRADE_ALL(LinuxUpdateControlledAction.UPGRADE_ALL),
+        FULL_UPGRADE(LinuxUpdateControlledAction.FULL_UPGRADE),
+        REBOOT(LinuxUpdateControlledAction.REBOOT);
+
+        val requiresConfirmation: Boolean get() = controlledAction.requiresConfirmation
     }
 
-    enum class DashboardAction {
-        CHECK_ALL,
-        REFRESH_CACHE
+    enum class DashboardAction(val controlledAction: LinuxUpdateControlledAction) {
+        CHECK_ALL(LinuxUpdateControlledAction.CHECK_ALL),
+        REFRESH_CACHE(LinuxUpdateControlledAction.REFRESH_CACHE)
     }
 
     val instanceId: String = checkNotNull(savedStateHandle["instanceId"])
@@ -173,72 +185,122 @@ class LinuxUpdateViewModel @Inject constructor(
         }
     }
 
-    fun runSystemAction(action: SystemAction) {
+    fun runSystemAction(action: SystemAction, confirmed: Boolean = false) {
         val systemId = _selectedSystemId.value ?: return
-        if (_isRunningAction.value) return
-
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = when (action) {
-                    SystemAction.CHECK -> repository.runCheck(instanceId = instanceId, systemId = systemId)
-                    SystemAction.UPGRADE_ALL -> repository.runUpgradeAll(instanceId = instanceId, systemId = systemId)
-                    SystemAction.FULL_UPGRADE -> repository.runFullUpgrade(instanceId = instanceId, systemId = systemId)
-                    SystemAction.REBOOT -> repository.rebootSystem(instanceId = instanceId, systemId = systemId)
-                }
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-                refreshSystemDetail(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
+        executeControlledAction(
+            action = action.controlledAction,
+            targetRef = action.controlledAction.targetRef(systemId = systemId),
+            confirmed = confirmed
+        ) {
+            when (action) {
+                SystemAction.CHECK -> repository.runCheck(instanceId = instanceId, systemId = systemId)
+                SystemAction.UPGRADE_ALL -> repository.runUpgradeAll(instanceId = instanceId, systemId = systemId)
+                SystemAction.FULL_UPGRADE -> repository.runFullUpgrade(instanceId = instanceId, systemId = systemId)
+                SystemAction.REBOOT -> repository.rebootSystem(instanceId = instanceId, systemId = systemId)
             }
         }
     }
 
-    fun runPackageUpgrade(packageName: String) {
+    fun runPackageUpgrade(packageName: String, confirmed: Boolean = false) {
         val systemId = _selectedSystemId.value ?: return
-        if (_isRunningAction.value) return
-
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = repository.runUpgradePackage(
-                    instanceId = instanceId,
-                    systemId = systemId,
-                    packageName = packageName
-                )
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-                refreshSystemDetail(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
-            }
+        val normalizedName = packageName.trim()
+        executeControlledAction(
+            action = LinuxUpdateControlledAction.UPGRADE_PACKAGE,
+            targetRef = LinuxUpdateControlledAction.UPGRADE_PACKAGE.targetRef(
+                systemId = systemId,
+                packageName = normalizedName
+            ),
+            confirmed = confirmed
+        ) {
+            repository.runUpgradePackage(
+                instanceId = instanceId,
+                systemId = systemId,
+                packageName = normalizedName
+            )
         }
     }
 
     fun runDashboardAction(action: DashboardAction) {
-        if (_isRunningDashboardAction.value) return
+        executeControlledAction(
+            action = action.controlledAction,
+            targetRef = action.controlledAction.targetRef(),
+            confirmed = false,
+            dashboardAction = true
+        ) {
+            when (action) {
+                DashboardAction.CHECK_ALL -> repository.runCheckAll(instanceId = instanceId)
+                DashboardAction.REFRESH_CACHE -> repository.runRefreshCache(instanceId = instanceId)
+            }
+        }
+    }
+
+    private fun executeControlledAction(
+        action: LinuxUpdateControlledAction,
+        targetRef: String,
+        confirmed: Boolean,
+        dashboardAction: Boolean = false,
+        mutation: suspend () -> LinuxUpdateActionResult
+    ) {
+        if (_isRunningAction.value || _isRunningDashboardAction.value) return
 
         viewModelScope.launch {
-            _isRunningDashboardAction.value = true
+            if (dashboardAction) {
+                _isRunningDashboardAction.value = true
+            } else {
+                _isRunningAction.value = true
+            }
             try {
-                val result = when (action) {
-                    DashboardAction.CHECK_ALL -> repository.runCheckAll(instanceId = instanceId)
-                    DashboardAction.REFRESH_CACHE -> repository.runRefreshCache(instanceId = instanceId)
+                var providerMessage: String? = null
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(
+                        instanceId = instanceId,
+                        target = targetRef,
+                        confirmed = confirmed
+                    ),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.LINUX_UPDATE)
+                ) {
+                    try {
+                        val result = mutation()
+                        if (!result.success) {
+                            throw ActionOperationException(
+                                "linux-update-provider-reported-failure",
+                                ActionFailureDisposition.NON_RETRYABLE
+                            )
+                        }
+                        providerMessage = result.message
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "linux-update-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
                 }
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-                if (_selectedSystemId.value != null) {
-                    refreshSystemDetail(forceLoading = false)
+
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _messages.tryEmit(providerMessage.orEmpty().ifBlank { "Linux Update action completed" })
+                    fetchDashboard(forceLoading = false)
+                    if (_selectedSystemId.value != null) {
+                        refreshSystemDetail(forceLoading = false)
+                    }
+                } else {
+                    _messages.tryEmit(audit.reasonCode)
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {
-                _isRunningDashboardAction.value = false
+                if (dashboardAction) {
+                    _isRunningDashboardAction.value = false
+                } else {
+                    _isRunningAction.value = false
+                }
             }
         }
     }

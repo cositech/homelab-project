@@ -1901,6 +1901,63 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ProviderRegistry.descriptor(for: .dockmon).capabilities.contains(.writeActions))
     }
 
+    func testLinuxUpdateActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(LinuxUpdateControlledAction.checkAll.risk, .low)
+        XCTAssertEqual(LinuxUpdateControlledAction.refreshCache.risk, .low)
+        XCTAssertEqual(LinuxUpdateControlledAction.checkSystem.risk, .low)
+        XCTAssertEqual(LinuxUpdateControlledAction.upgradePackage.risk, .medium)
+        XCTAssertEqual(LinuxUpdateControlledAction.upgradeAll.risk, .high)
+        XCTAssertEqual(LinuxUpdateControlledAction.fullUpgrade.risk, .high)
+        XCTAssertEqual(LinuxUpdateControlledAction.reboot.risk, .high)
+        XCTAssertFalse(LinuxUpdateControlledAction.checkSystem.requiresConfirmation)
+        XCTAssertTrue(LinuxUpdateControlledAction.upgradePackage.requiresConfirmation)
+
+        let request = LinuxUpdateControlledAction.upgradePackage.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: LinuxUpdateControlledAction.upgradePackage.targetRef(
+                systemId: 42,
+                packageName: "OpenSSL"
+            ),
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "linux-update:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "package.upgrade")
+        XCTAssertEqual(request.targetRef, "system/42/package/openssl")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .linuxUpdate).capabilities.contains(.writeActions))
+    }
+
+    func testLinuxUpdateIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = LinuxUpdateControlledAction.checkSystem.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: LinuxUpdateControlledAction.checkSystem.targetRef(systemId: 42),
+            confirmed: false
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "linux-update-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "linux-update-outcome-indeterminate")
+    }
+
     func testTechnitiumActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(TechnitiumControlledAction.enableBlocking.risk, .low)
         XCTAssertEqual(TechnitiumControlledAction.disableBlocking.risk, .medium)

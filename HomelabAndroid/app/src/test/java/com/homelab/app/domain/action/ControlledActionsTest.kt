@@ -7,6 +7,7 @@ import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
+import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
 import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
@@ -496,6 +497,68 @@ class ControlledActionsTest {
         assertEquals(ActionExecutionState.FAILED, result.state)
         assertEquals(1, invocations)
         assertEquals("dockmon-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `linux update actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, LinuxUpdateControlledAction.CHECK_ALL.risk)
+        assertEquals(ActionRisk.LOW, LinuxUpdateControlledAction.REFRESH_CACHE.risk)
+        assertEquals(ActionRisk.LOW, LinuxUpdateControlledAction.CHECK_SYSTEM.risk)
+        assertEquals(ActionRisk.MEDIUM, LinuxUpdateControlledAction.UPGRADE_PACKAGE.risk)
+        assertEquals(ActionRisk.HIGH, LinuxUpdateControlledAction.UPGRADE_ALL.risk)
+        assertEquals(ActionRisk.HIGH, LinuxUpdateControlledAction.FULL_UPGRADE.risk)
+        assertEquals(ActionRisk.HIGH, LinuxUpdateControlledAction.REBOOT.risk)
+        assertFalse(LinuxUpdateControlledAction.CHECK_SYSTEM.requiresConfirmation)
+        assertTrue(LinuxUpdateControlledAction.UPGRADE_PACKAGE.requiresConfirmation)
+
+        val action = LinuxUpdateControlledAction.UPGRADE_PACKAGE
+        val request = action.controlledRequest(
+            instanceId = "INSTANCE-A",
+            target = action.targetRef(systemId = 42, packageName = "OpenSSL"),
+            confirmed = true,
+            requestId = "request-linux-update-package",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "linux-update-package-key-01"
+        )
+        assertEquals("linux-update:instance-a", request.providerRef)
+        assertEquals("package.upgrade", request.action)
+        assertEquals("system/42/package/openssl", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.LINUX_UPDATE)
+        )
+    }
+
+    @Test
+    fun `linux update indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val action = LinuxUpdateControlledAction.CHECK_SYSTEM
+        val request = action.controlledRequest(
+            instanceId = "instance-a",
+            target = action.targetRef(systemId = 42),
+            confirmed = false,
+            requestId = "request-linux-update-check",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "linux-update-check-key-001"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "linux-update-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("linux-update-outcome-indeterminate", result.reasonCode)
     }
 
     @Test

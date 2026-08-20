@@ -613,7 +613,7 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .technitium:
                 capabilities = [.health, .writeActions]
-            case .healthchecks, .dockhand, .dockmon:
+            case .healthchecks, .dockhand, .dockmon, .linuxUpdate:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]
@@ -811,6 +811,60 @@ enum DockmonControlledAction: String, CaseIterable, Equatable, Sendable {
             providerRef: "dockmon:\(instanceId.uuidString.lowercased())",
             action: rawValue,
             targetRef: "container/\(containerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum LinuxUpdateControlledAction: String, CaseIterable, Equatable, Sendable {
+    case checkAll = "systems.check-all"
+    case refreshCache = "cache.refresh"
+    case checkSystem = "system.check"
+    case upgradePackage = "package.upgrade"
+    case upgradeAll = "system.upgrade"
+    case fullUpgrade = "system.full-upgrade"
+    case reboot = "system.reboot"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .checkAll, .refreshCache, .checkSystem: return .low
+        case .upgradePackage: return .medium
+        case .upgradeAll, .fullUpgrade, .reboot: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func targetRef(systemId: Int? = nil, packageName: String? = nil) -> String {
+        switch self {
+        case .checkAll:
+            return "systems/all"
+        case .refreshCache:
+            return "cache/global"
+        case .upgradePackage:
+            let package = packageName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            return "system/\(systemId ?? 0)/package/\(package)"
+        case .checkSystem, .upgradeAll, .fullUpgrade, .reboot:
+            return "system/\(systemId ?? 0)"
+        }
+    }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "linux-update:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,
