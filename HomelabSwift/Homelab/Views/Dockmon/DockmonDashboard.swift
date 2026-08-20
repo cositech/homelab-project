@@ -97,7 +97,7 @@ struct DockmonDashboard: View {
             }
             Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
         } message: {
-            Text(localizer.t.actionConfirm)
+            Text(localizer.t.actionConfirmMessage)
         }
     }
 

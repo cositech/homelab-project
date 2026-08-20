@@ -116,6 +116,10 @@ fun DockmonDashboardScreen(
         }
     }
 
+    LaunchedEffect(selectedContainerId) {
+        if (selectedContainerId == null) pendingAction = null
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -193,7 +197,10 @@ fun DockmonDashboardScreen(
     }
 
     if (selectedContainerId != null) {
-        ModalBottomSheet(onDismissRequest = viewModel::closeContainer) {
+        ModalBottomSheet(onDismissRequest = {
+            pendingAction = null
+            viewModel.closeContainer()
+        }) {
             DockmonContainerSheet(
                 container = selectedContainer,
                 logsState = logsState,

@@ -217,7 +217,7 @@ done
 for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.DOCKMON)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
   grep -Fq "$pattern" "$android_dockmon_view_model"
 done
-for pattern in 'pendingAction' 'DockmonControlledAction.RESTART' 'confirmed = true'; do
+for pattern in 'pendingAction' 'DockmonControlledAction.RESTART' 'confirmed = true' 'LaunchedEffect(selectedContainerId)' 'pendingAction = null'; do
   grep -Fq "$pattern" "$android_dockmon_ui"
 done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockmon_api")" -eq 2
@@ -226,7 +226,7 @@ grep -Fq 'dockmon indeterminate mutation is non retryable' "$android_tests"
 for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon:'; do
   grep -Fq "$pattern" "$swift_core"
 done
-for pattern in 'pendingAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
+for pattern in 'pendingAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
   grep -Fq "$pattern" "$swift_dockmon_ui"
 done
 test "$(grep -Fc 'fallbackURL: ""' "$swift_dockmon_api")" -eq 1
