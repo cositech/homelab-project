@@ -229,7 +229,7 @@ done
 for pattern in 'pendingAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
   grep -Fq "$pattern" "$swift_dockmon_ui"
 done
-test "$(grep -Fc 'allowFallback: false' "$swift_dockmon_api")" -eq 1
+test "$(grep -Fc 'fallbackURL: ""' "$swift_dockmon_api")" -eq 1
 grep -Fq 'testDockmonActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testDockmonIndeterminateMutationIsNonRetryable' "$swift_tests"
 

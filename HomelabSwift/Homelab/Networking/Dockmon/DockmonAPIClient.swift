@@ -174,12 +174,11 @@ actor DockmonAPIClient {
         do {
             let data = try await engine.requestData(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: "",
                 path: path,
                 method: "POST",
                 headers: authHeaders(apiKey: apiKey),
-                body: body,
-                allowFallback: false
+                body: body
             )
             guard !data.isEmpty else {
                 return DockmonActionResponse()
