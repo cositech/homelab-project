@@ -44,6 +44,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] Healthchecks check lifecycle, creation, editing and integration channels
   - [x] AdGuard Home protection enable, disable and timed pause
   - [x] Pi-hole allow and deny domain list mutations
+  - [x] Technitium DNS blocking, blocklist refresh and blocked-domain mutations
   - [x] Dockhand container and stack lifecycle actions
   - [x] DockMon container restart and image update actions
   - [ ] Remaining container, DNS, monitoring, update and configuration providers

@@ -162,6 +162,7 @@ fun TechnitiumDashboardScreen(
     var customDisableMinutes by rememberSaveable { mutableStateOf("15") }
     var showAddDomainDialog by rememberSaveable { mutableStateOf(false) }
     var domainToAdd by rememberSaveable { mutableStateOf("") }
+    var pendingRemoval by rememberSaveable { mutableStateOf<String?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -188,7 +189,7 @@ fun TechnitiumDashboardScreen(
                     TextButton(
                         onClick = {
                             showDisableDialog = false
-                            viewModel.temporaryDisable(minutes = 5)
+                            viewModel.temporaryDisable(minutes = 5, confirmed = true)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -197,7 +198,7 @@ fun TechnitiumDashboardScreen(
                     TextButton(
                         onClick = {
                             showDisableDialog = false
-                            viewModel.temporaryDisable(minutes = 30)
+                            viewModel.temporaryDisable(minutes = 30, confirmed = true)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -215,7 +216,7 @@ fun TechnitiumDashboardScreen(
                     TextButton(
                         onClick = {
                             showDisableDialog = false
-                            viewModel.setBlocking(false)
+                            viewModel.setBlocking(false, confirmed = true)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -255,7 +256,7 @@ fun TechnitiumDashboardScreen(
                     onClick = {
                         val minutes = customDisableMinutes.toIntOrNull() ?: 0
                         if (minutes > 0) {
-                            viewModel.temporaryDisable(minutes = minutes)
+                            viewModel.temporaryDisable(minutes = minutes, confirmed = true)
                         }
                         showCustomDisableDialog = false
                     }
@@ -288,7 +289,7 @@ fun TechnitiumDashboardScreen(
                 TextButton(
                     enabled = domainToAdd.trim().isNotEmpty(),
                     onClick = {
-                        viewModel.addBlockedDomain(domainToAdd.trim())
+                        viewModel.addBlockedDomain(domainToAdd.trim(), confirmed = true)
                         domainToAdd = ""
                         showAddDomainDialog = false
                     }
@@ -303,6 +304,25 @@ fun TechnitiumDashboardScreen(
                         showAddDomainDialog = false
                     }
                 ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    pendingRemoval?.let { domain ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text(stringResource(R.string.technitium_confirm_domain_removal, domain)) },
+            text = { Text(stringResource(R.string.technitium_controlled_action_confirmation)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingRemoval = null
+                    viewModel.removeBlockedDomain(domain, confirmed = true)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingRemoval = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -399,7 +419,7 @@ fun TechnitiumDashboardScreen(
                         },
                         onForceUpdateBlockLists = viewModel::forceUpdateBlockLists,
                         onAddBlockedDomain = { showAddDomainDialog = true },
-                        onRemoveBlockedDomain = viewModel::removeBlockedDomain,
+                        onRemoveBlockedDomain = { domain -> pendingRemoval = domain },
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues)

@@ -1573,4 +1573,6 @@
     <string name="dockhand_confirm_action_message">Diese Aktion ändert den Dockhand-Workload-Status und wird im lokalen Audit-Protokoll erfasst.</string>
     <string name="healthchecks_confirm_action">%1$s bestätigen?</string>
     <string name="healthchecks_confirm_action_message">Diese Aktion ändert den Check-Status und wird im lokalen Audit-Protokoll erfasst.</string>
+    <string name="technitium_confirm_domain_removal">%1$s wieder freigeben?</string>
+    <string name="technitium_controlled_action_confirmation">Diese Aktion ändert den Technitium-DNS-Schutz und wird im lokalen Audit-Protokoll erfasst.</string>
 </resources>

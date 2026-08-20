@@ -1901,6 +1901,59 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ProviderRegistry.descriptor(for: .dockmon).capabilities.contains(.writeActions))
     }
 
+    func testTechnitiumActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(TechnitiumControlledAction.enableBlocking.risk, .low)
+        XCTAssertEqual(TechnitiumControlledAction.disableBlocking.risk, .medium)
+        XCTAssertEqual(TechnitiumControlledAction.temporaryDisable.risk, .medium)
+        XCTAssertEqual(TechnitiumControlledAction.refreshBlockLists.risk, .low)
+        XCTAssertEqual(TechnitiumControlledAction.addBlockedDomain.risk, .high)
+        XCTAssertEqual(TechnitiumControlledAction.removeBlockedDomain.risk, .medium)
+        XCTAssertFalse(TechnitiumControlledAction.enableBlocking.requiresConfirmation)
+        XCTAssertTrue(TechnitiumControlledAction.addBlockedDomain.requiresConfirmation)
+
+        let request = TechnitiumControlledAction.addBlockedDomain.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: "blocked-domain/Example.COM",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "technitium:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "blocked-domain.add")
+        XCTAssertEqual(request.targetRef, "blocked-domain/example.com")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .technitium).capabilities.contains(.writeActions))
+    }
+
+    func testTechnitiumIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = TechnitiumControlledAction.disableBlocking.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: "protection/global",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "technitium-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "technitium-outcome-indeterminate")
+    }
+
     func testPiholeDomainActionsRequireConfirmationAndHaveStableIdentity() {
         XCTAssertEqual(PiholeControlledDomainAction.add.risk, .high)
         XCTAssertEqual(PiholeControlledDomainAction.remove.risk, .medium)
