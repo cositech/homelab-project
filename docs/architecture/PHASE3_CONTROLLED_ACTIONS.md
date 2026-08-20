@@ -61,6 +61,8 @@ DockMon is the third container-provider migration. Container restart is medium r
 
 Komodo is the fourth container-provider migration. Stack start, stop and restart are medium risk; deploy is high risk because it can pull images and recreate multiple services. Both clients require explicit confirmation, use normalized stack identities, declare Komodo write capability and execute all four mutations through the shared audit path. Primary-to-fallback replay is disabled for mutation requests while read RPC calls retain fallback. Indeterminate outcomes are non-retryable because Komodo does not expose a provider-side idempotency token for these operations.
 
+Pterodactyl and Calagopus form the first game-server-provider migration. Server start is low risk; stop and restart are medium risk; kill is high risk because it terminates the workload without a graceful shutdown. Android and iOS use the same normalized server identity and action names, require explicit confirmation for medium/high operations, declare provider write capability and execute all power signals through the shared audit path. Mutation requests never replay against a fallback URL, and indeterminate outcomes are non-retryable because neither provider exposes a mutation idempotency token.
+
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.
