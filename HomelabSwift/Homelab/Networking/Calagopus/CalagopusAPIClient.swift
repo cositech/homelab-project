@@ -81,8 +81,38 @@ struct CalagopusNetwork: Codable, Hashable {
     }
 }
 
-enum CalagopusPowerSignal: String {
+enum CalagopusPowerSignal: String, CaseIterable, Equatable, Sendable {
     case start, stop, restart, kill
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .start: return .low
+        case .stop, .restart: return .medium
+        case .kill: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        uuidShort: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "calagopus:\(instanceId.uuidString.lowercased())",
+            action: "server.power.\(rawValue)",
+            targetRef: "server/\(uuidShort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
 }
 
 // MARK: - API Client
@@ -184,7 +214,7 @@ actor CalagopusAPIClient {
         let body = try JSONEncoder().encode(PowerBody(signal: signal.rawValue))
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/client/servers/\(uuidShort)/power",
             method: "POST",
             headers: authHeaders(),

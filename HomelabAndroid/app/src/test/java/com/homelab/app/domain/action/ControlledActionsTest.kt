@@ -5,10 +5,12 @@ import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckA
 import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
+import com.homelab.app.data.repository.CalagopusPowerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
+import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
 import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
@@ -498,6 +500,74 @@ class ControlledActionsTest {
         assertEquals(ActionExecutionState.FAILED, result.state)
         assertEquals(1, invocations)
         assertEquals("dockmon-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `game server power actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, PterodactylPowerAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, PterodactylPowerAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, PterodactylPowerAction.RESTART.risk)
+        assertEquals(ActionRisk.HIGH, PterodactylPowerAction.KILL.risk)
+        assertFalse(PterodactylPowerAction.START.requiresConfirmation)
+        assertTrue(PterodactylPowerAction.RESTART.requiresConfirmation)
+        assertEquals(ActionRisk.LOW, CalagopusPowerAction.START.risk)
+        assertEquals(ActionRisk.HIGH, CalagopusPowerAction.KILL.risk)
+
+        val pterodactylRequest = PterodactylPowerAction.KILL.controlledRequest(
+            instanceId = "INSTANCE-A",
+            identifier = "MC-Primary",
+            confirmed = true,
+            requestId = "request-pterodactyl-kill",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "pterodactyl-kill-key"
+        )
+        assertEquals("pterodactyl:instance-a", pterodactylRequest.providerRef)
+        assertEquals("server.power.kill", pterodactylRequest.action)
+        assertEquals("server/mc-primary", pterodactylRequest.targetRef)
+        assertTrue(pterodactylRequest.confirmed)
+
+        val calagopusRequest = CalagopusPowerAction.RESTART.controlledRequest(
+            instanceId = "INSTANCE-B",
+            uuidShort = "Game-02",
+            confirmed = true,
+            requestId = "request-calagopus-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "calagopus-restart-key"
+        )
+        assertEquals("calagopus:instance-b", calagopusRequest.providerRef)
+        assertEquals("server.power.restart", calagopusRequest.action)
+        assertEquals("server/game-02", calagopusRequest.targetRef)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PTERODACTYL))
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.CALAGOPUS))
+    }
+
+    @Test
+    fun `game server indeterminate mutations are non retryable`() = runTest {
+        val cases = listOf(
+            PterodactylPowerAction.RESTART.controlledRequest(
+                "instance-a", "mc-primary", true,
+                "request-pterodactyl", "1970-01-01T00:00:01Z", "pterodactyl-key-0001"
+            ) to "pterodactyl-outcome-indeterminate",
+            CalagopusPowerAction.RESTART.controlledRequest(
+                "instance-b", "game-02", true,
+                "request-calagopus", "1970-01-01T00:00:01Z", "calagopus-key-0001"
+            ) to "calagopus-outcome-indeterminate"
+        )
+
+        cases.forEach { (request, reasonCode) ->
+            var invocations = 0
+            val result = ControlledActionCoordinator(waitBeforeRetry = {}).execute(
+                request,
+                ActionRole.ADMIN,
+                setOf(ProviderCapability.WRITE_ACTIONS)
+            ) {
+                invocations += 1
+                throw ActionOperationException(reasonCode, ActionFailureDisposition.NON_RETRYABLE)
+            }
+            assertEquals(ActionExecutionState.FAILED, result.state)
+            assertEquals(1, invocations)
+            assertEquals(reasonCode, result.reasonCode)
+        }
     }
 
     @Test

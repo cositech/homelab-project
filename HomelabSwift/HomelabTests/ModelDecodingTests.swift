@@ -1579,6 +1579,90 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(result.reasonCode, "komodo-outcome-indeterminate")
     }
 
+    func testGameServerPowerActionsHaveStableRiskClassificationAndIdentity() throws {
+        XCTAssertEqual(PterodactylPowerSignal.start.risk, .low)
+        XCTAssertEqual(PterodactylPowerSignal.stop.risk, .medium)
+        XCTAssertEqual(PterodactylPowerSignal.restart.risk, .medium)
+        XCTAssertEqual(PterodactylPowerSignal.kill.risk, .high)
+        XCTAssertFalse(PterodactylPowerSignal.start.requiresConfirmation)
+        XCTAssertTrue(PterodactylPowerSignal.restart.requiresConfirmation)
+        XCTAssertEqual(CalagopusPowerSignal.start.risk, .low)
+        XCTAssertEqual(CalagopusPowerSignal.kill.risk, .high)
+
+        let instanceId = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let pterodactyl = PterodactylPowerSignal.kill.request(
+            instanceId: instanceId,
+            identifier: "MC-Primary",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        XCTAssertEqual(pterodactyl.providerRef, "pterodactyl:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(pterodactyl.action, "server.power.kill")
+        XCTAssertEqual(pterodactyl.targetRef, "server/mc-primary")
+        XCTAssertTrue(pterodactyl.confirmed)
+
+        let calagopus = CalagopusPowerSignal.restart.request(
+            instanceId: instanceId,
+            uuidShort: "Game-02",
+            confirmed: true
+        )
+        XCTAssertEqual(calagopus.providerRef, "calagopus:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(calagopus.action, "server.power.restart")
+        XCTAssertEqual(calagopus.targetRef, "server/game-02")
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .pterodactyl).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .calagopus).capabilities.contains(.writeActions))
+    }
+
+    func testPterodactylIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let request = PterodactylPowerSignal.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            identifier: "mc-primary",
+            confirmed: true
+        )
+        let result = await ControlledActionCoordinator().execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "pterodactyl-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "pterodactyl-outcome-indeterminate")
+    }
+
+    func testCalagopusIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let request = CalagopusPowerSignal.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            uuidShort: "game-02",
+            confirmed: true
+        )
+        let result = await ControlledActionCoordinator().execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "calagopus-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "calagopus-outcome-indeterminate")
+    }
+
     func testControlledActionDeduplicatesConcurrentSameKey() async {
         let counter = ActionInvocationCounter()
         let coordinator = ControlledActionCoordinator()

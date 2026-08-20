@@ -6,9 +6,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.calagopus.CalagopusResources
 import com.homelab.app.data.remote.dto.calagopus.CalagopusServer
+import com.homelab.app.data.repository.CalagopusPowerAction
 import com.homelab.app.data.repository.CalagopusRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
@@ -41,6 +48,7 @@ data class CalagopusServerWithResources(
 class CalagopusViewModel @Inject constructor(
     private val repository: CalagopusRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -108,28 +116,57 @@ class CalagopusViewModel @Inject constructor(
         }
     }
 
-    fun sendPowerSignal(uuidShort: String, signal: String) {
+    fun sendPowerSignal(
+        uuidShort: String,
+        action: CalagopusPowerAction,
+        confirmed: Boolean = false
+    ) {
+        if (_actionServerId.value != null) return
         viewModelScope.launch {
             _actionServerId.value = uuidShort
             try {
-                repository.sendPowerSignal(instanceId, uuidShort, signal)
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, uuidShort, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.CALAGOPUS)
+                ) {
+                    try {
+                        repository.sendPowerSignal(instanceId, uuidShort, action)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "calagopus-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state != ActionExecutionState.SUCCEEDED) {
+                    _messages.emit(audit.reasonCode)
+                    return@launch
+                }
                 _messages.emit(context.getString(com.homelab.app.R.string.calagopus_action_sent))
-                repeat(6) {
+                repeat(if (action == CalagopusPowerAction.KILL) 3 else 6) {
                     delay(1500L)
                     runCatching {
                         val updated = repository.getServerResources(instanceId, uuidShort)
                         val current = _uiState.value
                         if (current is UiState.Success) {
                             _uiState.value = UiState.Success(
-                                current.data.map { s ->
-                                    if (s.server.uuidShort == uuidShort) s.copy(resources = updated) else s
+                                current.data.map { server ->
+                                    if (server.server.uuidShort == uuidShort) server.copy(resources = updated) else server
                                 }
                             )
                         }
                     }
                 }
-            } catch (e: Exception) {
-                _messages.emit(ErrorHandler.getMessage(context, e))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _messages.emit(ErrorHandler.getMessage(context, error))
             } finally {
                 _actionServerId.value = null
             }

@@ -272,6 +272,59 @@ test "$(grep -Fc 'fallbackURL: ""' "$swift_komodo_api")" -eq 1
 grep -Fq 'testKomodoStackActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testKomodoIndeterminateMutationIsNonRetryable' "$swift_tests"
 
+android_pterodactyl_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/PterodactylRepository.kt"
+android_pterodactyl_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pterodactyl/PterodactylViewModel.kt"
+android_pterodactyl_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pterodactyl/PterodactylDashboardScreen.kt"
+android_pterodactyl_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/PterodactylApi.kt"
+android_calagopus_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/CalagopusRepository.kt"
+android_calagopus_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/calagopus/CalagopusViewModel.kt"
+android_calagopus_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/calagopus/CalagopusDashboardScreen.kt"
+android_calagopus_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/CalagopusApi.kt"
+swift_pterodactyl_api="HomelabSwift/Homelab/Networking/Pterodactyl/PterodactylAPIClient.swift"
+swift_pterodactyl_ui="HomelabSwift/Homelab/Views/Pterodactyl/PterodactylDashboard.swift"
+swift_calagopus_api="HomelabSwift/Homelab/Networking/Calagopus/CalagopusAPIClient.swift"
+swift_calagopus_ui="HomelabSwift/Homelab/Views/Calagopus/CalagopusDashboard.swift"
+
+for required_file in "$android_pterodactyl_models" "$android_pterodactyl_view_model" "$android_pterodactyl_ui" "$android_pterodactyl_api" "$android_calagopus_models" "$android_calagopus_view_model" "$android_calagopus_ui" "$android_calagopus_api" "$swift_pterodactyl_api" "$swift_pterodactyl_ui" "$swift_calagopus_api" "$swift_calagopus_ui"; do
+  test -s "$required_file"
+done
+for pattern in 'server.power.$signal' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_pterodactyl_models"
+  grep -Fq "$pattern" "$android_calagopus_models"
+done
+for provider in pterodactyl calagopus; do
+  eval view_model="\$android_${provider}_view_model"
+  eval ui="\$android_${provider}_ui"
+  eval api="\$android_${provider}_api"
+  grep -Fq 'controlledActionCoordinator.execute' "$view_model"
+  grep -Fq 'ActionFailureDisposition.NON_RETRYABLE' "$view_model"
+  grep -Fq "${provider}-outcome-indeterminate" "$view_model"
+  grep -Fq 'PendingPowerAction' "$ui"
+  grep -Fq 'game_server_confirm_action_message' "$ui"
+  grep -Fq 'confirmed = true' "$ui"
+  test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$api")" -eq 1
+done
+grep -Fq 'ProviderRegistry.capabilities(ServiceType.PTERODACTYL)' "$android_pterodactyl_view_model"
+grep -Fq 'ProviderRegistry.capabilities(ServiceType.CALAGOPUS)' "$android_calagopus_view_model"
+grep -Fq 'game server power actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'game server indeterminate mutations are non retryable' "$android_tests"
+for pattern in 'ControlledActionRisk' 'requiresConfirmation' 'server.power.' 'fallbackURL: ""'; do
+  grep -Fq "$pattern" "$swift_pterodactyl_api"
+  grep -Fq "$pattern" "$swift_calagopus_api"
+done
+for provider in pterodactyl calagopus; do
+  eval ui="\$swift_${provider}_ui"
+  grep -Fq 'actionConfirmMessage' "$ui"
+  grep -Fq 'controlledActionCoordinator.execute' "$ui"
+  grep -Fq "ProviderRegistry.descriptor(for: .${provider}).capabilities" "$ui"
+  grep -Fq 'confirmed: true' "$ui"
+  grep -Fq '.nonRetryable' "$ui"
+  grep -Fq "${provider}-outcome-indeterminate" "$ui"
+done
+grep -Fq 'testGameServerPowerActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testPterodactylIndeterminateMutationIsNonRetryable' "$swift_tests"
+grep -Fq 'testCalagopusIndeterminateMutationIsNonRetryable' "$swift_tests"
+
 for pattern in 'blocking.enable' 'blocking.disable' 'blocking.disable-temporary' 'blocklist.refresh' 'blocked-domain.add' 'blocked-domain.remove' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
   grep -Fq "$pattern" "$android_technitium_models"
 done
