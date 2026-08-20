@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -108,6 +109,7 @@ fun KomodoDashboardScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var showStacksSheet by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<PendingKomodoStackAction?>(null) }
     val actionCompleted = stringResource(R.string.komodo_action_completed)
 
     LaunchedEffect(Unit) {
@@ -210,7 +212,9 @@ fun KomodoDashboardScreen(
                     onBackToList = { viewModel.clearStackDetail() },
                     onRefreshList = { viewModel.loadStacks() },
                     onStackSelected = { viewModel.loadStackDetail(it) },
-                    onAction = { stackId, action -> viewModel.runStackAction(stackId, action) },
+                    onAction = { stackId, action ->
+                        pendingAction = PendingKomodoStackAction(stackId, action)
+                    },
                     onDismiss = {
                         scope.launch { sheetState.hide() }.invokeOnCompletion {
                             showStacksSheet = false
@@ -220,8 +224,44 @@ fun KomodoDashboardScreen(
                 )
             }
         }
+
+        pendingAction?.let { pending ->
+            val actionLabel = stringResource(
+                when (pending.action) {
+                    KomodoStackAction.DEPLOY -> R.string.komodo_deploy
+                    KomodoStackAction.START -> R.string.komodo_start
+                    KomodoStackAction.STOP -> R.string.komodo_stop
+                    KomodoStackAction.RESTART -> R.string.komodo_restart
+                }
+            )
+            AlertDialog(
+                onDismissRequest = { pendingAction = null },
+                title = { Text(stringResource(R.string.komodo_confirm_action, actionLabel)) },
+                text = { Text(stringResource(R.string.komodo_confirm_action_message)) },
+                confirmButton = {
+                    Button(onClick = {
+                        pendingAction = null
+                        viewModel.runStackAction(
+                            stackId = pending.stackId,
+                            action = pending.action,
+                            confirmed = true
+                        )
+                    }) { Text(stringResource(R.string.confirm)) }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { pendingAction = null }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
+            )
+        }
     }
 }
+
+private data class PendingKomodoStackAction(
+    val stackId: String,
+    val action: KomodoStackAction
+)
 
 @Composable
 private fun KomodoContent(

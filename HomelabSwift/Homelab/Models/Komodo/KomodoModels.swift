@@ -60,11 +60,37 @@ struct KomodoStackDetail: Sendable {
     let services: [KomodoStackService]
 }
 
-enum KomodoStackAction: Sendable {
-    case deploy
-    case start
-    case stop
-    case restart
+enum KomodoStackAction: String, CaseIterable, Equatable, Sendable {
+    case deploy = "stack.deploy"
+    case start = "stack.start"
+    case stop = "stack.stop"
+    case restart = "stack.restart"
+
+    var risk: ControlledActionRisk {
+        self == .deploy ? .high : .medium
+    }
+
+    var requiresConfirmation: Bool { true }
+
+    func request(
+        instanceId: UUID,
+        stackId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "komodo:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "stack/\(stackId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
 }
 
 struct KomodoSummary: Sendable {

@@ -613,7 +613,7 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .technitium:
                 capabilities = [.health, .writeActions]
-            case .healthchecks, .dockhand, .dockmon, .linuxUpdate:
+            case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]

@@ -59,6 +59,8 @@ Dockhand is the second container-provider migration. Container and stack start a
 
 DockMon is the third container-provider migration. Container restart is medium risk; image update is high risk because it changes the deployed artifact and can replace or recreate a workload. Both actions require explicit confirmation, use a normalized container identity, declare DockMon write capability and execute through the shared audit path. Primary-to-fallback replay is disabled for the mutation request while reads retain fallback. Provider-reported failures and indeterminate responses are non-retryable because DockMon does not expose a provider-side idempotency token.
 
+Komodo is the fourth container-provider migration. Stack start, stop and restart are medium risk; deploy is high risk because it can pull images and recreate multiple services. Both clients require explicit confirmation, use normalized stack identities, declare Komodo write capability and execute all four mutations through the shared audit path. Primary-to-fallback replay is disabled for mutation requests while read RPC calls retain fallback. Indeterminate outcomes are non-retryable because Komodo does not expose a provider-side idempotency token for these operations.
+
 Direct self-hosted mobile clients currently evaluate these existing privileged buttons as the administrator role to preserve the pre-Phase-3 operating model. This is not a trust boundary: gateway-backed deployments must derive the actor role server-side and reject unauthorized requests independently.
 
 The bounded mobile ledger and queue are operational state, not a compliance archive. Phase 5 gateway deployments can export signed or integrity-protected audit events to durable self-hosted storage.

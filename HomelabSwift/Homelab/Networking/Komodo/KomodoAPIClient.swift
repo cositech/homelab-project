@@ -113,7 +113,19 @@ actor KomodoAPIClient {
         case .restart:
             path = "/execute/RestartStack"
         }
-        _ = try await readJSON(path: path, body: body)
+        do {
+            let requestBody = try JSONSerialization.data(withJSONObject: body, options: [])
+            _ = try await engine.requestData(
+                baseURL: baseURL,
+                fallbackURL: "",
+                path: path,
+                method: "POST",
+                headers: authHeaders(),
+                body: requestBody
+            )
+        } catch {
+            throw mapError(error)
+        }
     }
 
     func getSummary() async throws -> KomodoSummary {

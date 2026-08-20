@@ -10,13 +10,20 @@ import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.KomodoStackDetail
 import com.homelab.app.data.repository.KomodoStackItem
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,6 +38,7 @@ import kotlinx.coroutines.launch
 class KomodoViewModel @Inject constructor(
     private val repository: KomodoRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -127,17 +135,42 @@ class KomodoViewModel @Inject constructor(
         _stackDetailState.value = UiState.Idle
     }
 
-    fun runStackAction(stackId: String, action: KomodoStackAction) {
+    fun runStackAction(stackId: String, action: KomodoStackAction, confirmed: Boolean = false) {
+        if (_isRunningStackAction.value) return
         viewModelScope.launch {
             _isRunningStackAction.value = true
             try {
-                repository.executeStackAction(instanceId, stackId, action)
-                _events.emit(KomodoUiEvent.StackActionSucceeded(action))
-                val fallbackStack = (_stackDetailState.value as? UiState.Success)?.data?.stack
-                    ?.takeIf { it.id == stackId }
-                loadStackDetail(stackId, fallbackStack)
-                loadStacks()
-                fetchDashboard(forceLoading = false)
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, stackId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.KOMODO)
+                ) {
+                    try {
+                        repository.executeStackAction(instanceId, stackId, action)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "komodo-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _events.emit(KomodoUiEvent.StackActionSucceeded(action))
+                    val fallbackStack = (_stackDetailState.value as? UiState.Success)?.data?.stack
+                        ?.takeIf { it.id == stackId }
+                    loadStackDetail(stackId, fallbackStack)
+                    loadStacks()
+                    fetchDashboard(forceLoading = false)
+                } else {
+                    _events.emit(KomodoUiEvent.StackActionFailed(audit.reasonCode))
+                }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _events.emit(KomodoUiEvent.StackActionFailed(ErrorHandler.getMessage(context, error)))
             } finally {
