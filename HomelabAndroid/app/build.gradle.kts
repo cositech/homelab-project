@@ -68,7 +68,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.6")
 
     // Splash, Biometric, Lifecycle, AppCompat
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.core:core-splashscreen:1.1.0-rc01")
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("androidx.fragment:fragment-ktx:1.8.6")
