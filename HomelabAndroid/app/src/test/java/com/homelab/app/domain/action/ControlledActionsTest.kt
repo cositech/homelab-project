@@ -546,11 +546,11 @@ class ControlledActionsTest {
         val cases = listOf(
             PterodactylPowerAction.RESTART.controlledRequest(
                 "instance-a", "mc-primary", true,
-                "request-pterodactyl", "1970-01-01T00:00:01Z", "pterodactyl-key"
+                "request-pterodactyl", "1970-01-01T00:00:01Z", "pterodactyl-key-0001"
             ) to "pterodactyl-outcome-indeterminate",
             CalagopusPowerAction.RESTART.controlledRequest(
                 "instance-b", "game-02", true,
-                "request-calagopus", "1970-01-01T00:00:01Z", "calagopus-key"
+                "request-calagopus", "1970-01-01T00:00:01Z", "calagopus-key-0001"
             ) to "calagopus-outcome-indeterminate"
         )
 
