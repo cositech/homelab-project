@@ -36,9 +36,15 @@ android_healthchecks_editor="HomelabAndroid/app/src/main/java/com/homelab/app/ui
 android_healthchecks_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/healthchecks/HealthchecksScreens.kt"
 swift_healthchecks_detail="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksDetail.swift"
 swift_healthchecks_editor="HomelabSwift/Homelab/Views/Healthchecks/HealthchecksCheckEditor.swift"
+android_technitium_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/TechnitiumRepository.kt"
+android_technitium_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/technitium/TechnitiumViewModel.kt"
+android_technitium_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/technitium/TechnitiumDashboardScreen.kt"
+android_technitium_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/TechnitiumApi.kt"
+swift_technitium_ui="HomelabSwift/Homelab/Views/Technitium/TechnitiumDashboard.swift"
+swift_technitium_api="HomelabSwift/Homelab/Networking/Technitium/TechnitiumAPIClient.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$android_technitium_models" "$android_technitium_view_model" "$android_technitium_ui" "$android_technitium_api" "$swift_technitium_ui" "$swift_technitium_api" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -232,6 +238,29 @@ done
 test "$(grep -Fc 'fallbackURL: ""' "$swift_dockmon_api")" -eq 1
 grep -Fq 'testDockmonActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testDockmonIndeterminateMutationIsNonRetryable' "$swift_tests"
+
+for pattern in 'blocking.enable' 'blocking.disable' 'blocking.disable-temporary' 'blocklist.refresh' 'blocked-domain.add' 'blocked-domain.remove' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_technitium_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.TECHNITIUM)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'technitium-provider-reported-failure' 'technitium-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_technitium_view_model"
+done
+for pattern in 'pendingRemoval' 'confirmed = true' 'technitium_controlled_action_confirmation'; do
+  grep -Fq "$pattern" "$android_technitium_ui"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_technitium_api")" -eq 5
+grep -Fq 'technitium actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'technitium indeterminate mutation is non retryable' "$android_tests"
+for pattern in 'TechnitiumControlledAction' 'case enableBlocking = "blocking.enable"' 'case addBlockedDomain = "blocked-domain.add"' 'case .technitium:' 'capabilities = [.health, .writeActions]'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'PendingTechnitiumAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .technitium).capabilities' 'confirmed: true' '.nonRetryable' 'technitium-provider-reported-failure' 'technitium-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$swift_technitium_ui"
+done
+grep -Fq 'requestMutationPayload' "$swift_technitium_api"
+test "$(grep -Fc 'fallbackURL: ""' "$swift_technitium_api")" -eq 1
+grep -Fq 'testTechnitiumActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testTechnitiumIndeterminateMutationIsNonRetryable' "$swift_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2

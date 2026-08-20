@@ -1917,4 +1917,6 @@
     <string name="healthchecks_resume_check">Resume check</string>
     <string name="healthchecks_confirm_action">Confirm %1$s?</string>
     <string name="healthchecks_confirm_action_message">This action changes the check state and will be recorded in the local audit trail.</string>
+    <string name="technitium_confirm_domain_removal">Unblock %1$s?</string>
+    <string name="technitium_controlled_action_confirmation">This action changes Technitium DNS protection and will be recorded in the local audit trail.</string>
 </resources>

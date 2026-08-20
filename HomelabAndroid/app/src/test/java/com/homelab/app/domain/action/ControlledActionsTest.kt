@@ -7,6 +7,7 @@ import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
+import com.homelab.app.data.repository.TechnitiumControlledAction
 import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
@@ -495,6 +496,64 @@ class ControlledActionsTest {
         assertEquals(ActionExecutionState.FAILED, result.state)
         assertEquals(1, invocations)
         assertEquals("dockmon-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `technitium actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, TechnitiumControlledAction.ENABLE_BLOCKING.risk)
+        assertEquals(ActionRisk.MEDIUM, TechnitiumControlledAction.DISABLE_BLOCKING.risk)
+        assertEquals(ActionRisk.MEDIUM, TechnitiumControlledAction.TEMPORARY_DISABLE.risk)
+        assertEquals(ActionRisk.LOW, TechnitiumControlledAction.REFRESH_BLOCK_LISTS.risk)
+        assertEquals(ActionRisk.HIGH, TechnitiumControlledAction.ADD_BLOCKED_DOMAIN.risk)
+        assertEquals(ActionRisk.MEDIUM, TechnitiumControlledAction.REMOVE_BLOCKED_DOMAIN.risk)
+        assertFalse(TechnitiumControlledAction.ENABLE_BLOCKING.requiresConfirmation)
+        assertTrue(TechnitiumControlledAction.ADD_BLOCKED_DOMAIN.requiresConfirmation)
+
+        val action = TechnitiumControlledAction.ADD_BLOCKED_DOMAIN
+        val request = action.controlledRequest(
+            instanceId = "INSTANCE-A",
+            target = action.targetRef("Example.COM"),
+            confirmed = true,
+            requestId = "request-technitium-domain",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "technitium-domain-key-01"
+        )
+        assertEquals("technitium:instance-a", request.providerRef)
+        assertEquals("blocked-domain.add", request.action)
+        assertEquals("blocked-domain/example.com", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.TECHNITIUM))
+    }
+
+    @Test
+    fun `technitium indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val action = TechnitiumControlledAction.DISABLE_BLOCKING
+        val request = action.controlledRequest(
+            instanceId = "instance-a",
+            target = action.targetRef(),
+            confirmed = true,
+            requestId = "request-technitium-disable",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "technitium-disable-key-1"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "technitium-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("technitium-outcome-indeterminate", result.reasonCode)
     }
 
     @Test

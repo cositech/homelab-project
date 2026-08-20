@@ -132,6 +132,10 @@ object ProviderRegistry {
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )
+                ServiceType.TECHNITIUM -> setOf(
+                    ProviderCapability.HEALTH,
+                    ProviderCapability.WRITE_ACTIONS
+                )
                 ServiceType.HEALTHCHECKS -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS

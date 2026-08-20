@@ -327,7 +327,7 @@ actor TechnitiumAPIClient {
 
     func setBlockingEnabled(_ enabled: Bool) async throws -> TechnitiumActionOutcome {
         try await withValidToken { token in
-            _ = try await self.requestPayload(path: "/api/settings/set", query: [
+            _ = try await self.requestMutationPayload(path: "/api/settings/set", query: [
                 "token": token,
                 "enableBlocking": enabled ? "true" : "false"
             ])
@@ -340,7 +340,7 @@ actor TechnitiumAPIClient {
 
     func forceUpdateBlockLists() async throws -> TechnitiumActionOutcome {
         try await withValidToken { token in
-            _ = try await self.requestPayload(path: "/api/settings/forceUpdateBlockLists", query: [
+            _ = try await self.requestMutationPayload(path: "/api/settings/forceUpdateBlockLists", query: [
                 "token": token
             ])
             return TechnitiumActionOutcome(success: true, message: "Block lists update started")
@@ -350,7 +350,7 @@ actor TechnitiumAPIClient {
     func temporaryDisableBlocking(minutes: Int) async throws -> TechnitiumActionOutcome {
         let safeMinutes = max(1, min(minutes, 240))
         return try await withValidToken { token in
-            let payload = try await self.requestPayload(path: "/api/settings/temporaryDisableBlocking", query: [
+            let payload = try await self.requestMutationPayload(path: "/api/settings/temporaryDisableBlocking", query: [
                 "token": token,
                 "minutes": "\(safeMinutes)"
             ])
@@ -367,7 +367,7 @@ actor TechnitiumAPIClient {
         let normalized = Self.normalizeDomain(domain)
         guard !normalized.isEmpty else { throw APIError.custom("Domain is required") }
         return try await withValidToken { token in
-            _ = try await self.requestPayload(path: "/api/blocked/add", query: [
+            _ = try await self.requestMutationPayload(path: "/api/blocked/add", query: [
                 "token": token,
                 "domain": normalized
             ])
@@ -379,7 +379,7 @@ actor TechnitiumAPIClient {
         let normalized = Self.normalizeDomain(domain)
         guard !normalized.isEmpty else { throw APIError.custom("Domain is required") }
         return try await withValidToken { token in
-            _ = try await self.requestPayload(path: "/api/blocked/delete", query: [
+            _ = try await self.requestMutationPayload(path: "/api/blocked/delete", query: [
                 "token": token,
                 "domain": normalized
             ])
@@ -467,6 +467,17 @@ actor TechnitiumAPIClient {
         let data = try await engine.requestData(
             baseURL: baseURL,
             fallbackURL: fallbackURL,
+            path: requestPath
+        )
+        let root = try Self.jsonObject(data: data)
+        return try Self.requireSuccess(root)
+    }
+
+    private func requestMutationPayload(path: String, query: [String: String]) async throws -> [String: Any] {
+        let requestPath = Self.buildPath(path: path, query: query)
+        let data = try await engine.requestData(
+            baseURL: baseURL,
+            fallbackURL: "",
             path: requestPath
         )
         let root = try Self.jsonObject(data: data)

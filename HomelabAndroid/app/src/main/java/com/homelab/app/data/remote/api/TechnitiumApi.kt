@@ -56,14 +56,16 @@ interface TechnitiumApi {
     suspend fun setSettings(
         @QueryMap params: Map<String, String>,
         @Header("X-Homelab-Service") service: String = "Technitium",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): JsonObject
 
     @GET("api/settings/forceUpdateBlockLists")
     suspend fun forceUpdateBlockLists(
         @Query("token") token: String,
         @Header("X-Homelab-Service") service: String = "Technitium",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): JsonObject
 
     @GET("api/settings/temporaryDisableBlocking")
@@ -71,7 +73,8 @@ interface TechnitiumApi {
         @Query("token") token: String,
         @Query("minutes") minutes: Int,
         @Header("X-Homelab-Service") service: String = "Technitium",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): JsonObject
 
     @GET("api/zones/list")
@@ -104,7 +107,8 @@ interface TechnitiumApi {
         @Query("token") token: String,
         @Query("domain") domain: String,
         @Header("X-Homelab-Service") service: String = "Technitium",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): JsonObject
 
     @GET("api/blocked/delete")
@@ -112,7 +116,8 @@ interface TechnitiumApi {
         @Query("token") token: String,
         @Query("domain") domain: String,
         @Header("X-Homelab-Service") service: String = "Technitium",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     ): JsonObject
 
     @GET("api/logs/list")

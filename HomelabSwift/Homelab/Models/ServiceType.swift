@@ -611,6 +611,8 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .pihole:
                 capabilities = [.health, .writeActions]
+            case .technitium:
+                capabilities = [.health, .writeActions]
             case .healthchecks, .dockhand, .dockmon:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
@@ -809,6 +811,45 @@ enum DockmonControlledAction: String, CaseIterable, Equatable, Sendable {
             providerRef: "dockmon:\(instanceId.uuidString.lowercased())",
             action: rawValue,
             targetRef: "container/\(containerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum TechnitiumControlledAction: String, CaseIterable, Equatable, Sendable {
+    case enableBlocking = "blocking.enable"
+    case disableBlocking = "blocking.disable"
+    case temporaryDisable = "blocking.disable-temporary"
+    case refreshBlockLists = "blocklist.refresh"
+    case addBlockedDomain = "blocked-domain.add"
+    case removeBlockedDomain = "blocked-domain.remove"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .enableBlocking, .refreshBlockLists: return .low
+        case .disableBlocking, .temporaryDisable, .removeBlockedDomain: return .medium
+        case .addBlockedDomain: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "technitium:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,
