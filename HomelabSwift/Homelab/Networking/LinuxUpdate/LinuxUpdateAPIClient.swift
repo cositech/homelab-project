@@ -145,16 +145,20 @@ actor LinuxUpdateAPIClient {
         guard !normalized.isEmpty else {
             throw APIError.custom("Package name is required")
         }
+        let body = try JSONSerialization.data(withJSONObject: [
+            "packageNames": [normalized],
+            "packages": [normalized]
+        ])
 
-        do {
-            return try await runUpgradePackages(systemId: systemId, packageNames: [normalized])
-        } catch let error as APIError {
-            if case .httpError(let statusCode, _) = error, [400, 404, 405].contains(statusCode) {
-                return try await runAsyncAction(actionLabel: "Package upgrade") {
-                    try await self.startUpgradePackageAlias(systemId: systemId, packageName: normalized)
+        return try await runAsyncAction(actionLabel: "Package upgrade") {
+            do {
+                return try await self.startUpgradePackages(systemId: systemId, body: body)
+            } catch let error as APIError {
+                if case .httpError(let statusCode, _) = error, [400, 404, 405].contains(statusCode) {
+                    return try await self.startUpgradePackageAlias(systemId: systemId, packageName: normalized)
                 }
+                throw error
             }
-            throw error
         }
     }
 
@@ -180,7 +184,7 @@ actor LinuxUpdateAPIClient {
     func runReboot(systemId: Int) async throws -> LinuxUpdateActionOutcome {
         let response: LinuxUpdateRebootResponse = try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/systems/\(systemId)/reboot",
             method: "POST",
             headers: authHeaders()
@@ -196,7 +200,7 @@ actor LinuxUpdateAPIClient {
     private func startCheck(systemId: Int) async throws -> LinuxUpdateJobStartResponse {
         try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/systems/\(systemId)/check",
             method: "POST",
             headers: authHeaders()
@@ -217,7 +221,7 @@ actor LinuxUpdateAPIClient {
     private func startUpgradeAll(systemId: Int) async throws -> LinuxUpdateJobStartResponse {
         try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/systems/\(systemId)/upgrade",
             method: "POST",
             headers: authHeaders()
@@ -227,7 +231,7 @@ actor LinuxUpdateAPIClient {
     private func startFullUpgrade(systemId: Int) async throws -> LinuxUpdateJobStartResponse {
         try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/systems/\(systemId)/full-upgrade",
             method: "POST",
             headers: authHeaders()
@@ -255,7 +259,7 @@ actor LinuxUpdateAPIClient {
             do {
                 let data = try await engine.requestData(
                     baseURL: baseURL,
-                    fallbackURL: fallbackURL,
+                    fallbackURL: "",
                     path: path,
                     method: "POST",
                     headers: authHeaders()
@@ -294,7 +298,7 @@ actor LinuxUpdateAPIClient {
                 }
                 throw error
             } catch {
-                lastError = error
+                throw error
             }
         }
 
@@ -304,7 +308,7 @@ actor LinuxUpdateAPIClient {
     private func startUpgradePackages(systemId: Int, body: Data) async throws -> LinuxUpdateJobStartResponse {
         try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/systems/\(systemId)/upgrade-packages",
             method: "POST",
             headers: authHeaders(),
@@ -316,7 +320,7 @@ actor LinuxUpdateAPIClient {
         let encodedPackage = Self.encodePathComponent(packageName)
         return try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/systems/\(systemId)/upgrade/\(encodedPackage)",
             method: "POST",
             headers: authHeaders()

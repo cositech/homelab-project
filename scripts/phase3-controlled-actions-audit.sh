@@ -197,7 +197,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockhand_api")" -eq 6
 grep -Fq 'dockhand lifecycle actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockhand indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon:'; do
+for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'PendingDockhandAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockhand).capabilities' 'confirmed: true' '.nonRetryable' 'dockhand-provider-reported-failure' 'dockhand-outcome-indeterminate'; do
@@ -229,7 +229,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockmon_api")" -eq 2
 grep -Fq 'dockmon actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockmon indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon:'; do
+for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'pendingAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
@@ -261,6 +261,42 @@ grep -Fq 'requestMutationPayload' "$swift_technitium_api"
 test "$(grep -Fc 'fallbackURL: ""' "$swift_technitium_api")" -eq 1
 grep -Fq 'testTechnitiumActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testTechnitiumIndeterminateMutationIsNonRetryable' "$swift_tests"
+
+android_linux_update_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/LinuxUpdateRepository.kt"
+android_linux_update_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/linux_update/LinuxUpdateViewModel.kt"
+android_linux_update_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/linux_update/LinuxUpdateDashboardScreen.kt"
+android_linux_update_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/LinuxUpdateApi.kt"
+swift_linux_update_ui="HomelabSwift/Homelab/Views/LinuxUpdate/LinuxUpdateDashboard.swift"
+swift_linux_update_api="HomelabSwift/Homelab/Networking/LinuxUpdate/LinuxUpdateAPIClient.swift"
+
+for required_file in "$android_linux_update_models" "$android_linux_update_view_model" "$android_linux_update_ui" "$android_linux_update_api" "$swift_linux_update_ui" "$swift_linux_update_api"; do
+  test -s "$required_file"
+done
+for pattern in 'systems.check-all' 'cache.refresh' 'system.check' 'package.upgrade' 'system.upgrade' 'system.full-upgrade' 'system.reboot' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_linux_update_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.LINUX_UPDATE)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'linux-update-provider-reported-failure' 'linux-update-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_linux_update_view_model"
+done
+for pattern in 'PendingLinuxUpdateAction' 'linux_update_confirm_action_message' 'confirmed = true' 'action.requiresConfirmation'; do
+  grep -Fq "$pattern" "$android_linux_update_ui"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_linux_update_api")" -eq 8
+grep -Fq '.addHeader("X-Homelab-No-Fallback", "true")' "$android_linux_update_models"
+grep -Fq 'linux update actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'linux update indeterminate mutation is non retryable' "$android_tests"
+for pattern in 'LinuxUpdateControlledAction' 'case checkAll = "systems.check-all"' 'case reboot = "system.reboot"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate:'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'PendingLinuxUpdateAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .linuxUpdate).capabilities' 'confirmed: true' '.nonRetryable' 'linux-update-provider-reported-failure' 'linux-update-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$swift_linux_update_ui"
+done
+test "$(grep -Fc 'fallbackURL: ""' "$swift_linux_update_api")" -ge 8
+for pattern in 'return try await self.startUpgradePackages' 'return try await self.startUpgradePackageAlias' 'throw error'; do
+  grep -Fq "$pattern" "$swift_linux_update_api"
+done
+grep -Fq 'testLinuxUpdateActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testLinuxUpdateIndeterminateMutationIsNonRetryable' "$swift_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
