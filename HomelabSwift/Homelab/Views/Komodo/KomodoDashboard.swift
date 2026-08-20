@@ -1,5 +1,21 @@
 import SwiftUI
 
+private struct PendingKomodoStackAction {
+    let stackId: String
+    let action: KomodoStackAction
+}
+
+private extension KomodoStackAction {
+    func label(using translations: Translations) -> String {
+        switch self {
+        case .deploy: translations.komodoDeploy
+        case .start: translations.komodoStart
+        case .stop: translations.komodoStop
+        case .restart: translations.komodoRestart
+        }
+    }
+}
+
 struct KomodoDashboard: View {
     let instanceId: UUID
 
@@ -14,6 +30,7 @@ struct KomodoDashboard: View {
     @State private var stacksState: LoadableState<[KomodoStackItem]> = .idle
     @State private var stackDetailState: LoadableState<KomodoStackDetail> = .idle
     @State private var isRunningStackAction = false
+    @State private var pendingStackAction: PendingKomodoStackAction?
 
     private let komodoColor = ServiceType.komodo.colors.primary
 
@@ -60,10 +77,39 @@ struct KomodoDashboard: View {
                 onRefreshList: { Task { await loadStacks() } },
                 onBackToList: { stackDetailState = .idle },
                 onSelectStack: { stack in Task { await loadStackDetail(stack) } },
-                onAction: { stackId, action in Task { await runStackAction(stackId: stackId, action: action) } }
+                onAction: { stackId, action in
+                    pendingStackAction = PendingKomodoStackAction(stackId: stackId, action: action)
+                }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingStackAction != nil },
+                set: { if !$0 { pendingStackAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pending = pendingStackAction {
+                Button(
+                    pending.action.label(using: localizer.translations),
+                    role: pending.action == .deploy ? .destructive : nil
+                ) {
+                    pendingStackAction = nil
+                    Task {
+                        await runStackAction(
+                            stackId: pending.stackId,
+                            action: pending.action,
+                            confirmed: true
+                        )
+                    }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingStackAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
     }
 
@@ -359,23 +405,59 @@ struct KomodoDashboard: View {
         }
     }
 
-    private func runStackAction(stackId: String, action: KomodoStackAction) async {
-        guard let client = await servicesStore.komodoClient(instanceId: selectedInstanceId) else {
-            stackDetailState = .error(.notConfigured)
-            return
-        }
-
+    private func runStackAction(
+        stackId: String,
+        action: KomodoStackAction,
+        confirmed: Bool
+    ) async {
+        guard !isRunningStackAction else { return }
         isRunningStackAction = true
+        defer { isRunningStackAction = false }
+
         do {
-            try await client.executeStackAction(stackId: stackId, action: action)
-            let fallback = stackDetailState.loadedValue?.stack.id == stackId ? stackDetailState.loadedValue?.stack : nil
+            guard let client = await servicesStore.komodoClient(instanceId: selectedInstanceId) else {
+                throw APIError.notConfigured
+            }
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: action.request(
+                    instanceId: selectedInstanceId,
+                    stackId: stackId,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .komodo).capabilities
+            ) {
+                do {
+                    try await client.executeStackAction(stackId: stackId, action: action)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "komodo-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard audit.state == .succeeded else {
+                HapticManager.error()
+                stackDetailState = .error(.custom(audit.reasonCode))
+                return
+            }
+            HapticManager.success()
+            let fallback = stackDetailState.loadedValue?.stack.id == stackId
+                ? stackDetailState.loadedValue?.stack
+                : nil
             await loadStackDetail(stackId, fallback: fallback)
             await loadStacks()
             await fetchDashboard(showLoading: false)
         } catch {
-            stackDetailState = .error(APIError.custom(error.localizedDescription))
+            HapticManager.error()
+            stackDetailState = .error(
+                (error as? APIError) ?? .custom(error.localizedDescription)
+            )
         }
-        isRunningStackAction = false
     }
 }
 

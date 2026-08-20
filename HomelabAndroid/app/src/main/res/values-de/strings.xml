@@ -1493,6 +1493,8 @@
     <string name="komodo_restart">Neustart</string>
     <string name="komodo_update_available">Update</string>
     <string name="komodo_action_completed">Aktion gestartet</string>
+    <string name="komodo_confirm_action">%1$s bestätigen?</string>
+    <string name="komodo_confirm_action_message">Diese Aktion ändert den Komodo-Stack-Status und wird im lokalen Audit-Protokoll erfasst.</string>
     <string name="service_maltrail">Maltrail</string>
     <string name="service_maltrail_desc">Erkennung schädlichen Traffics mit IOC-Feeds</string>
     <string name="login_hint_maltrail">Verwenden Sie die Maltrail-Basis-URL. Wenn auf dem Server USERS aktiviert ist, geben Sie Benutzername und Passwort an: Homelab meldet sich über /login an, speichert das Sitzungs-Cookie und liest dann /counts und /events?date=YYYY-MM-DD.</string>

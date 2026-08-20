@@ -7,6 +7,7 @@ import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
+import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
 import com.homelab.app.data.repository.DockhandStackAction
@@ -497,6 +498,60 @@ class ControlledActionsTest {
         assertEquals(ActionExecutionState.FAILED, result.state)
         assertEquals(1, invocations)
         assertEquals("dockmon-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `komodo stack actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.HIGH, KomodoStackAction.DEPLOY.risk)
+        assertEquals(ActionRisk.MEDIUM, KomodoStackAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, KomodoStackAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, KomodoStackAction.RESTART.risk)
+        assertTrue(KomodoStackAction.DEPLOY.requiresConfirmation)
+        assertTrue(KomodoStackAction.RESTART.requiresConfirmation)
+
+        val request = KomodoStackAction.DEPLOY.controlledRequest(
+            instanceId = "INSTANCE-A",
+            stackId = "Core-Stack",
+            confirmed = true,
+            requestId = "request-komodo-deploy",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "komodo-deploy-key-0001"
+        )
+        assertEquals("komodo:instance-a", request.providerRef)
+        assertEquals("stack.deploy", request.action)
+        assertEquals("stack/core-stack", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.KOMODO))
+    }
+
+    @Test
+    fun `komodo indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val request = KomodoStackAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            stackId = "core-stack",
+            confirmed = true,
+            requestId = "request-komodo-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "komodo-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "komodo-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("komodo-outcome-indeterminate", result.reasonCode)
     }
 
     @Test

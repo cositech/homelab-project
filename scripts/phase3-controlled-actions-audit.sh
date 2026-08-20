@@ -197,7 +197,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockhand_api")" -eq 6
 grep -Fq 'dockhand lifecycle actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockhand indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate:'; do
+for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'PendingDockhandAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockhand).capabilities' 'confirmed: true' '.nonRetryable' 'dockhand-provider-reported-failure' 'dockhand-outcome-indeterminate'; do
@@ -229,7 +229,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockmon_api")" -eq 2
 grep -Fq 'dockmon actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockmon indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate:'; do
+for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'pendingAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
@@ -238,6 +238,39 @@ done
 test "$(grep -Fc 'fallbackURL: ""' "$swift_dockmon_api")" -eq 1
 grep -Fq 'testDockmonActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testDockmonIndeterminateMutationIsNonRetryable' "$swift_tests"
+
+android_komodo_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/KomodoRepository.kt"
+android_komodo_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/komodo/KomodoViewModel.kt"
+android_komodo_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/komodo/KomodoDashboardScreen.kt"
+android_komodo_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/KomodoApi.kt"
+swift_komodo_models="HomelabSwift/Homelab/Models/Komodo/KomodoModels.swift"
+swift_komodo_ui="HomelabSwift/Homelab/Views/Komodo/KomodoDashboard.swift"
+swift_komodo_api="HomelabSwift/Homelab/Networking/Komodo/KomodoAPIClient.swift"
+
+for required_file in "$android_komodo_models" "$android_komodo_view_model" "$android_komodo_ui" "$android_komodo_api" "$swift_komodo_models" "$swift_komodo_ui" "$swift_komodo_api"; do
+  test -s "$required_file"
+done
+for pattern in 'stack.deploy' 'stack.start' 'stack.stop' 'stack.restart' 'ActionRisk.HIGH' 'ActionRisk.MEDIUM' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_komodo_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.KOMODO)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'komodo-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_komodo_view_model"
+done
+for pattern in 'PendingKomodoStackAction' 'komodo_confirm_action_message' 'confirmed = true'; do
+  grep -Fq "$pattern" "$android_komodo_ui"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_komodo_api")" -eq 4
+grep -Fq 'komodo stack actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'komodo indeterminate mutation is non retryable' "$android_tests"
+for pattern in 'enum KomodoStackAction' 'case deploy = "stack.deploy"' 'case restart = "stack.restart"' 'var requiresConfirmation: Bool'; do
+  grep -Fq "$pattern" "$swift_komodo_models"
+done
+for pattern in 'PendingKomodoStackAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .komodo).capabilities' 'confirmed: true' '.nonRetryable' 'komodo-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$swift_komodo_ui"
+done
+test "$(grep -Fc 'fallbackURL: ""' "$swift_komodo_api")" -eq 1
+grep -Fq 'testKomodoStackActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testKomodoIndeterminateMutationIsNonRetryable' "$swift_tests"
 
 for pattern in 'blocking.enable' 'blocking.disable' 'blocking.disable-temporary' 'blocklist.refresh' 'blocked-domain.add' 'blocked-domain.remove' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
   grep -Fq "$pattern" "$android_technitium_models"
@@ -285,7 +318,7 @@ test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_linux_update_api")
 grep -Fq '.addHeader("X-Homelab-No-Fallback", "true")' "$android_linux_update_models"
 grep -Fq 'linux update actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'linux update indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'LinuxUpdateControlledAction' 'case checkAll = "systems.check-all"' 'case reboot = "system.reboot"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate:'; do
+for pattern in 'LinuxUpdateControlledAction' 'case checkAll = "systems.check-all"' 'case reboot = "system.reboot"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'PendingLinuxUpdateAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .linuxUpdate).capabilities' 'confirmed: true' '.nonRetryable' 'linux-update-provider-reported-failure' 'linux-update-outcome-indeterminate'; do

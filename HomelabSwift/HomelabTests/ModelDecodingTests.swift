@@ -1552,6 +1552,33 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(result.reasonCode, "dockmon-outcome-indeterminate")
     }
 
+    func testKomodoIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = KomodoStackAction.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            stackId: "core-stack",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "komodo-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "komodo-outcome-indeterminate")
+    }
+
     func testControlledActionDeduplicatesConcurrentSameKey() async {
         let counter = ActionInvocationCounter()
         let coordinator = ControlledActionCoordinator()
@@ -1899,6 +1926,30 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(request.targetRef, "container/web-01")
         XCTAssertTrue(request.confirmed)
         XCTAssertTrue(ProviderRegistry.descriptor(for: .dockmon).capabilities.contains(.writeActions))
+    }
+
+    func testKomodoStackActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(KomodoStackAction.deploy.risk, .high)
+        XCTAssertEqual(KomodoStackAction.start.risk, .medium)
+        XCTAssertEqual(KomodoStackAction.stop.risk, .medium)
+        XCTAssertEqual(KomodoStackAction.restart.risk, .medium)
+        XCTAssertTrue(KomodoStackAction.deploy.requiresConfirmation)
+        XCTAssertTrue(KomodoStackAction.restart.requiresConfirmation)
+
+        let request = KomodoStackAction.deploy.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            stackId: "Core-Stack",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "komodo:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "stack.deploy")
+        XCTAssertEqual(request.targetRef, "stack/core-stack")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .komodo).capabilities.contains(.writeActions))
     }
 
     func testLinuxUpdateActionsHaveStableRiskClassificationAndIdentity() {

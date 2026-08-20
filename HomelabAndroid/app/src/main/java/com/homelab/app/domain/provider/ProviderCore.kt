@@ -140,7 +140,7 @@ object ProviderRegistry {
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )
-                ServiceType.DOCKHAND, ServiceType.DOCKMON, ServiceType.LINUX_UPDATE -> setOf(
+                ServiceType.DOCKHAND, ServiceType.DOCKMON, ServiceType.LINUX_UPDATE, ServiceType.KOMODO -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )
