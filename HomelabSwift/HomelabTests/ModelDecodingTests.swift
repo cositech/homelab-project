@@ -2274,6 +2274,38 @@ final class ModelDecodingTests: XCTestCase {
         )
     }
 
+    func testNpmConfigurationActionsHaveStableRiskClassificationAndIdentity() {
+        for action in NpmConfigurationControlledAction.allCases where action != .renewCertificate {
+            XCTAssertEqual(action.risk, .high)
+            XCTAssertTrue(action.requiresConfirmation)
+        }
+        XCTAssertEqual(NpmConfigurationControlledAction.renewCertificate.risk, .medium)
+        XCTAssertTrue(NpmConfigurationControlledAction.renewCertificate.requiresConfirmation)
+
+        let request = NpmConfigurationControlledAction.deleteAccessList.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetId: 17,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        let createRequest = NpmConfigurationControlledAction.createRedirectionHost.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetId: nil,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+        )
+
+        XCTAssertEqual(request.providerRef, "nginx-proxy-manager:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "access-list.delete")
+        XCTAssertEqual(request.targetRef, "access-list/17")
+        XCTAssertEqual(createRequest.targetRef, "redirection-host/new")
+        XCTAssertTrue(request.confirmed)
+    }
+
     func testNpmProxyHostIndeterminateMutationIsNonRetryable() async {
         let counter = ActionInvocationCounter()
         let coordinator = ControlledActionCoordinator(waitBeforeRetry: { _ in })

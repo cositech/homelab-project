@@ -893,6 +893,8 @@ struct Translations {
     let npmDisable: String
     let npmDisableConfirm: String
     let npmDisableConfirmTitle: String
+    let npmRenewConfirmTitle: String
+    let npmRenewConfirm: String
     let npmNoRedirections: String
     let npmNoStreams: String
     let npmNoDeadHosts: String

@@ -841,6 +841,8 @@ extension Translations {
         npmDisable: "Disabilita",
         npmDisableConfirm: "Le richieste a questo host proxy verranno interrotte finché non sarà riabilitato.",
         npmDisableConfirmTitle: "Disabilitare l’host proxy?",
+        npmRenewConfirmTitle: "Rinnovare il certificato?",
+        npmRenewConfirm: "Nginx Proxy Manager richiederà e attiverà un certificato sostitutivo per questa voce.",
         npmNoRedirections: "Nessun reindirizzamento configurato.",
         npmNoStreams: "Nessuno stream configurato.",
         npmNoDeadHosts: "Nessun host 404 configurato.",

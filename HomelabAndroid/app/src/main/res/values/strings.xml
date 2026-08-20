@@ -977,6 +977,8 @@
     <string name="npm_disable">Disable</string>
     <string name="npm_disable_confirm_title">Disable proxy host?</string>
     <string name="npm_disable_confirm">Requests to this proxy host will stop until it is enabled again.</string>
+    <string name="npm_renew_confirm_title">Renew certificate?</string>
+    <string name="npm_renew_confirm">Nginx Proxy Manager will request and activate a replacement certificate for this entry.</string>
     <string name="npm_no_streams">No streams configured.</string>
     <string name="npm_no_dead_hosts">No 404 hosts configured.</string>
     <string name="npm_no_certificates">No SSL certificates.</string>

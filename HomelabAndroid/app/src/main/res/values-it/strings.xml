@@ -730,6 +730,8 @@
     <string name="npm_disable">Disabilita</string>
     <string name="npm_disable_confirm_title">Disabilitare l’host proxy?</string>
     <string name="npm_disable_confirm">Le richieste a questo host proxy verranno interrotte finché non sarà riabilitato.</string>
+    <string name="npm_renew_confirm_title">Rinnovare il certificato?</string>
+    <string name="npm_renew_confirm">Nginx Proxy Manager richiederà e attiverà un certificato sostitutivo per questa voce.</string>
     <string name="npm_no_redirections">Nessun reindirizzamento configurato.</string>
     <string name="npm_no_streams">Nessuno stream configurato.</string>
     <string name="npm_no_dead_hosts">Nessun host 404 configurato.</string>
