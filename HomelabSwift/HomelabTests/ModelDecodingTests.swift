@@ -2246,6 +2246,64 @@ final class ModelDecodingTests: XCTestCase {
         )
     }
 
+
+    func testNpmProxyHostActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(NpmProxyHostControlledAction.create.risk, .high)
+        XCTAssertEqual(NpmProxyHostControlledAction.update.risk, .high)
+        XCTAssertEqual(NpmProxyHostControlledAction.enable.risk, .low)
+        XCTAssertEqual(NpmProxyHostControlledAction.disable.risk, .medium)
+        XCTAssertEqual(NpmProxyHostControlledAction.delete.risk, .high)
+        XCTAssertFalse(NpmProxyHostControlledAction.enable.requiresConfirmation)
+        XCTAssertTrue(NpmProxyHostControlledAction.disable.requiresConfirmation)
+
+        let request = NpmProxyHostControlledAction.delete.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            hostId: 42,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "nginx-proxy-manager:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "proxy-host.delete")
+        XCTAssertEqual(request.targetRef, "proxy-host/42")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities.contains(.writeActions)
+        )
+    }
+
+    func testNpmProxyHostIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(waitBeforeRetry: { _ in })
+        let request = NpmProxyHostControlledAction.enable.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            hostId: 42,
+            confirmed: false,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "nginx-proxy-manager-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+
+        let invocations = await counter.value
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "nginx-proxy-manager-outcome-indeterminate")
+    }
+
 }
 
 private actor ActionInvocationCounter {

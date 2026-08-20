@@ -197,7 +197,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockhand_api")" -eq 6
 grep -Fq 'dockhand lifecycle actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockhand indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:'; do
+for pattern in 'DockhandControlledAction' 'case containerStart = "container.start"' 'case stackRestart = "stack.restart"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'PendingDockhandAction' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockhand).capabilities' 'confirmed: true' '.nonRetryable' 'dockhand-provider-reported-failure' 'dockhand-outcome-indeterminate'; do
@@ -229,7 +229,7 @@ done
 test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_dockmon_api")" -eq 2
 grep -Fq 'dockmon actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'dockmon indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:'; do
+for pattern in 'DockmonControlledAction' 'case restart = "container.restart"' 'case update = "container.update"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'pendingAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .dockmon).capabilities' 'confirmed: true' '.nonRetryable' 'dockmon-provider-reported-failure' 'dockmon-outcome-indeterminate'; do
@@ -371,7 +371,7 @@ test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_linux_update_api")
 grep -Fq '.addHeader("X-Homelab-No-Fallback", "true")' "$android_linux_update_models"
 grep -Fq 'linux update actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'linux update indeterminate mutation is non retryable' "$android_tests"
-for pattern in 'LinuxUpdateControlledAction' 'case checkAll = "systems.check-all"' 'case reboot = "system.reboot"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:'; do
+for pattern in 'LinuxUpdateControlledAction' 'case checkAll = "systems.check-all"' 'case reboot = "system.reboot"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:'; do
   grep -Fq "$pattern" "$swift_core"
 done
 for pattern in 'PendingLinuxUpdateAction' 'actionConfirmMessage' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .linuxUpdate).capabilities' 'confirmed: true' '.nonRetryable' 'linux-update-provider-reported-failure' 'linux-update-outcome-indeterminate'; do
@@ -383,6 +383,39 @@ for pattern in 'return try await self.startUpgradePackages' 'return try await se
 done
 grep -Fq 'testLinuxUpdateActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testLinuxUpdateIndeterminateMutationIsNonRetryable' "$swift_tests"
+
+
+android_npm_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/NginxProxyManagerRepository.kt"
+android_npm_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/nginxpm/NpmDashboardViewModel.kt"
+android_npm_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/nginxpm/NpmDashboardScreen.kt"
+android_npm_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/NginxProxyManagerApi.kt"
+swift_npm_ui="HomelabSwift/Homelab/Views/NginxProxyManager/NpmDashboard.swift"
+swift_npm_api="HomelabSwift/Homelab/Networking/NginxProxyManager/NginxProxyManagerAPIClient.swift"
+
+for required_file in "$android_npm_models" "$android_npm_view_model" "$android_npm_ui" "$android_npm_api" "$swift_npm_ui" "$swift_npm_api"; do
+  test -s "$required_file"
+done
+for pattern in 'proxy-host.create' 'proxy-host.update' 'proxy-host.enable' 'proxy-host.disable' 'proxy-host.delete' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest' 'lowercase(Locale.ROOT)'; do
+  grep -Fq "$pattern" "$android_npm_models"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)' 'confirmed: Boolean' 'ActionFailureDisposition.NON_RETRYABLE' 'nginx-proxy-manager-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_npm_view_model"
+done
+for pattern in 'pendingDisableProxyHostId' 'npm_disable_confirm' 'confirmed = true'; do
+  grep -Fq "$pattern" "$android_npm_ui"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_npm_api")" -eq 5
+grep -Fq 'nginx proxy manager proxy host actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'nginx proxy manager indeterminate mutation is non retryable' "$android_tests"
+for pattern in 'NpmProxyHostControlledAction' 'case create = "proxy-host.create"' 'case disable = "proxy-host.disable"' 'case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'showingDisableConfirm' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities' 'confirmed: true' '.nonRetryable' 'nginx-proxy-manager-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$swift_npm_ui"
+done
+test "$(grep -Fc 'allowFallback: false' "$swift_npm_api")" -eq 5
+grep -Fq 'testNpmProxyHostActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+grep -Fq 'testNpmProxyHostIndeterminateMutationIsNonRetryable' "$swift_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2

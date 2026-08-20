@@ -18,8 +18,41 @@ import com.homelab.app.data.remote.dto.nginxpm.NpmStream
 import com.homelab.app.data.remote.dto.nginxpm.NpmStreamRequest
 import com.homelab.app.data.remote.dto.nginxpm.NpmUser
 import com.homelab.app.data.remote.dto.nginxpm.NpmUserRequest
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+enum class NpmProxyHostControlledAction(val wireName: String, val risk: ActionRisk) {
+    CREATE("proxy-host.create", ActionRisk.HIGH),
+    UPDATE("proxy-host.update", ActionRisk.HIGH),
+    ENABLE("proxy-host.enable", ActionRisk.LOW),
+    DISABLE("proxy-host.disable", ActionRisk.MEDIUM),
+    DELETE("proxy-host.delete", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        hostId: Int?,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "nginx-proxy-manager:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = wireName,
+        targetRef = "proxy-host/${hostId ?: "new"}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
 
 @Singleton
 class NginxProxyManagerRepository @Inject constructor(

@@ -7,6 +7,13 @@ import androidx.lifecycle.viewModelScope
 import com.homelab.app.R
 import com.homelab.app.data.remote.dto.nginxpm.*
 import com.homelab.app.data.repository.NginxProxyManagerRepository
+import com.homelab.app.data.repository.NpmProxyHostControlledAction
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.ErrorHandler
@@ -15,6 +22,7 @@ import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,6 +58,7 @@ class NpmDashboardViewModel @Inject constructor(
     private val repository: NginxProxyManagerRepository,
     private val servicesRepository: ServicesRepository,
     savedStateHandle: SavedStateHandle,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -113,26 +122,46 @@ class NpmDashboardViewModel @Inject constructor(
 
     // ── Proxy Hosts ──
 
-    fun createProxyHost(request: NpmProxyHostRequest) {
-        performAction(R.string.npm_save_success) {
+    fun createProxyHost(request: NpmProxyHostRequest, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = NpmProxyHostControlledAction.CREATE,
+            hostId = null,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_save_success
+        ) {
             repository.createProxyHost(instanceId, request)
         }
     }
 
-    fun updateProxyHost(hostId: Int, request: NpmProxyHostRequest) {
-        performAction(R.string.npm_save_success) {
+    fun updateProxyHost(hostId: Int, request: NpmProxyHostRequest, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = NpmProxyHostControlledAction.UPDATE,
+            hostId = hostId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_save_success
+        ) {
             repository.updateProxyHost(instanceId, hostId, request)
         }
     }
 
-    fun deleteProxyHost(hostId: Int) {
-        performAction(R.string.npm_delete_success) {
+    fun deleteProxyHost(hostId: Int, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = NpmProxyHostControlledAction.DELETE,
+            hostId = hostId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_delete_success
+        ) {
             repository.deleteProxyHost(instanceId, hostId)
         }
     }
 
-    fun toggleProxyHost(hostId: Int, enabled: Boolean) {
-        performAction(R.string.npm_save_success) {
+    fun toggleProxyHost(hostId: Int, enabled: Boolean, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = if (enabled) NpmProxyHostControlledAction.ENABLE else NpmProxyHostControlledAction.DISABLE,
+            hostId = hostId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_save_success
+        ) {
             if (enabled) repository.enableProxyHost(instanceId, hostId)
             else repository.disableProxyHost(instanceId, hostId)
         }
@@ -293,6 +322,51 @@ class NpmDashboardViewModel @Inject constructor(
             } catch (error: Exception) {
                 val message = ErrorHandler.getMessage(context, error)
                 _actionEvent.emit(NpmActionEvent.Error(message))
+            } finally {
+                _isPerformingAction.value = false
+            }
+        }
+    }
+
+    private fun performControlledProxyHostAction(
+        action: NpmProxyHostControlledAction,
+        hostId: Int?,
+        confirmed: Boolean,
+        successMsgRes: Int,
+        operation: suspend () -> Unit
+    ) {
+        viewModelScope.launch {
+            _isPerformingAction.value = true
+            try {
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, hostId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)
+                ) {
+                    try {
+                        operation()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "nginx-proxy-manager-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _actionEvent.emit(NpmActionEvent.Success(context.getString(successMsgRes)))
+                    fetchDashboard()
+                } else {
+                    _actionEvent.emit(NpmActionEvent.Error(audit.reasonCode))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _actionEvent.emit(NpmActionEvent.Error(ErrorHandler.getMessage(context, error)))
             } finally {
                 _isPerformingAction.value = false
             }

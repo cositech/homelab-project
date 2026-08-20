@@ -658,6 +658,9 @@
     <string name="npm_delete">Supprimer</string>
     <string name="npm_delete_confirm">Êtes-vous sûr de vouloir supprimer ceci ?</string>
     <string name="npm_delete_confirm_title">Confirmer la suppression</string>
+    <string name="npm_disable">Désactiver</string>
+    <string name="npm_disable_confirm_title">Désactiver l’hôte proxy ?</string>
+    <string name="npm_disable_confirm">Les requêtes vers cet hôte proxy seront interrompues jusqu’à sa réactivation.</string>
     <string name="npm_no_redirections">Aucune redirection configurée.</string>
     <string name="npm_no_streams">Aucun flux configuré.</string>
     <string name="npm_no_dead_hosts">Aucun hôte 404 configuré.</string>

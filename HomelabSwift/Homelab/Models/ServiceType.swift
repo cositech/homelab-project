@@ -613,7 +613,7 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .technitium:
                 capabilities = [.health, .writeActions]
-            case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo:
+            case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:
                 capabilities = [.health, .writeActions]
             case .pterodactyl, .calagopus:
                 capabilities = [.health, .writeActions]
@@ -906,6 +906,44 @@ enum TechnitiumControlledAction: String, CaseIterable, Equatable, Sendable {
             providerRef: "technitium:\(instanceId.uuidString.lowercased())",
             action: rawValue,
             targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum NpmProxyHostControlledAction: String, CaseIterable, Equatable, Sendable {
+    case create = "proxy-host.create"
+    case update = "proxy-host.update"
+    case enable = "proxy-host.enable"
+    case disable = "proxy-host.disable"
+    case delete = "proxy-host.delete"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .enable: return .low
+        case .disable: return .medium
+        case .create, .update, .delete: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        hostId: Int?,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "nginx-proxy-manager:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "proxy-host/\(hostId.map(String.init) ?? "new")",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,

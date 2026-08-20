@@ -75,6 +75,8 @@ struct NpmDashboard: View {
     // Delete confirmation
     @State private var showingDeleteConfirm = false
     @State private var pendingDeleteAction: (() async -> Void)?
+    @State private var showingDisableConfirm = false
+    @State private var pendingDisableProxyHostId: Int?
 
     // Toast
     @State private var actionMessage: String?
@@ -220,6 +222,21 @@ struct NpmDashboard: View {
             }
         } message: {
             Text(localizer.t.npmDeleteConfirm)
+        }
+
+        .alert(localizer.t.npmDisableConfirmTitle, isPresented: $showingDisableConfirm) {
+            Button(localizer.t.npmDisable, role: .destructive) {
+                guard let hostId = pendingDisableProxyHostId else { return }
+                Task {
+                    await setProxyHostEnabled(id: hostId, enabled: false, confirmed: true)
+                    pendingDisableProxyHostId = nil
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) {
+                pendingDisableProxyHostId = nil
+            }
+        } message: {
+            Text(localizer.t.npmDisableConfirm)
         }
         .overlay(alignment: .bottom) { toastOverlay }
     }
@@ -528,7 +545,12 @@ struct NpmDashboard: View {
                         Label(localizer.t.npmDelete, systemImage: "trash")
                     }
                     Button {
-                        Task { await setProxyHostEnabled(id: host.id, enabled: !host.isEnabled) }
+                        if host.isEnabled {
+                            pendingDisableProxyHostId = host.id
+                            showingDisableConfirm = true
+                        } else {
+                            Task { await setProxyHostEnabled(id: host.id, enabled: true, confirmed: false) }
+                        }
                     } label: {
                         Label(
                             host.isEnabled ? localizer.t.npmDisabled : localizer.t.npmEnabled,
@@ -1042,15 +1064,23 @@ struct NpmDashboard: View {
     // MARK: - CRUD: Proxy Hosts
 
     private func createProxyHost(_ request: NpmProxyHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createProxyHost(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else {
+            throw APIError.notConfigured
+        }
+        try await executeProxyHostAction(.create, hostId: nil, confirmed: true) {
+            _ = try await client.createProxyHost(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateProxyHost(id: Int, _ request: NpmProxyHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateProxyHost(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else {
+            throw APIError.notConfigured
+        }
+        try await executeProxyHostAction(.update, hostId: id, confirmed: true) {
+            _ = try await client.updateProxyHost(id: id, request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
@@ -1058,28 +1088,68 @@ struct NpmDashboard: View {
     private func deleteProxyHost(id: Int) async {
         guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
         do {
-            try await client.deleteProxyHost(id: id)
+            try await executeProxyHostAction(.delete, hostId: id, confirmed: true) {
+                try await client.deleteProxyHost(id: id)
+            }
             await refreshAfterMutation()
             HapticManager.success()
             showToast(localizer.t.npmDeleteSuccess)
         } catch {
             HapticManager.error()
+            showToast(error.localizedDescription)
         }
     }
 
-    private func setProxyHostEnabled(id: Int, enabled: Bool) async {
+    private func setProxyHostEnabled(id: Int, enabled: Bool, confirmed: Bool) async {
         guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
         do {
-            if enabled {
-                try await client.enableProxyHost(id: id)
-            } else {
-                try await client.disableProxyHost(id: id)
+            let action: NpmProxyHostControlledAction = enabled ? .enable : .disable
+            try await executeProxyHostAction(action, hostId: id, confirmed: confirmed) {
+                if enabled {
+                    try await client.enableProxyHost(id: id)
+                } else {
+                    try await client.disableProxyHost(id: id)
+                }
             }
             await refreshAfterMutation()
             HapticManager.success()
             showToast(localizer.t.npmSaveSuccess)
         } catch {
             HapticManager.error()
+            showToast(error.localizedDescription)
+        }
+    }
+
+    private func executeProxyHostAction(
+        _ action: NpmProxyHostControlledAction,
+        hostId: Int?,
+        confirmed: Bool,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: selectedInstanceId,
+                hostId: hostId,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "nginx-proxy-manager-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
         }
     }
 

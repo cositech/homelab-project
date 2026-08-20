@@ -155,6 +155,7 @@ fun NpmDashboardScreen(
 
     // Delete confirmation dialog state
     var deleteConfirmation by remember { mutableStateOf<DeleteConfirmation?>(null) }
+    var pendingDisableProxyHostId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.fetchDashboard()
@@ -299,10 +300,16 @@ fun NpmDashboardScreen(
                                 deleteConfirmation = DeleteConfirmation(
                                     title = host.primaryDomain,
                                     type = DeleteTargetType.PROXY_HOST,
-                                    onConfirm = { viewModel.deleteProxyHost(host.id) }
+                                    onConfirm = { viewModel.deleteProxyHost(host.id, confirmed = true) }
                                 )
                             },
-                            onToggle = { host, enabled -> viewModel.toggleProxyHost(host.id, enabled) }
+                            onToggle = { host, enabled ->
+                                if (enabled) {
+                                    viewModel.toggleProxyHost(host.id, enabled = true, confirmed = false)
+                                } else {
+                                    pendingDisableProxyHostId = host.id
+                                }
+                            }
                         )
                         TAB_REDIR -> RedirectionHostsTab(
                             redirectionHosts = data.redirectionHosts,
@@ -386,8 +393,8 @@ fun NpmDashboardScreen(
                                 onDismiss = { showProxyHostForm = false; editingProxyHost = null },
                                 onSave = { request ->
                                     val id = editingProxyHost?.id
-                                    if (id != null) viewModel.updateProxyHost(id, request)
-                                    else viewModel.createProxyHost(request)
+                                    if (id != null) viewModel.updateProxyHost(id, request, confirmed = true)
+                                    else viewModel.createProxyHost(request, confirmed = true)
                                 }
                             )
                         }
@@ -495,6 +502,28 @@ fun NpmDashboardScreen(
             },
             dismissButton = {
                 TextButton(onClick = { deleteConfirmation = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    val disableHostId = pendingDisableProxyHostId
+    if (disableHostId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDisableProxyHostId = null },
+            title = { Text(stringResource(R.string.npm_disable_confirm_title)) },
+            text = { Text(stringResource(R.string.npm_disable_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.toggleProxyHost(disableHostId, enabled = false, confirmed = true)
+                    pendingDisableProxyHostId = null
+                }) {
+                    Text(stringResource(R.string.npm_disable), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDisableProxyHostId = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
