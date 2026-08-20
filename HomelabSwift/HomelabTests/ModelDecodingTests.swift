@@ -1525,6 +1525,33 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(result.reasonCode, "dockhand-outcome-indeterminate")
     }
 
+    func testDockmonIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = DockmonControlledAction.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            containerId: "web-01",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "dockmon-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "dockmon-outcome-indeterminate")
+    }
+
     func testControlledActionDeduplicatesConcurrentSameKey() async {
         let counter = ActionInvocationCounter()
         let coordinator = ControlledActionCoordinator()
@@ -1850,6 +1877,28 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(request.targetRef, "environment/production/container/web-01")
         XCTAssertTrue(request.confirmed)
         XCTAssertTrue(ProviderRegistry.descriptor(for: .dockhand).capabilities.contains(.writeActions))
+    }
+
+    func testDockmonActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(DockmonControlledAction.restart.risk, .medium)
+        XCTAssertEqual(DockmonControlledAction.update.risk, .high)
+        XCTAssertTrue(DockmonControlledAction.restart.requiresConfirmation)
+        XCTAssertTrue(DockmonControlledAction.update.requiresConfirmation)
+
+        let request = DockmonControlledAction.update.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            containerId: "Web-01",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "dockmon:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "container.update")
+        XCTAssertEqual(request.targetRef, "container/web-01")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .dockmon).capabilities.contains(.writeActions))
     }
 
     func testPiholeDomainActionsRequireConfirmationAndHaveStableIdentity() {
