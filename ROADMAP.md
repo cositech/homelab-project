@@ -54,6 +54,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] Pterodactyl and Calagopus game-server power actions
   - [x] Nginx Proxy Manager proxy-host lifecycle actions
   - [x] Nginx Proxy Manager redirection, stream, dead-host, certificate, access-list and user actions
+  - [x] Crafty Controller lifecycle, executable update, backup and console-command actions
   - [ ] Remaining container, DNS, monitoring, update and configuration providers
 
 Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.

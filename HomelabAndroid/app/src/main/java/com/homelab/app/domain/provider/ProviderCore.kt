@@ -142,7 +142,7 @@ object ProviderRegistry {
                 )
                 ServiceType.DOCKHAND, ServiceType.DOCKMON, ServiceType.LINUX_UPDATE, ServiceType.KOMODO,
                 ServiceType.NGINX_PROXY_MANAGER,
-                ServiceType.PTERODACTYL, ServiceType.CALAGOPUS -> setOf(
+                ServiceType.PTERODACTYL, ServiceType.CALAGOPUS, ServiceType.CRAFTY_CONTROLLER -> setOf(
                     ProviderCapability.HEALTH,
                     ProviderCapability.WRITE_ACTIONS
                 )

@@ -8,6 +8,14 @@ import com.homelab.app.data.repository.CraftyDashboardData
 import com.homelab.app.data.repository.CraftyRepository
 import com.homelab.app.data.repository.CraftyServerAction
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.data.repository.CraftyApiException
+import com.homelab.app.data.repository.CraftyCommandAction
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
@@ -32,6 +40,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class CraftyViewModel @Inject constructor(
     private val craftyRepository: CraftyRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     private val servicesRepository: ServicesRepository,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
@@ -103,13 +112,33 @@ class CraftyViewModel @Inject constructor(
         }
     }
 
-    fun performAction(serverId: String, action: CraftyServerAction) {
+    fun performAction(serverId: String, action: CraftyServerAction, confirmed: Boolean = false) {
         viewModelScope.launch {
             _actionServerId.value = serverId
             try {
-                craftyRepository.sendAction(instanceId, serverId, action)
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, serverId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.CRAFTY_CONTROLLER)
+                ) {
+                    try {
+                        craftyRepository.sendAction(instanceId, serverId, action)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw controlledFailure(error)
+                    }
+                }
+                if (audit.state != ActionExecutionState.SUCCEEDED) {
+                    _messages.emit(audit.reasonCode)
+                    return@launch
+                }
                 _messages.emit(context.getString(com.homelab.app.R.string.crafty_action_sent))
                 syncServerAfterAction(serverId, action)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _messages.emit(ErrorHandler.getMessage(context, error))
             } finally {
@@ -160,7 +189,7 @@ class CraftyViewModel @Inject constructor(
         _commandError.value = null
     }
 
-    fun sendCommand(command: String) {
+    fun sendCommand(command: String, confirmed: Boolean = false) {
         val serverId = _commandServerId.value ?: return
         val normalizedCommand = command.trim()
         if (normalizedCommand.isBlank() || _isSendingCommand.value) return
@@ -169,9 +198,29 @@ class CraftyViewModel @Inject constructor(
             _isSendingCommand.value = true
             _commandError.value = null
             try {
-                craftyRepository.sendCommand(instanceId, serverId, normalizedCommand)
+                val audit = controlledActionCoordinator.execute(
+                    request = CraftyCommandAction.SEND.controlledRequest(instanceId, serverId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.CRAFTY_CONTROLLER)
+                ) {
+                    try {
+                        craftyRepository.sendCommand(instanceId, serverId, normalizedCommand)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw controlledFailure(error)
+                    }
+                }
+                if (audit.state != ActionExecutionState.SUCCEEDED) {
+                    _commandError.value = audit.reasonCode
+                    return@launch
+                }
                 _commandServerId.value = null
                 _messages.emit(context.getString(com.homelab.app.R.string.crafty_command_sent))
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _commandError.value = ErrorHandler.getMessage(context, error)
             } finally {
@@ -205,5 +254,22 @@ class CraftyViewModel @Inject constructor(
             }
             _uiState.value = UiState.Success(currentData.copy(servers = updatedServers))
         }
+    }
+
+    private fun controlledFailure(error: Exception): ActionOperationException {
+        val reasonCode = when (error) {
+            is CraftyApiException -> when (error.kind) {
+                CraftyApiException.Kind.CONNECTION_ERROR -> "crafty-outcome-indeterminate"
+                CraftyApiException.Kind.INVALID_CREDENTIALS -> "crafty-invalid-credentials"
+                CraftyApiException.Kind.SERVER_ERROR -> "crafty-provider-error"
+            }
+            is IllegalStateException -> "crafty-provider-reported-failure"
+            else -> "crafty-provider-error"
+        }
+        return ActionOperationException(
+            reasonCode = reasonCode,
+            disposition = ActionFailureDisposition.NON_RETRYABLE,
+            cause = error
+        )
     }
 }

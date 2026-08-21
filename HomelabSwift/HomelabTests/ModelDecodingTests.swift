@@ -2415,6 +2415,66 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(result.reasonCode, "nginx-proxy-manager-outcome-indeterminate")
     }
 
+    func testCraftyActionsHaveStableRiskIdentityAndNoPersistedCommandPayload() {
+        XCTAssertEqual(CraftyAction.start.risk, .low)
+        XCTAssertEqual(CraftyAction.stop.risk, .medium)
+        XCTAssertEqual(CraftyAction.restart.risk, .medium)
+        XCTAssertEqual(CraftyAction.backup.risk, .medium)
+        XCTAssertEqual(CraftyAction.updateExecutable.risk, .high)
+        XCTAssertEqual(CraftyAction.kill.risk, .high)
+        XCTAssertFalse(CraftyAction.start.requiresConfirmation)
+        XCTAssertTrue(CraftyAction.stop.requiresConfirmation)
+        XCTAssertTrue(CraftyCommandAction.send.requiresConfirmation)
+
+        let instanceId = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let lifecycleRequest = CraftyAction.updateExecutable.request(
+            instanceId: instanceId,
+            serverId: " SERVER-42 ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        let commandRequest = CraftyCommandAction.send.request(
+            instanceId: instanceId,
+            serverId: " SERVER-42 ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+        )
+
+        XCTAssertEqual(lifecycleRequest.providerRef, "crafty-controller:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(lifecycleRequest.action, "server.executable.update")
+        XCTAssertEqual(lifecycleRequest.targetRef, "server/server-42")
+        XCTAssertEqual(commandRequest.risk, .high)
+        XCTAssertEqual(commandRequest.action, "server.command.send")
+        XCTAssertEqual(commandRequest.targetRef, "server/server-42")
+        XCTAssertTrue(lifecycleRequest.confirmed)
+        XCTAssertTrue(commandRequest.confirmed)
+        XCTAssertTrue(lifecycleRequest.parameters.isEmpty)
+        XCTAssertTrue(commandRequest.parameters.isEmpty)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .craftyController).capabilities.contains(.writeActions)
+        )
+    }
+
+    func testCraftyMutationFailureMappingIsDeterministicAndNonRetryable() {
+        let transport = CraftyControlledOperationFailure.map(
+            APIError.networkError(URLError(.timedOut))
+        )
+        let unauthorized = CraftyControlledOperationFailure.map(APIError.unauthorized)
+        let providerFailure = CraftyControlledOperationFailure.map(
+            APIError.custom("provider response must not enter the audit reason")
+        )
+
+        XCTAssertEqual(transport.reasonCode, "crafty-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+        XCTAssertEqual(unauthorized.reasonCode, "crafty-invalid-credentials")
+        XCTAssertEqual(unauthorized.disposition, .nonRetryable)
+        XCTAssertEqual(providerFailure.reasonCode, "crafty-provider-reported-failure")
+        XCTAssertEqual(providerFailure.disposition, .nonRetryable)
+    }
 }
 
 private actor ActionInvocationCounter {

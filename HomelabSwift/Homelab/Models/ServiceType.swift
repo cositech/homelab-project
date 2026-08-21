@@ -615,7 +615,7 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:
                 capabilities = [.health, .writeActions]
-            case .pterodactyl, .calagopus:
+            case .pterodactyl, .calagopus, .craftyController:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]

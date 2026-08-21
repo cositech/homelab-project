@@ -7,7 +7,12 @@ import com.homelab.app.data.remote.dto.crafty.CraftyLoginData
 import com.homelab.app.data.remote.dto.crafty.CraftyLoginRequest
 import com.homelab.app.data.remote.dto.crafty.CraftyResponse
 import com.homelab.app.data.remote.dto.crafty.CraftyServer
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.data.remote.dto.crafty.CraftyServerStats
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -203,11 +208,60 @@ class CraftyRepository @Inject constructor(
     }
 }
 
-enum class CraftyServerAction(val apiValue: String) {
-    START("start_server"),
-    STOP("stop_server"),
-    RESTART("restart_server"),
-    UPDATE("update_executable"),
-    BACKUP("backup_server"),
-    KILL("kill_server")
+enum class CraftyServerAction(
+    val apiValue: String,
+    val actionName: String,
+    val risk: ActionRisk
+) {
+    START("start_server", "server.start", ActionRisk.LOW),
+    STOP("stop_server", "server.stop", ActionRisk.MEDIUM),
+    RESTART("restart_server", "server.restart", ActionRisk.MEDIUM),
+    UPDATE("update_executable", "server.executable.update", ActionRisk.HIGH),
+    BACKUP("backup_server", "server.backup", ActionRisk.MEDIUM),
+    KILL("kill_server", "server.kill", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        serverId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "crafty-controller:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = "server/${serverId.trim().lowercase(Locale.ROOT)}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+enum class CraftyCommandAction {
+    SEND;
+
+    val risk: ActionRisk get() = ActionRisk.HIGH
+    val requiresConfirmation: Boolean get() = true
+
+    fun controlledRequest(
+        instanceId: String,
+        serverId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "crafty-controller:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = "server.command.send",
+        targetRef = "server/${serverId.trim().lowercase(Locale.ROOT)}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }

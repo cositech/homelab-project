@@ -7,6 +7,8 @@ import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
 import com.homelab.app.data.remote.dto.portainer.PortainerControlledConfigurationAction
+import com.homelab.app.data.repository.CraftyCommandAction
+import com.homelab.app.data.repository.CraftyServerAction
 import com.homelab.app.data.repository.CalagopusPowerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
@@ -1036,4 +1038,48 @@ class ControlledActionsTest {
         assertEquals("nginx-proxy-manager-outcome-indeterminate", result.reasonCode)
     }
 
+    @Test
+    fun `crafty actions have stable risk identity and no persisted command payload`() {
+        assertEquals(ActionRisk.LOW, CraftyServerAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, CraftyServerAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, CraftyServerAction.RESTART.risk)
+        assertEquals(ActionRisk.MEDIUM, CraftyServerAction.BACKUP.risk)
+        assertEquals(ActionRisk.HIGH, CraftyServerAction.UPDATE.risk)
+        assertEquals(ActionRisk.HIGH, CraftyServerAction.KILL.risk)
+        assertFalse(CraftyServerAction.START.requiresConfirmation)
+        assertTrue(CraftyServerAction.STOP.requiresConfirmation)
+        assertTrue(CraftyCommandAction.SEND.requiresConfirmation)
+
+        val lifecycleRequest = CraftyServerAction.UPDATE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            serverId = " SERVER-42 ",
+            confirmed = true,
+            requestId = "request-crafty-update",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "crafty-update-key-001"
+        )
+        val commandRequest = CraftyCommandAction.SEND.controlledRequest(
+            instanceId = "INSTANCE-A",
+            serverId = " SERVER-42 ",
+            confirmed = true,
+            requestId = "request-crafty-command",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "crafty-command-key-01"
+        )
+
+        assertEquals("crafty-controller:instance-a", lifecycleRequest.providerRef)
+        assertEquals("server.executable.update", lifecycleRequest.action)
+        assertEquals("server/server-42", lifecycleRequest.targetRef)
+        assertEquals(ActionRisk.HIGH, commandRequest.risk)
+        assertEquals("server.command.send", commandRequest.action)
+        assertEquals("server/server-42", commandRequest.targetRef)
+        assertTrue(lifecycleRequest.confirmed)
+        assertTrue(commandRequest.confirmed)
+        assertTrue(lifecycleRequest.parameters.isEmpty())
+        assertTrue(commandRequest.parameters.isEmpty())
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.CRAFTY_CONTROLLER)
+        )
+    }
 }
