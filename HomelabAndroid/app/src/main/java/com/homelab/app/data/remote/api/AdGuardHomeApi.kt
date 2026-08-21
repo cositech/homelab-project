@@ -47,6 +47,7 @@ interface AdGuardHomeApi {
 
     @POST("control/protection")
     suspend fun setProtection(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardProtectionRequest
@@ -70,6 +71,7 @@ interface AdGuardHomeApi {
 
     @POST("control/filtering/set_rules")
     suspend fun setUserRules(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardSetRulesRequest
@@ -77,6 +79,7 @@ interface AdGuardHomeApi {
 
     @POST("control/filtering/add_url")
     suspend fun addFilter(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardFilterAddRequest
@@ -84,6 +87,7 @@ interface AdGuardHomeApi {
 
     @POST("control/filtering/remove_url")
     suspend fun removeFilter(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardFilterRemoveRequest
@@ -91,6 +95,7 @@ interface AdGuardHomeApi {
 
     @POST("control/filtering/set_url")
     suspend fun setFilter(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardFilterSetUrlRequest
@@ -110,6 +115,7 @@ interface AdGuardHomeApi {
 
     @PUT("control/blocked_services/update")
     suspend fun updateBlockedServices(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardBlockedServicesSchedule
@@ -123,6 +129,7 @@ interface AdGuardHomeApi {
 
     @POST("control/rewrite/add")
     suspend fun addRewrite(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardRewriteEntry
@@ -130,6 +137,7 @@ interface AdGuardHomeApi {
 
     @POST("control/rewrite/delete")
     suspend fun deleteRewrite(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardRewriteEntry
@@ -137,6 +145,7 @@ interface AdGuardHomeApi {
 
     @POST("control/rewrite/update")
     suspend fun updateRewrite(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardRewriteUpdate
@@ -150,6 +159,7 @@ interface AdGuardHomeApi {
 
     @POST("control/rewrite/settings/update")
     suspend fun updateRewriteSettings(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "AdGuardHome",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: AdGuardRewriteSettings

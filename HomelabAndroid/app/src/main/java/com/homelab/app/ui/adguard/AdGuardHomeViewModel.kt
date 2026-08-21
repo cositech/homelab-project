@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.adguard.AdGuardBlockedService
 import com.homelab.app.data.remote.dto.adguard.AdGuardBlockedServicesSchedule
+import com.homelab.app.data.remote.dto.adguard.AdGuardControlledConfigurationAction
 import com.homelab.app.data.remote.dto.adguard.AdGuardControlledProtectionAction
 import com.homelab.app.data.remote.dto.adguard.AdGuardFilter
 import com.homelab.app.data.remote.dto.adguard.AdGuardFilteringStatus
@@ -18,6 +19,8 @@ import com.homelab.app.data.remote.dto.adguard.AdGuardTopItem
 import com.homelab.app.data.repository.AdGuardHomeRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
 import com.homelab.app.domain.action.ActionRole
 import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
@@ -29,6 +32,7 @@ import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -226,10 +230,19 @@ class AdGuardHomeViewModel @Inject constructor(
             try {
                 val status = repository.getFilteringStatus(instanceId)
                 val rule = repository.toAllowRule(domain)
-                if (!status.userRules.contains(rule)) {
-                    repository.setUserRules(instanceId, status.userRules + rule)
+                val updatedRules = if (!status.userRules.contains(rule)) {
+                    if (!executeControlledConfigurationAction(
+                            AdGuardControlledConfigurationAction.UPDATE_USER_RULES,
+                            targetId = "global"
+                        ) {
+                            repository.setUserRules(instanceId, status.userRules + rule)
+                        }
+                    ) return@launch
+                    status.userRules + rule
+                } else {
+                    status.userRules
                 }
-                _userRulesState.value = UiState.Success(status.userRules + rule)
+                _userRulesState.value = UiState.Success(updatedRules)
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
             }
@@ -253,7 +266,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun toggleFilter(filter: AdGuardFilter, whitelist: Boolean, enabled: Boolean) {
         viewModelScope.launch {
             try {
-                repository.setFilter(instanceId, filter, enabled, whitelist)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_FILTER,
+                        targetId = filter.id.toString()
+                    ) {
+                        repository.setFilter(instanceId, filter, enabled, whitelist)
+                    }
+                ) return@launch
                 fetchFilters()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -264,7 +283,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun addFilter(name: String, url: String, whitelist: Boolean) {
         viewModelScope.launch {
             try {
-                repository.addFilter(instanceId, name, url, whitelist)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.CREATE_FILTER,
+                        targetId = "new"
+                    ) {
+                        repository.addFilter(instanceId, name, url, whitelist)
+                    }
+                ) return@launch
                 fetchFilters()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -276,7 +301,13 @@ class AdGuardHomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val updated = filter.copy(name = newName, url = newUrl, enabled = enabled)
-                repository.setFilter(instanceId, updated, enabled, whitelist)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_FILTER,
+                        targetId = filter.id.toString()
+                    ) {
+                        repository.setFilter(instanceId, updated, enabled, whitelist)
+                    }
+                ) return@launch
                 fetchFilters()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -287,7 +318,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun removeFilter(filter: AdGuardFilter, whitelist: Boolean) {
         viewModelScope.launch {
             try {
-                repository.removeFilter(instanceId, filter.url, whitelist)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.DELETE_FILTER,
+                        targetId = filter.id.toString()
+                    ) {
+                        repository.removeFilter(instanceId, filter.url, whitelist)
+                    }
+                ) return@launch
                 fetchFilters()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -315,7 +352,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun addRewrite(domain: String, answer: String, enabled: Boolean = true) {
         viewModelScope.launch {
             try {
-                repository.addRewrite(instanceId, domain, answer, enabled)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.CREATE_REWRITE,
+                        targetId = domain.trim().lowercase()
+                    ) {
+                        repository.addRewrite(instanceId, domain, answer, enabled)
+                    }
+                ) return@launch
                 fetchRewrites()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -326,7 +369,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun updateRewrite(target: AdGuardRewriteEntry, update: AdGuardRewriteEntry) {
         viewModelScope.launch {
             try {
-                repository.updateRewrite(instanceId, target, update)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_REWRITE,
+                        targetId = target.domain.trim().lowercase()
+                    ) {
+                        repository.updateRewrite(instanceId, target, update)
+                    }
+                ) return@launch
                 fetchRewrites()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -337,7 +386,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun deleteRewrite(entry: AdGuardRewriteEntry) {
         viewModelScope.launch {
             try {
-                repository.deleteRewrite(instanceId, entry)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.DELETE_REWRITE,
+                        targetId = entry.domain.trim().lowercase()
+                    ) {
+                        repository.deleteRewrite(instanceId, entry)
+                    }
+                ) return@launch
                 fetchRewrites()
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -348,7 +403,13 @@ class AdGuardHomeViewModel @Inject constructor(
     fun toggleRewriteSettings(enabled: Boolean) {
         viewModelScope.launch {
             try {
-                repository.updateRewriteSettings(instanceId, enabled)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_REWRITE_SETTINGS,
+                        targetId = "global"
+                    ) {
+                        repository.updateRewriteSettings(instanceId, enabled)
+                    }
+                ) return@launch
                 _rewriteSettings.value = repository.getRewriteSettings(instanceId)
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -385,7 +446,13 @@ class AdGuardHomeViewModel @Inject constructor(
             val current = (_blockedServicesState.value as? UiState.Success)?.data ?: return@launch
             try {
                 val schedule = current.schedule ?: AdGuardBlockedServicesSchedule()
-                repository.updateBlockedServices(instanceId, ids.toList(), schedule)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_BLOCKED_SERVICES,
+                        targetId = "global"
+                    ) {
+                        repository.updateBlockedServices(instanceId, ids.toList(), schedule)
+                    }
+                ) return@launch
                 _blockedServicesState.value = UiState.Success(current.copy(blockedIds = ids))
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -413,7 +480,13 @@ class AdGuardHomeViewModel @Inject constructor(
             try {
                 val current = (userRulesState.value as? UiState.Success)?.data ?: repository.getFilteringStatus(instanceId).userRules
                 val updated = current + rule
-                repository.setUserRules(instanceId, updated)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_USER_RULES,
+                        targetId = "global"
+                    ) {
+                        repository.setUserRules(instanceId, updated)
+                    }
+                ) return@launch
                 _userRulesState.value = UiState.Success(updated)
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -426,7 +499,13 @@ class AdGuardHomeViewModel @Inject constructor(
             try {
                 val current = (userRulesState.value as? UiState.Success)?.data ?: repository.getFilteringStatus(instanceId).userRules
                 val updated = current.filterNot { it == rule }
-                repository.setUserRules(instanceId, updated)
+                if (!executeControlledConfigurationAction(
+                        AdGuardControlledConfigurationAction.UPDATE_USER_RULES,
+                        targetId = "global"
+                    ) {
+                        repository.setUserRules(instanceId, updated)
+                    }
+                ) return@launch
                 _userRulesState.value = UiState.Success(updated)
             } catch (error: Exception) {
                 _actionError.value = ErrorHandler.getMessage(context, error)
@@ -436,5 +515,42 @@ class AdGuardHomeViewModel @Inject constructor(
 
     fun clearActionError() {
         _actionError.value = null
+    }
+
+    private suspend fun executeControlledConfigurationAction(
+        action: AdGuardControlledConfigurationAction,
+        targetId: String,
+        operation: suspend () -> Unit
+    ): Boolean {
+        val result = controlledActionCoordinator.execute(
+            request = action.controlledRequest(
+                instanceId = instanceId,
+                targetId = targetId,
+                confirmed = true
+            ),
+            actorRole = ActionRole.ADMIN,
+            providerCapabilities = ProviderRegistry.capabilities(ServiceType.ADGUARD_HOME),
+            operation = {
+                try {
+                    operation()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: ActionOperationException) {
+                    throw error
+                } catch (error: Exception) {
+                    throw ActionOperationException(
+                        "adguard-home-outcome-indeterminate",
+                        ActionFailureDisposition.NON_RETRYABLE,
+                        error
+                    )
+                }
+            }
+        )
+        if (result.state == ActionExecutionState.SUCCEEDED) return true
+        _actionError.value = context.getString(
+            com.homelab.app.R.string.error_action_failed,
+            result.reasonCode
+        )
+        return false
     }
 }

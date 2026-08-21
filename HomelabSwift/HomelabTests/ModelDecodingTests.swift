@@ -2201,6 +2201,31 @@ final class ModelDecodingTests: XCTestCase {
             ProviderRegistry.descriptor(for: .adguardHome).capabilities.contains(.writeActions)
         )
     }
+
+    func testAdGuardConfigurationActionsAreHighRiskAndHaveStableIdentity() {
+        XCTAssertTrue(AdGuardControlledConfigurationAction.allCases.allSatisfy { $0.risk == .high })
+        XCTAssertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                risk: AdGuardControlledConfigurationAction.createRewrite.risk,
+                completedAttempts: 0
+            )
+        )
+
+        let request = AdGuardControlledConfigurationAction.updateFilter.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetId: "42",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "adguard-home:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "filter-list.update")
+        XCTAssertEqual(request.targetRef, "filter-list/42")
+        XCTAssertTrue(request.confirmed)
+    }
+
     func testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(HealthchecksControlledCheckAction.create.risk, .high)
         XCTAssertFalse(

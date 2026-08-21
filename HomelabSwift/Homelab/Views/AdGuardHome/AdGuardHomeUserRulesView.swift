@@ -136,7 +136,9 @@ struct AdGuardHomeUserRulesView: View {
                 throw APIError.notConfigured
             }
             let updated = rules + [rule]
-            try await client.setUserRules(updated)
+            try await executeControlledAction {
+                try await client.setUserRules(updated)
+            }
             rules = updated
         } catch {
             self.error = error
@@ -149,7 +151,9 @@ struct AdGuardHomeUserRulesView: View {
                 throw APIError.notConfigured
             }
             let updated = rules.filter { $0 != rule }
-            try await client.setUserRules(updated)
+            try await executeControlledAction {
+                try await client.setUserRules(updated)
+            }
             rules = updated
         } catch {
             self.error = error
@@ -171,5 +175,35 @@ struct AdGuardHomeUserRulesView: View {
         }
         return cleaned
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func executeControlledAction(
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: AdGuardControlledConfigurationAction.updateUserRules.request(
+                instanceId: instanceId,
+                targetId: "global",
+                confirmed: true
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .adguardHome).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "adguard-home-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
+        }
     }
 }

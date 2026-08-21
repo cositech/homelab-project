@@ -43,6 +43,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] Portainer container lifecycle and removal
   - [x] Healthchecks check lifecycle, creation, editing and integration channels
   - [x] AdGuard Home protection enable, disable and timed pause
+  - [x] AdGuard Home filter lists, user rules, blocked services and DNS rewrites
   - [x] Pi-hole allow and deny domain list mutations
   - [x] Technitium DNS blocking, blocklist refresh and blocked-domain mutations
   - [x] Linux Update checks, cache refresh, package/system upgrades and reboot actions
