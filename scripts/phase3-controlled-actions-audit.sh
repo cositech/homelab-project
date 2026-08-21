@@ -461,6 +461,39 @@ grep -Fq 'testNpmProxyHostActionsHaveStableRiskClassificationAndIdentity' "$swif
 grep -Fq 'testNpmConfigurationActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'testNpmProxyHostIndeterminateMutationIsNonRetryable' "$swift_tests"
 
+android_crafty_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/CraftyApi.kt"
+android_crafty_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/CraftyRepository.kt"
+android_crafty_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/crafty/CraftyViewModel.kt"
+android_crafty_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/crafty/CraftyDashboardScreen.kt"
+swift_crafty_api="HomelabSwift/Homelab/Networking/Crafty/CraftyAPIClient.swift"
+swift_crafty_ui="HomelabSwift/Homelab/Views/Crafty/CraftyDashboard.swift"
+
+for required_file in "$android_crafty_api" "$android_crafty_models" "$android_crafty_view_model" "$android_crafty_ui" "$swift_crafty_api" "$swift_crafty_ui"; do
+  test -s "$required_file"
+done
+for pattern in 'CraftyServerAction' 'server.executable.update' 'CraftyCommandAction' 'server.command.send' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH' 'controlledRequest'; do
+  grep -Fq "$pattern" "$android_crafty_models"
+done
+! grep -Fq 'parameters = mapOf("command"' "$android_crafty_models"
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_crafty_api")" -eq 2
+for pattern in 'controlledActionCoordinator.execute' 'ActionRole.ADMIN' 'ProviderRegistry.capabilities(ServiceType.CRAFTY_CONTROLLER)' 'confirmed: Boolean' 'CraftyCommandAction.SEND' 'crafty-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_crafty_view_model"
+done
+for pattern in 'pendingAction' 'pendingCommand' 'confirmed = true' 'onSend(pending, true)'; do
+  grep -Fq "$pattern" "$android_crafty_ui"
+done
+for pattern in 'enum CraftyAction' 'server.executable.update' 'enum CraftyCommandAction' 'server.command.send' 'ControlledActionRisk' 'requiresConfirmation' 'CraftyControlledOperationFailure' 'reachableMutationBaseURL'; do
+  grep -Fq "$pattern" "$swift_crafty_api"
+done
+! grep -Fq 'parameters: ["command"' "$swift_crafty_api"
+test "$(grep -Fc 'fallbackURL: ""' "$swift_crafty_api")" -eq 2
+for pattern in 'pendingAction' 'pendingCommand' 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .craftyController).capabilities' 'confirmed: true' 'CraftyCommandAction.send'; do
+  grep -Fq "$pattern" "$swift_crafty_ui"
+done
+grep -Fq 'crafty actions have stable risk identity and no persisted command payload' "$android_tests"
+grep -Fq 'testCraftyActionsHaveStableRiskIdentityAndNoPersistedCommandPayload' "$swift_tests"
+grep -Fq 'testCraftyMutationFailureMappingIsDeterministicAndNonRetryable' "$swift_tests"
+
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
   exit 1
