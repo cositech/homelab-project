@@ -212,7 +212,7 @@ actor PortainerAPIClient {
         let encodedName = newName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? newName
         do {
             try await engine.requestVoid(
-                baseURL: baseURL, fallbackURL: fallbackURL,
+                baseURL: baseURL, fallbackURL: "",
                 path: "/api/endpoints/\(endpointId)/docker/containers/\(containerId)/rename?name=\(encodedName)",
                 method: "POST",
                 headers: authHeaders()
@@ -251,7 +251,7 @@ actor PortainerAPIClient {
         let body = try UpdateBody(stackFileContent: stackFileContent, env: [], prune: false).toJSONData()
         do {
             try await engine.requestVoid(
-                baseURL: baseURL, fallbackURL: fallbackURL,
+                baseURL: baseURL, fallbackURL: "",
                 path: "/api/stacks/\(stackId)?endpointId=\(endpointId)",
                 method: "PUT",
                 headers: authHeaders(),

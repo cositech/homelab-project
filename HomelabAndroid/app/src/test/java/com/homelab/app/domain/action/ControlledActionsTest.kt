@@ -6,6 +6,7 @@ import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckA
 import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
+import com.homelab.app.data.remote.dto.portainer.PortainerControlledConfigurationAction
 import com.homelab.app.data.repository.CalagopusPowerAction
 import com.homelab.app.data.repository.DockhandContainerAction
 import com.homelab.app.data.repository.DockmonControlledAction
@@ -884,6 +885,58 @@ class ControlledActionsTest {
         )
     }
 
+
+    @Test
+    fun `portainer configuration actions require confirmation and have stable identity`() {
+        assertEquals(
+            ActionRisk.MEDIUM,
+            PortainerControlledConfigurationAction.RENAME_CONTAINER.risk
+        )
+        assertEquals(
+            ActionRisk.HIGH,
+            PortainerControlledConfigurationAction.UPDATE_STACK.risk
+        )
+        assertTrue(
+            PortainerControlledConfigurationAction.RENAME_CONTAINER.requiresConfirmation
+        )
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                PortainerControlledConfigurationAction.UPDATE_STACK.risk,
+                completedAttempts = 0
+            )
+        )
+
+        val renameRequest =
+            PortainerControlledConfigurationAction.RENAME_CONTAINER.controlledRequest(
+                instanceId = "instance-1",
+                endpointId = 7,
+                targetId = "container-42",
+                confirmed = true,
+                requestId = "request-portainer-rename",
+                requestedAt = "1970-01-01T00:00:01Z",
+                idempotencyKey = "portainer-rename-key-01"
+            )
+        val stackRequest =
+            PortainerControlledConfigurationAction.UPDATE_STACK.controlledRequest(
+                instanceId = "instance-1",
+                endpointId = 7,
+                targetId = "23",
+                confirmed = true,
+                requestId = "request-portainer-stack",
+                requestedAt = "1970-01-01T00:00:01Z",
+                idempotencyKey = "portainer-stack-key-01"
+            )
+
+        assertEquals("portainer:instance-1", renameRequest.providerRef)
+        assertEquals("container.rename", renameRequest.action)
+        assertEquals("endpoint/7/container/container-42", renameRequest.targetRef)
+        assertEquals("stack.update", stackRequest.action)
+        assertEquals("endpoint/7/stack/23", stackRequest.targetRef)
+        assertTrue(renameRequest.confirmed)
+        assertTrue(stackRequest.confirmed)
+        assertTrue(renameRequest.parameters.isEmpty())
+        assertTrue(stackRequest.parameters.isEmpty())
+    }
 
     @Test
     fun `nginx proxy manager proxy host actions have stable risk classification and identity`() {
