@@ -41,6 +41,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
 - [x] Durable queue recovery and retry policy
 - [ ] Remaining provider actions migrated by risk class
   - [x] Portainer container lifecycle and removal
+  - [x] Portainer container rename and stack Compose updates
   - [x] Healthchecks check lifecycle, creation, editing and integration channels
   - [x] AdGuard Home protection enable, disable and timed pause
   - [x] AdGuard Home filter lists, user rules, blocked services and DNS rewrites

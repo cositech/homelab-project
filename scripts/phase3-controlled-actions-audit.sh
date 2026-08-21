@@ -13,6 +13,8 @@ swift_proxmox="HomelabSwift/Homelab/Views/Proxmox/ProxmoxGuestDetailView.swift"
 android_portainer_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/portainer/PortainerDto.kt"
 android_portainer_list="HomelabAndroid/app/src/main/java/com/homelab/app/ui/portainer/ContainerListViewModel.kt"
 android_portainer_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/portainer/ContainerDetailViewModel.kt"
+android_portainer_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/PortainerApi.kt"
+swift_portainer_api="HomelabSwift/Homelab/Networking/Portainer/PortainerAPIClient.swift"
 swift_portainer_models="HomelabSwift/Homelab/Models/Portainer/PortainerModels.swift"
 swift_portainer_list="HomelabSwift/Homelab/Views/Portainer/ContainerListView.swift"
 swift_portainer_detail="HomelabSwift/Homelab/Views/Portainer/ContainerDetailView.swift"
@@ -51,7 +53,7 @@ swift_technitium_ui="HomelabSwift/Homelab/Views/Technitium/TechnitiumDashboard.s
 swift_technitium_api="HomelabSwift/Homelab/Networking/Technitium/TechnitiumAPIClient.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$android_technitium_models" "$android_technitium_view_model" "$android_technitium_ui" "$android_technitium_api" "$swift_technitium_ui" "$swift_technitium_api" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$android_portainer_api" "$swift_portainer_api" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$android_technitium_models" "$android_technitium_view_model" "$android_technitium_ui" "$android_technitium_api" "$swift_technitium_ui" "$swift_technitium_api" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -108,6 +110,25 @@ for file in "$swift_portainer_list" "$swift_portainer_detail"; do
 done
 grep -Fq 'testPortainerContainerActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
 grep -Fq 'portainer container actions have stable risk classification and identity' "$android_tests"
+for pattern in 'PortainerControlledConfigurationAction' 'container.rename' 'stack.update' 'ActionRisk.MEDIUM' 'ActionRisk.HIGH'; do
+  grep -Fq "$pattern" "$android_portainer_models"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_portainer_api")" -eq 2
+for pattern in 'PortainerControlledConfigurationAction' 'case renameContainer = "container.rename"' 'case updateStack = "stack.update"' 'case .updateStack: return .high'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'pendingConfigurationAction' 'executeControlledConfigurationAction' 'confirmed: true' 'ProviderRegistry.descriptor(for: .portainer).capabilities' 'PortainerControlledOperationFailure.map'; do
+  grep -Fq "$pattern" "$swift_portainer_detail"
+done
+for pattern in 'reachableMutationBaseURL' 'pingURL("\(baseURL)/api/status"' 'pingURL("\(fallbackURL)/api/status"' 'baseURL: mutationBaseURL, fallbackURL: ""'; do
+  grep -Fq "$pattern" "$swift_portainer_api"
+done
+for pattern in 'portainer-outcome-indeterminate' 'portainer-unauthorized' 'portainer-http-' 'portainer-provider-reported-failure' '.nonRetryable'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+test "$(grep -Fc 'fallbackURL: ""' "$swift_portainer_api")" -eq 3
+grep -Fq 'portainer configuration actions require confirmation and have stable identity' "$android_tests"
+grep -Fq 'testPortainerConfigurationActionsRequireConfirmationAndHaveStableIdentity' "$swift_tests"
 
 for pattern in 'protection.enable' 'protection.disable' 'ActionRisk.LOW' 'ActionRisk.MEDIUM' 'controlledRequest'; do
   grep -Fq "$pattern" "$android_adguard_models"

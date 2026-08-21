@@ -1965,6 +1965,60 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
     }
 
+    func testPortainerConfigurationActionsRequireConfirmationAndHaveStableIdentity() {
+        XCTAssertEqual(PortainerControlledConfigurationAction.renameContainer.risk, .medium)
+        XCTAssertEqual(PortainerControlledConfigurationAction.updateStack.risk, .high)
+        XCTAssertTrue(PortainerControlledConfigurationAction.renameContainer.requiresConfirmation)
+        XCTAssertTrue(PortainerControlledConfigurationAction.updateStack.requiresConfirmation)
+
+        let renameRequest = PortainerControlledConfigurationAction.renameContainer.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            endpointId: 7,
+            targetId: "container-42",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        let stackRequest = PortainerControlledConfigurationAction.updateStack.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            endpointId: 7,
+            targetId: "23",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+        )
+
+        XCTAssertEqual(renameRequest.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(renameRequest.action, "container.rename")
+        XCTAssertEqual(renameRequest.targetRef, "endpoint/7/container/container-42")
+        XCTAssertEqual(stackRequest.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(stackRequest.action, "stack.update")
+        XCTAssertEqual(stackRequest.targetRef, "endpoint/7/stack/23")
+        XCTAssertTrue(renameRequest.confirmed)
+        XCTAssertTrue(stackRequest.confirmed)
+        XCTAssertTrue(renameRequest.parameters.isEmpty)
+        XCTAssertTrue(stackRequest.parameters.isEmpty)
+    }
+
+    func testPortainerControlledOperationFailurePreservesDeterministicReasonCodes() {
+        let unauthorized = PortainerControlledOperationFailure.map(APIError.unauthorized)
+        let conflict = PortainerControlledOperationFailure.map(
+            APIError.httpError(statusCode: 409, body: "conflict")
+        )
+        let transport = PortainerControlledOperationFailure.map(
+            URLError(.networkConnectionLost)
+        )
+
+        XCTAssertEqual(unauthorized.reasonCode, "portainer-unauthorized")
+        XCTAssertEqual(unauthorized.disposition, .nonRetryable)
+        XCTAssertEqual(conflict.reasonCode, "portainer-http-409")
+        XCTAssertEqual(conflict.disposition, .nonRetryable)
+        XCTAssertEqual(transport.reasonCode, "portainer-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+    }
+
     func testDockhandLifecycleActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(DockhandControlledAction.containerStart.risk, .low)
         XCTAssertEqual(DockhandControlledAction.containerStop.risk, .medium)
