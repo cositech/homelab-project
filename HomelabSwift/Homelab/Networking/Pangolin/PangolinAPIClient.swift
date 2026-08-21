@@ -281,6 +281,90 @@ struct PangolinSnapshot: Sendable {
     let userDevices: [PangolinUserDevice]
     let domains: [PangolinDomain]
 }
+enum PangolinControlledAction: String, CaseIterable, Equatable, Sendable {
+    case publicResourceCreate = "public-resource.create"
+    case publicResourceUpdate = "public-resource.update"
+    case publicResourceEnable = "public-resource.enable"
+    case publicResourceDisable = "public-resource.disable"
+    case privateResourceCreate = "private-resource.create"
+    case privateResourceUpdate = "private-resource.update"
+    case privateResourceEnable = "private-resource.enable"
+    case privateResourceDisable = "private-resource.disable"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .publicResourceEnable, .privateResourceEnable:
+            return .low
+        case .publicResourceDisable, .privateResourceDisable:
+            return .medium
+        case .publicResourceCreate, .publicResourceUpdate, .privateResourceCreate, .privateResourceUpdate:
+            return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "pangolin:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+enum PangolinControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return failure("pangolin-outcome-indeterminate")
+        }
+        guard let apiError = error as? APIError else {
+            return failure("pangolin-provider-error")
+        }
+
+        switch apiError {
+        case .networkError, .bothURLsFailed:
+            return failure("pangolin-outcome-indeterminate")
+        case .unauthorized:
+            return failure("pangolin-invalid-credentials")
+        case .httpError(let statusCode, _):
+            return failure("pangolin-http-\(statusCode)")
+        case .notConfigured:
+            return failure("pangolin-not-configured")
+        case .invalidURL:
+            return failure("pangolin-invalid-url")
+        case .decodingError:
+            return failure("pangolin-response-decode-failure")
+        case .requestConfigurationRequired:
+            return failure("pangolin-configuration-required")
+        case .custom:
+            return failure("pangolin-provider-reported-failure")
+        }
+    }
+
+    private static func failure(_ reasonCode: String) -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: reasonCode,
+            disposition: .nonRetryable
+        )
+    }
+}
+
+
 
 actor PangolinAPIClient {
     private static let dashboardResourceLimit = 8
@@ -813,7 +897,7 @@ actor PangolinAPIClient {
     ) async throws -> T {
         try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: method == "GET" ? fallbackURL : "",
             path: path,
             method: method,
             headers: authHeaders().merging(headers) { _, new in new },
