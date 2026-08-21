@@ -494,6 +494,26 @@ grep -Fq 'crafty actions have stable risk identity and no persisted command payl
 grep -Fq 'testCraftyActionsHaveStableRiskIdentityAndNoPersistedCommandPayload' "$swift_tests"
 grep -Fq 'testCraftyMutationFailureMappingIsDeterministicAndNonRetryable' "$swift_tests"
 
+android_pangolin_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/PangolinApi.kt"
+android_pangolin_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/PangolinRepository.kt"
+android_pangolin_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pangolin/PangolinViewModel.kt"
+android_pangolin_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pangolin/PangolinDashboardScreen.kt"
+swift_pangolin_api="HomelabSwift/Homelab/Networking/Pangolin/PangolinAPIClient.swift"
+swift_pangolin_ui="HomelabSwift/Homelab/Views/Pangolin/PangolinDashboard.swift"
+
+for required_file in "$android_pangolin_api" "$android_pangolin_models" "$android_pangolin_view_model" "$android_pangolin_ui" "$swift_pangolin_api" "$swift_pangolin_ui"; do
+  test -s "$required_file"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_pangolin_api")" -eq 7
+grep -A4 -F 'suspend fun deleteResource(' "$android_pangolin_api" | grep -Fq '@Header("X-Homelab-Instance-Id") instanceId: String,'
+for pattern in 'PangolinControlledAction' 'public-resource.create' 'private-resource.disable' 'controlledRequest'; do grep -Fq "$pattern" "$android_pangolin_models"; done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.PANGOLIN)' 'confirmed: Boolean' 'pangolin-outcome-indeterminate'; do grep -Fq "$pattern" "$android_pangolin_view_model"; done
+for pattern in 'pendingDisablePublicResource' 'confirmed = true'; do grep -Fq "$pattern" "$android_pangolin_ui"; done
+for pattern in 'PangolinControlledAction' 'public-resource.create' 'private-resource.disable' 'PangolinControlledOperationFailure' 'method == "GET" ? fallbackURL : ""'; do grep -Fq "$pattern" "$swift_pangolin_api"; done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .pangolin).capabilities' 'pendingDisablePublicResource' 'confirmed: true'; do grep -Fq "$pattern" "$swift_pangolin_ui"; done
+grep -Fq 'pangolin actions have stable risk identity and no payload persistence' "$android_tests"
+grep -Fq 'testPangolinActionsHaveStableRiskIdentityAndNoPayloadPersistence' "$swift_tests"
+
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
   exit 1

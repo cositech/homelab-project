@@ -2475,6 +2475,36 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(providerFailure.reasonCode, "crafty-provider-reported-failure")
         XCTAssertEqual(providerFailure.disposition, .nonRetryable)
     }
+    func testPangolinActionsHaveStableRiskIdentityAndNoPayloadPersistence() {
+        XCTAssertEqual(PangolinControlledAction.publicResourceCreate.risk, .high)
+        XCTAssertEqual(PangolinControlledAction.privateResourceUpdate.risk, .high)
+        XCTAssertEqual(PangolinControlledAction.publicResourceEnable.risk, .low)
+        XCTAssertEqual(PangolinControlledAction.publicResourceDisable.risk, .medium)
+        XCTAssertFalse(PangolinControlledAction.publicResourceEnable.requiresConfirmation)
+        XCTAssertTrue(PangolinControlledAction.publicResourceDisable.requiresConfirmation)
+
+        let request = PangolinControlledAction.publicResourceUpdate.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: " PUBLIC-RESOURCE/42 ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "pangolin:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "public-resource.update")
+        XCTAssertEqual(request.targetRef, "public-resource/42")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(request.parameters.isEmpty)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .pangolin).capabilities.contains(.writeActions)
+        )
+
+        let transport = PangolinControlledOperationFailure.map(APIError.networkError(URLError(.timedOut)))
+        XCTAssertEqual(transport.reasonCode, "pangolin-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+    }
 }
 
 private actor ActionInvocationCounter {

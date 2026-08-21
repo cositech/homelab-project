@@ -15,6 +15,7 @@ import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.NpmProxyHostControlledAction
 import com.homelab.app.data.repository.NpmConfigurationControlledAction
+import com.homelab.app.data.repository.PangolinControlledAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
@@ -1080,6 +1081,33 @@ class ControlledActionsTest {
         assertTrue(
             ProviderCapability.WRITE_ACTIONS in
                 ProviderRegistry.capabilities(ServiceType.CRAFTY_CONTROLLER)
+        )
+    }
+    @Test
+    fun `pangolin actions have stable risk identity and no payload persistence`() {
+        assertEquals(ActionRisk.HIGH, PangolinControlledAction.PUBLIC_RESOURCE_CREATE.risk)
+        assertEquals(ActionRisk.HIGH, PangolinControlledAction.PRIVATE_RESOURCE_UPDATE.risk)
+        assertEquals(ActionRisk.LOW, PangolinControlledAction.PUBLIC_RESOURCE_ENABLE.risk)
+        assertEquals(ActionRisk.MEDIUM, PangolinControlledAction.PUBLIC_RESOURCE_DISABLE.risk)
+        assertFalse(PangolinControlledAction.PUBLIC_RESOURCE_ENABLE.requiresConfirmation)
+        assertTrue(PangolinControlledAction.PUBLIC_RESOURCE_DISABLE.requiresConfirmation)
+
+        val request = PangolinControlledAction.PUBLIC_RESOURCE_UPDATE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetRef = " PUBLIC-RESOURCE/42 ",
+            confirmed = true,
+            requestId = "request-pangolin-update",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "pangolin-update-key-01"
+        )
+
+        assertEquals("pangolin:instance-a", request.providerRef)
+        assertEquals("public-resource.update", request.action)
+        assertEquals("public-resource/42", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(request.parameters.isEmpty())
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PANGOLIN)
         )
     }
 }

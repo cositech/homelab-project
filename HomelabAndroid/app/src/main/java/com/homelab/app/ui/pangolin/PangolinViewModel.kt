@@ -14,6 +14,15 @@ import com.homelab.app.data.remote.dto.pangolin.PangolinSiteResource
 import com.homelab.app.data.remote.dto.pangolin.PangolinTarget
 import com.homelab.app.data.remote.dto.pangolin.PangolinUserDevice
 import com.homelab.app.data.repository.PangolinRepository
+import com.homelab.app.data.repository.PangolinControlledAction
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
+import java.io.IOException
+import retrofit2.HttpException
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.ErrorHandler
@@ -129,6 +138,7 @@ sealed interface PangolinUiState {
 @HiltViewModel
 class PangolinViewModel @Inject constructor(
     private val repository: PangolinRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     private val servicesRepository: ServicesRepository,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
@@ -206,6 +216,11 @@ class PangolinViewModel @Inject constructor(
     }
 
     suspend fun savePublicResource(input: PangolinPublicResourceUpdateInput): Result<Unit> = runCatching {
+        executeControlledAction(
+            action = PangolinControlledAction.PUBLIC_RESOURCE_UPDATE,
+            targetRef = "public-resource/${input.resourceId}",
+            confirmed = true
+        ) {
         repository.updateResource(
             instanceId = instanceId,
             resourceId = input.resourceId,
@@ -228,14 +243,21 @@ class PangolinViewModel @Inject constructor(
                 enabled = input.targetEnabled
             )
         }
+        }
 
         refresh(showLoading = false)
     }.mapError()
 
     suspend fun createPublicResource(input: PangolinPublicResourceCreateInput): Result<Unit> = runCatching {
+        val orgId = requireSelectedOrgId()
+        executeControlledAction(
+            action = PangolinControlledAction.PUBLIC_RESOURCE_CREATE,
+            targetRef = "org/$orgId/public-resource/new",
+            confirmed = true
+        ) {
         val resource = repository.createResource(
             instanceId = instanceId,
-            orgId = requireSelectedOrgId(),
+            orgId = orgId,
             name = input.name.trim(),
             protocol = input.protocol,
             enabled = input.enabled,
@@ -255,16 +277,24 @@ class PangolinViewModel @Inject constructor(
                 method = input.targetMethod?.trim()?.takeIf { it.isNotBlank() }
             )
         } catch (error: Exception) {
-            runCatching {
-                repository.deleteResource(instanceId = instanceId, resourceId = resource.resourceId)
+            if (error !is IOException) {
+                runCatching {
+                    repository.deleteResource(instanceId = instanceId, resourceId = resource.resourceId)
+                }
             }
             throw error
+        }
         }
 
         refresh(showLoading = false)
     }.mapError()
 
     suspend fun savePrivateResource(input: PangolinPrivateResourceUpdateInput): Result<Unit> = runCatching {
+        executeControlledAction(
+            action = PangolinControlledAction.PRIVATE_RESOURCE_UPDATE,
+            targetRef = "private-resource/${input.siteResourceId}",
+            confirmed = true
+        ) {
         val bindings = repository.getSiteResourceBindings(instanceId = instanceId, siteResourceId = input.siteResourceId)
         repository.updateSiteResource(
             instanceId = instanceId,
@@ -282,14 +312,21 @@ class PangolinViewModel @Inject constructor(
             authDaemonPort = input.authDaemonPort.trim().toIntOrNull(),
             authDaemonMode = input.authDaemonMode
         )
+        }
 
         refresh(showLoading = false)
     }.mapError()
 
     suspend fun createPrivateResource(input: PangolinPrivateResourceCreateInput): Result<Unit> = runCatching {
+        val orgId = requireSelectedOrgId()
+        executeControlledAction(
+            action = PangolinControlledAction.PRIVATE_RESOURCE_CREATE,
+            targetRef = "org/$orgId/private-resource/new",
+            confirmed = true
+        ) {
         repository.createSiteResource(
             instanceId = instanceId,
-            orgId = requireSelectedOrgId(),
+            orgId = orgId,
             name = input.name.trim(),
             siteId = input.siteId,
             mode = input.mode,
@@ -302,12 +339,19 @@ class PangolinViewModel @Inject constructor(
             authDaemonPort = input.authDaemonPort.trim().toIntOrNull(),
             authDaemonMode = input.authDaemonMode
         )
+        }
 
         refresh(showLoading = false)
     }.mapError()
 
-    suspend fun togglePublicResource(resource: PangolinResource): Result<Boolean> = runCatching {
+    suspend fun togglePublicResource(resource: PangolinResource, confirmed: Boolean = false): Result<Boolean> = runCatching {
         val newEnabled = !resource.enabled
+        val action = if (newEnabled) PangolinControlledAction.PUBLIC_RESOURCE_ENABLE else PangolinControlledAction.PUBLIC_RESOURCE_DISABLE
+        executeControlledAction(
+            action = action,
+            targetRef = "public-resource/${resource.resourceId}",
+            confirmed = confirmed
+        ) {
         repository.updateResource(
             instanceId = instanceId,
             resourceId = resource.resourceId,
@@ -316,13 +360,20 @@ class PangolinViewModel @Inject constructor(
             sso = resource.sso,
             ssl = resource.ssl
         )
+        }
 
         refresh(showLoading = false)
         newEnabled
     }.mapErrorValue()
 
-    suspend fun togglePrivateResource(resource: PangolinSiteResource): Result<Boolean> = runCatching {
+    suspend fun togglePrivateResource(resource: PangolinSiteResource, confirmed: Boolean = false): Result<Boolean> = runCatching {
         val newEnabled = !resource.enabled
+        val action = if (newEnabled) PangolinControlledAction.PRIVATE_RESOURCE_ENABLE else PangolinControlledAction.PRIVATE_RESOURCE_DISABLE
+        executeControlledAction(
+            action = action,
+            targetRef = "private-resource/${resource.siteResourceId}",
+            confirmed = confirmed
+        ) {
         val bindings = repository.getSiteResourceBindings(instanceId = instanceId, siteResourceId = resource.siteResourceId)
         repository.updateSiteResource(
             instanceId = instanceId,
@@ -340,6 +391,7 @@ class PangolinViewModel @Inject constructor(
             authDaemonPort = resource.authDaemonPort,
             authDaemonMode = resource.authDaemonMode
         )
+        }
 
         refresh(showLoading = false)
         newEnabled
@@ -426,6 +478,49 @@ class PangolinViewModel @Inject constructor(
                 previousData.targetsByResourceId[resource.resourceId]?.let { mergedTargets[resource.resourceId] = it }
             }
         return mergedTargets
+    }
+
+    private suspend fun executeControlledAction(
+        action: PangolinControlledAction,
+        targetRef: String,
+        confirmed: Boolean,
+        operation: suspend () -> Unit
+    ) {
+        val audit = controlledActionCoordinator.execute(
+            request = action.controlledRequest(instanceId, targetRef, confirmed),
+            actorRole = ActionRole.ADMIN,
+            providerCapabilities = ProviderRegistry.capabilities(ServiceType.PANGOLIN)
+        ) {
+            try {
+                operation()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ActionOperationException) {
+                throw error
+            } catch (error: Exception) {
+                throw controlledFailure(error)
+            }
+        }
+        if (audit.state != ActionExecutionState.SUCCEEDED) {
+            throw IllegalStateException(audit.reasonCode)
+        }
+    }
+
+    private fun controlledFailure(error: Exception): ActionOperationException {
+        val reasonCode = when (error) {
+            is IOException -> "pangolin-outcome-indeterminate"
+            is HttpException -> when (error.code()) {
+                401, 403 -> "pangolin-invalid-credentials"
+                else -> "pangolin-http-${error.code()}"
+            }
+            is IllegalStateException -> "pangolin-provider-reported-failure"
+            else -> "pangolin-provider-error"
+        }
+        return ActionOperationException(
+            reasonCode = reasonCode,
+            disposition = ActionFailureDisposition.NON_RETRYABLE,
+            cause = error
+        )
     }
 
     private fun requireSelectedOrgId(): String {

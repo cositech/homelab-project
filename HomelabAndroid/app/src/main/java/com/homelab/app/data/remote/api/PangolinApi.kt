@@ -126,6 +126,7 @@ interface PangolinApi {
         @Path("orgId") orgId: String,
         @Header("X-Homelab-Service") service: String = "Pangolin",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Body body: JsonObject
     ): PangolinEnvelope<PangolinSiteResource>
 
@@ -134,6 +135,7 @@ interface PangolinApi {
         @Path("resourceId") resourceId: Int,
         @Header("X-Homelab-Service") service: String = "Pangolin",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Body body: JsonObject
     ): PangolinEnvelope<PangolinResource>
 
@@ -142,6 +144,7 @@ interface PangolinApi {
         @Path("orgId") orgId: String,
         @Header("X-Homelab-Service") service: String = "Pangolin",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Body body: JsonObject
     ): PangolinEnvelope<PangolinResource>
 
@@ -150,6 +153,7 @@ interface PangolinApi {
         @Path("targetId") targetId: Int,
         @Header("X-Homelab-Service") service: String = "Pangolin",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Body body: JsonObject
     ): PangolinEnvelope<PangolinTarget>
 
@@ -158,6 +162,7 @@ interface PangolinApi {
         @Path("resourceId") resourceId: Int,
         @Header("X-Homelab-Service") service: String = "Pangolin",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Body body: JsonObject
     ): PangolinEnvelope<PangolinTarget>
 
@@ -166,6 +171,7 @@ interface PangolinApi {
         @Path("siteResourceId") siteResourceId: Int,
         @Header("X-Homelab-Service") service: String = "Pangolin",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Body body: JsonObject
     ): PangolinEnvelope<PangolinSiteResource>
 
@@ -173,6 +179,7 @@ interface PangolinApi {
     suspend fun deleteResource(
         @Path("resourceId") resourceId: Int,
         @Header("X-Homelab-Service") service: String = "Pangolin",
-        @Header("X-Homelab-Instance-Id") instanceId: String
+        @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
     ): PangolinEnvelope<JsonObject?>
 }
