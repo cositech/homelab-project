@@ -1,5 +1,6 @@
 package com.homelab.app.domain.action
 
+import com.homelab.app.data.remote.dto.adguard.AdGuardControlledConfigurationAction
 import com.homelab.app.data.remote.dto.adguard.AdGuardControlledProtectionAction
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckAction
 import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
@@ -798,6 +799,39 @@ class ControlledActionsTest {
             ProviderCapability.WRITE_ACTIONS in
                 ProviderRegistry.capabilities(ServiceType.ADGUARD_HOME)
         )
+    }
+
+    @Test
+    fun `adguard configuration actions are high risk and have stable identity`() {
+        assertTrue(
+            AdGuardControlledConfigurationAction.entries
+                .filterNot { it == AdGuardControlledConfigurationAction.UPDATE_REWRITE_SETTINGS }
+                .all { it.risk == ActionRisk.HIGH }
+        )
+        assertEquals(
+            ActionRisk.MEDIUM,
+            AdGuardControlledConfigurationAction.UPDATE_REWRITE_SETTINGS.risk
+        )
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                AdGuardControlledConfigurationAction.CREATE_REWRITE.risk,
+                completedAttempts = 0
+            )
+        )
+
+        val request = AdGuardControlledConfigurationAction.UPDATE_FILTER.controlledRequest(
+            instanceId = "instance-1",
+            targetId = "42",
+            confirmed = true,
+            requestId = "request-adguard-config",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("adguard-home:instance-1", request.providerRef)
+        assertEquals("filter-list.update", request.action)
+        assertEquals("filter-list/42", request.targetRef)
+        assertTrue(request.confirmed)
     }
 
     @Test

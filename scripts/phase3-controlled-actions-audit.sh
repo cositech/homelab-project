@@ -18,7 +18,14 @@ swift_portainer_list="HomelabSwift/Homelab/Views/Portainer/ContainerListView.swi
 swift_portainer_detail="HomelabSwift/Homelab/Views/Portainer/ContainerDetailView.swift"
 android_adguard_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/adguard/AdGuardDto.kt"
 android_adguard_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/adguard/AdGuardHomeViewModel.kt"
+android_adguard_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/AdGuardHomeApi.kt"
+swift_adguard_api="HomelabSwift/Homelab/Networking/AdGuardHome/AdGuardHomeAPIClient.swift"
 swift_adguard_dashboard="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeDashboard.swift"
+swift_adguard_filters="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeFiltersView.swift"
+swift_adguard_rewrites="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeRewritesView.swift"
+swift_adguard_blocked_services="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeBlockedServicesView.swift"
+swift_adguard_user_rules="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeUserRulesView.swift"
+swift_adguard_query_log="HomelabSwift/Homelab/Views/AdGuardHome/AdGuardHomeQueryLogView.swift"
 android_pihole_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/pihole/PiholeDomainDto.kt"
 android_pihole_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pihole/PiholeViewModel.kt"
 android_pihole_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pihole/PiholeDomainListScreen.kt"
@@ -116,6 +123,20 @@ for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descripto
 done
 grep -Fq 'adguard protection actions have stable risk classification and identity' "$android_tests"
 grep -Fq 'testAdGuardProtectionActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+for pattern in 'AdGuardControlledConfigurationAction' 'filter-list.update' 'blocked-services.update' 'rewrite.create' 'ActionRisk.HIGH'; do
+  grep -Fq "$pattern" "$android_adguard_models"
+done
+for pattern in 'UPDATE_USER_RULES' 'UPDATE_FILTER' 'UPDATE_BLOCKED_SERVICES' 'CREATE_REWRITE' 'executeControlledConfigurationAction'; do
+  grep -Fq "$pattern" "$android_adguard_view_model"
+done
+for file in "$swift_adguard_filters" "$swift_adguard_rewrites" "$swift_adguard_blocked_services" "$swift_adguard_user_rules" "$swift_adguard_query_log"; do
+  grep -Fq 'controlledActionCoordinator.execute' "$file"
+  grep -Fq 'ProviderRegistry.descriptor(for: .adguardHome).capabilities' "$file"
+done
+grep -Fq 'adguard configuration actions are high risk and have stable identity' "$android_tests"
+grep -Fq 'testAdGuardConfigurationActionsAreHighRiskAndHaveStableIdentity' "$swift_tests"
+test "$(grep -Fc 'X-Homelab-No-Fallback' "$android_adguard_api")" -eq 10
+test "$(grep -Fc 'fallbackURL: ""' "$swift_adguard_api")" -eq 9
 
 for pattern in 'domain.add' 'domain.remove' 'ActionRisk.HIGH' 'ActionRisk.MEDIUM' 'controlledRequest'; do
   grep -Fq "$pattern" "$android_pihole_models"

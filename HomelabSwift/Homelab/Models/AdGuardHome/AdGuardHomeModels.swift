@@ -62,13 +62,13 @@ struct AdGuardQueryLogEntry: Identifiable, Hashable {
     }
 }
 
-struct AdGuardFilteringStatus {
+struct AdGuardFilteringStatus: Sendable {
     let userRules: [String]
     let filters: [AdGuardFilter]
     let whitelistFilters: [AdGuardFilter]
 }
 
-struct AdGuardFilter: Identifiable, Hashable {
+struct AdGuardFilter: Identifiable, Hashable, Sendable {
     let id: Int
     let name: String
     let url: String
@@ -77,7 +77,7 @@ struct AdGuardFilter: Identifiable, Hashable {
     let lastUpdated: String?
 }
 
-struct AdGuardBlockedService: Identifiable, Hashable {
+struct AdGuardBlockedService: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let rules: [String]
@@ -85,22 +85,22 @@ struct AdGuardBlockedService: Identifiable, Hashable {
     let iconSvg: String?
 }
 
-struct AdGuardServiceGroup: Identifiable, Hashable {
+struct AdGuardServiceGroup: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
 }
 
-struct AdGuardBlockedServicesAll {
+struct AdGuardBlockedServicesAll: Sendable {
     let services: [AdGuardBlockedService]
     let groups: [AdGuardServiceGroup]
 }
 
-struct AdGuardBlockedServicesSchedule {
+struct AdGuardBlockedServicesSchedule: Sendable {
     let ids: [String]
     let schedule: [String: AdGuardJSONValue]?
 }
 
-struct AdGuardRewriteEntry: Codable, Identifiable, Hashable {
+struct AdGuardRewriteEntry: Codable, Identifiable, Hashable, Sendable {
     let domain: String
     let answer: String
     let enabled: Bool?
