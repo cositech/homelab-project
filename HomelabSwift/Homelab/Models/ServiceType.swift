@@ -773,7 +773,13 @@ enum PortainerControlledConfigurationAction: String, CaseIterable, Equatable, Se
         requestedAt: Date = Date(),
         idempotencyKey: UUID = UUID()
     ) -> ControlledActionRequest {
-        let targetKind = self == .renameContainer ? "container" : "stack"
+        let targetKind: String
+        switch self {
+        case .renameContainer:
+            targetKind = "container"
+        case .updateStack:
+            targetKind = "stack"
+        }
         return ControlledActionRequest(
             id: requestId.uuidString,
             providerRef: "portainer:\(instanceId.uuidString.lowercased())",
@@ -1463,6 +1469,73 @@ enum ActionFailureDisposition: String, Codable, Equatable, Sendable {
 struct ControlledActionOperationError: Error, Sendable {
     let reasonCode: String
     let disposition: ActionFailureDisposition
+}
+
+enum PortainerControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return indeterminateOutcome()
+        }
+        guard let apiError = error as? APIError else {
+            return providerReportedFailure()
+        }
+
+        switch apiError {
+        case .networkError:
+            return indeterminateOutcome()
+        case .bothURLsFailed:
+            return indeterminateOutcome()
+        case .unauthorized:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-unauthorized",
+                disposition: .nonRetryable
+            )
+        case .httpError(let statusCode, _):
+            return ControlledActionOperationError(
+                reasonCode: "portainer-http-\(statusCode)",
+                disposition: .nonRetryable
+            )
+        case .notConfigured:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-not-configured",
+                disposition: .nonRetryable
+            )
+        case .invalidURL:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-invalid-url",
+                disposition: .nonRetryable
+            )
+        case .decodingError:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-response-decode-failure",
+                disposition: .nonRetryable
+            )
+        case .requestConfigurationRequired:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-configuration-required",
+                disposition: .nonRetryable
+            )
+        case .custom:
+            return providerReportedFailure()
+        }
+    }
+
+    private static func indeterminateOutcome() -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: "portainer-outcome-indeterminate",
+            disposition: .nonRetryable
+        )
+    }
+
+    private static func providerReportedFailure() -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: "portainer-provider-reported-failure",
+            disposition: .nonRetryable
+        )
+    }
 }
 
 actor ControlledActionLedger {

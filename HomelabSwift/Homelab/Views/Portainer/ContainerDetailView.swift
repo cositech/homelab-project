@@ -886,10 +886,7 @@ struct ContainerDetailView: View {
             } catch let error as ControlledActionOperationError {
                 throw error
             } catch {
-                throw ControlledActionOperationError(
-                    reasonCode: "portainer-outcome-indeterminate",
-                    disposition: .nonRetryable
-                )
+                throw PortainerControlledOperationFailure.map(error)
             }
         }
         guard audit.state == .succeeded else {

@@ -899,6 +899,9 @@ class ControlledActionsTest {
         assertTrue(
             PortainerControlledConfigurationAction.RENAME_CONTAINER.requiresConfirmation
         )
+        assertTrue(
+            PortainerControlledConfigurationAction.UPDATE_STACK.requiresConfirmation
+        )
         assertFalse(
             ActionRetryPolicy().permitsAutomaticRetry(
                 PortainerControlledConfigurationAction.UPDATE_STACK.risk,
@@ -930,6 +933,7 @@ class ControlledActionsTest {
         assertEquals("portainer:instance-1", renameRequest.providerRef)
         assertEquals("container.rename", renameRequest.action)
         assertEquals("endpoint/7/container/container-42", renameRequest.targetRef)
+        assertEquals("portainer:instance-1", stackRequest.providerRef)
         assertEquals("stack.update", stackRequest.action)
         assertEquals("endpoint/7/stack/23", stackRequest.targetRef)
         assertTrue(renameRequest.confirmed)

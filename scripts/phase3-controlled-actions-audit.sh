@@ -117,8 +117,14 @@ test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_portainer_api")" -
 for pattern in 'PortainerControlledConfigurationAction' 'case renameContainer = "container.rename"' 'case updateStack = "stack.update"' 'case .updateStack: return .high'; do
   grep -Fq "$pattern" "$swift_core"
 done
-for pattern in 'pendingConfigurationAction' 'executeControlledConfigurationAction' 'confirmed: true' 'ProviderRegistry.descriptor(for: .portainer).capabilities' 'portainer-outcome-indeterminate' '.nonRetryable'; do
+for pattern in 'pendingConfigurationAction' 'executeControlledConfigurationAction' 'confirmed: true' 'ProviderRegistry.descriptor(for: .portainer).capabilities' 'PortainerControlledOperationFailure.map'; do
   grep -Fq "$pattern" "$swift_portainer_detail"
+done
+for pattern in 'reachableMutationBaseURL' 'pingURL("\(baseURL)/api/status"' 'pingURL("\(fallbackURL)/api/status"' 'baseURL: mutationBaseURL, fallbackURL: ""'; do
+  grep -Fq "$pattern" "$swift_portainer_api"
+done
+for pattern in 'portainer-outcome-indeterminate' 'portainer-unauthorized' 'portainer-http-' 'portainer-provider-reported-failure' '.nonRetryable'; do
+  grep -Fq "$pattern" "$swift_core"
 done
 test "$(grep -Fc 'fallbackURL: ""' "$swift_portainer_api")" -eq 3
 grep -Fq 'portainer configuration actions require confirmation and have stable identity' "$android_tests"

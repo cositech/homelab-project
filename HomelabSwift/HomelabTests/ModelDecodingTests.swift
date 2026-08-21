@@ -1990,14 +1990,33 @@ final class ModelDecodingTests: XCTestCase {
             idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
         )
 
+        XCTAssertEqual(renameRequest.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
         XCTAssertEqual(renameRequest.action, "container.rename")
         XCTAssertEqual(renameRequest.targetRef, "endpoint/7/container/container-42")
+        XCTAssertEqual(stackRequest.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
         XCTAssertEqual(stackRequest.action, "stack.update")
         XCTAssertEqual(stackRequest.targetRef, "endpoint/7/stack/23")
         XCTAssertTrue(renameRequest.confirmed)
         XCTAssertTrue(stackRequest.confirmed)
         XCTAssertTrue(renameRequest.parameters.isEmpty)
         XCTAssertTrue(stackRequest.parameters.isEmpty)
+    }
+
+    func testPortainerControlledOperationFailurePreservesDeterministicReasonCodes() {
+        let unauthorized = PortainerControlledOperationFailure.map(APIError.unauthorized)
+        let conflict = PortainerControlledOperationFailure.map(
+            APIError.httpError(statusCode: 409, body: "conflict")
+        )
+        let transport = PortainerControlledOperationFailure.map(
+            URLError(.networkConnectionLost)
+        )
+
+        XCTAssertEqual(unauthorized.reasonCode, "portainer-unauthorized")
+        XCTAssertEqual(unauthorized.disposition, .nonRetryable)
+        XCTAssertEqual(conflict.reasonCode, "portainer-http-409")
+        XCTAssertEqual(conflict.disposition, .nonRetryable)
+        XCTAssertEqual(transport.reasonCode, "portainer-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
     }
 
     func testDockhandLifecycleActionsHaveStableRiskClassificationAndIdentity() {
