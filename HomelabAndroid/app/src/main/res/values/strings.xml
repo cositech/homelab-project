@@ -1384,6 +1384,7 @@
     <string name="media_action_qb_reannounce_torrent">Reannounce torrent</string>
     <string name="media_action_qb_delete_torrent">Delete torrent</string>
     <string name="media_action_qb_delete_torrent_with_data">Delete torrent + data</string>
+    <string name="media_action_qb_confirm_all">Apply to all torrents</string>
     <string name="media_action_radarr_search_missing">Search missing movies</string>
     <string name="media_action_radarr_rss">Run RSS sync</string>
     <string name="media_action_radarr_refresh">Refresh movie index</string>

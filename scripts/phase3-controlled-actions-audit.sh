@@ -514,6 +514,24 @@ for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descripto
 grep -Fq 'pangolin actions have stable risk identity and no payload persistence' "$android_tests"
 grep -Fq 'testPangolinActionsHaveStableRiskIdentityAndNoPayloadPersistence' "$swift_tests"
 
+android_qbittorrent_repo="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/MediaArrRepository.kt"
+android_qbittorrent_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/media/MediaServiceDashboardViewModel.kt"
+android_qbittorrent_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/media/MediaArrScreen.kt"
+swift_qbittorrent_api="HomelabSwift/Homelab/Networking/Qbittorrent/QbittorrentAPIClient.swift"
+swift_qbittorrent_ui="HomelabSwift/Homelab/Views/Qbittorrent/QbittorrentDashboard.swift"
+
+for required_file in "$android_qbittorrent_repo" "$android_qbittorrent_view_model" "$android_qbittorrent_ui" "$swift_qbittorrent_api" "$swift_qbittorrent_ui"; do
+  test -s "$required_file"
+done
+for pattern in 'enum class QbittorrentControlledAction' 'torrent.delete-with-data' 'transfer.pause-all' 'controlledRequest' 'X-Homelab-No-Fallback'; do grep -Fq "$pattern" "$android_qbittorrent_repo"; done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.QBITTORRENT)' 'confirmed: Boolean' 'qbittorrent-outcome-indeterminate'; do grep -Fq "$pattern" "$android_qbittorrent_view_model"; done
+for pattern in 'pendingQbConfirmation' 'confirmed = true'; do grep -Fq "$pattern" "$android_qbittorrent_ui"; done
+for pattern in 'enum QbittorrentControlledAction' 'torrent.delete-with-data' 'transfer.pause-all' 'QbittorrentControlledOperationFailure' 'ControlledActionRisk'; do grep -Fq "$pattern" "$swift_qbittorrent_api"; done
+test "$(grep -Fc 'fallbackURL: ""' "$swift_qbittorrent_api")" -eq 8
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .qbittorrent).capabilities' 'pendingConfirmation' 'confirmed: action.requiresConfirmation'; do grep -Fq "$pattern" "$swift_qbittorrent_ui"; done
+grep -Fq 'qbittorrent actions have stable risk identity and no payload persistence' "$android_tests"
+grep -Fq 'testQbittorrentActionsHaveStableRiskIdentityAndNoPayloadPersistence' "$swift_tests"
+
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
   exit 1
