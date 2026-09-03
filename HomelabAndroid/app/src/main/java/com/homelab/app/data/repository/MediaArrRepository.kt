@@ -2,12 +2,16 @@ package com.homelab.app.data.repository
 
 import android.net.Uri
 import com.homelab.app.data.remote.TlsClientSelector
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.ServiceType
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +78,65 @@ data class MediaArrActionResult(
     val action: MediaArrAction,
     val detail: String? = null
 )
+
+/**
+ * Controlled-action identity for qBittorrent mutations. Torrent resume and reannounce are low risk;
+ * pause, recheck and the alternative-speed toggle are medium risk; removing a torrent (with or
+ * without its data) is high risk. Names use bounded normalized identifiers and never carry payloads.
+ */
+enum class QbittorrentControlledAction(
+    val actionName: String,
+    val risk: ActionRisk
+) {
+    TORRENT_RESUME("torrent.resume", ActionRisk.LOW),
+    TORRENT_PAUSE("torrent.pause", ActionRisk.MEDIUM),
+    TORRENT_RECHECK("torrent.recheck", ActionRisk.MEDIUM),
+    TORRENT_REANNOUNCE("torrent.reannounce", ActionRisk.LOW),
+    TORRENT_DELETE("torrent.delete", ActionRisk.HIGH),
+    TORRENT_DELETE_WITH_DATA("torrent.delete-with-data", ActionRisk.HIGH),
+    TRANSFER_RESUME_ALL("transfer.resume-all", ActionRisk.LOW),
+    TRANSFER_PAUSE_ALL("transfer.pause-all", ActionRisk.MEDIUM),
+    TRANSFER_RECHECK_ALL("transfer.recheck-all", ActionRisk.MEDIUM),
+    TRANSFER_REANNOUNCE_ALL("transfer.reannounce-all", ActionRisk.LOW),
+    TRANSFER_TOGGLE_ALT_SPEED("transfer.toggle-alt-speed", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        targetRef: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "qbittorrent:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = targetRef.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+
+    companion object {
+        fun forMediaArrAction(action: MediaArrAction): QbittorrentControlledAction? = when (action) {
+            MediaArrAction.QBITTORRENT_PAUSE_ALL -> TRANSFER_PAUSE_ALL
+            MediaArrAction.QBITTORRENT_RESUME_ALL -> TRANSFER_RESUME_ALL
+            MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED -> TRANSFER_TOGGLE_ALT_SPEED
+            MediaArrAction.QBITTORRENT_FORCE_RECHECK -> TRANSFER_RECHECK_ALL
+            MediaArrAction.QBITTORRENT_REANNOUNCE -> TRANSFER_REANNOUNCE_ALL
+            MediaArrAction.QBITTORRENT_PAUSE_TORRENT -> TORRENT_PAUSE
+            MediaArrAction.QBITTORRENT_RESUME_TORRENT -> TORRENT_RESUME
+            MediaArrAction.QBITTORRENT_RECHECK_TORRENT -> TORRENT_RECHECK
+            MediaArrAction.QBITTORRENT_REANNOUNCE_TORRENT -> TORRENT_REANNOUNCE
+            MediaArrAction.QBITTORRENT_DELETE_TORRENT -> TORRENT_DELETE
+            MediaArrAction.QBITTORRENT_DELETE_TORRENT_WITH_DATA -> TORRENT_DELETE_WITH_DATA
+            else -> null
+        }
+    }
+}
 
 data class MediaArrMetric(
     val label: String,
@@ -375,31 +438,31 @@ class MediaArrRepository @Inject constructor(
         when (action) {
             MediaArrAction.QBITTORRENT_PAUSE_ALL -> {
                 qbittorrentRequestWithSessionRecovery(instance) {
-                    requestInstance(it, "/api/v2/torrents/pause", method = "POST", body = "hashes=all", extraHeaders = mapOf("Content-Type" to "application/x-www-form-urlencoded"))
+                    requestInstance(it, "/api/v2/torrents/pause", method = "POST", body = "hashes=all", extraHeaders = qbittorrentMutationHeaders)
                 }
                 MediaArrActionResult(action)
             }
             MediaArrAction.QBITTORRENT_RESUME_ALL -> {
                 qbittorrentRequestWithSessionRecovery(instance) {
-                    requestInstance(it, "/api/v2/torrents/resume", method = "POST", body = "hashes=all", extraHeaders = mapOf("Content-Type" to "application/x-www-form-urlencoded"))
+                    requestInstance(it, "/api/v2/torrents/resume", method = "POST", body = "hashes=all", extraHeaders = qbittorrentMutationHeaders)
                 }
                 MediaArrActionResult(action)
             }
             MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED -> {
                 qbittorrentRequestWithSessionRecovery(instance) {
-                    requestInstance(it, "/api/v2/transfer/toggleSpeedLimitsMode", method = "POST")
+                    requestInstance(it, "/api/v2/transfer/toggleSpeedLimitsMode", method = "POST", extraHeaders = mapOf("X-Homelab-No-Fallback" to "true"))
                 }
                 MediaArrActionResult(action)
             }
             MediaArrAction.QBITTORRENT_FORCE_RECHECK -> {
                 qbittorrentRequestWithSessionRecovery(instance) {
-                    requestInstance(it, "/api/v2/torrents/recheck", method = "POST", body = "hashes=all", extraHeaders = mapOf("Content-Type" to "application/x-www-form-urlencoded"))
+                    requestInstance(it, "/api/v2/torrents/recheck", method = "POST", body = "hashes=all", extraHeaders = qbittorrentMutationHeaders)
                 }
                 MediaArrActionResult(action)
             }
             MediaArrAction.QBITTORRENT_REANNOUNCE -> {
                 qbittorrentRequestWithSessionRecovery(instance) {
-                    requestInstance(it, "/api/v2/torrents/reannounce", method = "POST", body = "hashes=all", extraHeaders = mapOf("Content-Type" to "application/x-www-form-urlencoded"))
+                    requestInstance(it, "/api/v2/torrents/reannounce", method = "POST", body = "hashes=all", extraHeaders = qbittorrentMutationHeaders)
                 }
                 MediaArrActionResult(action)
             }
@@ -616,7 +679,7 @@ class MediaArrRepository @Inject constructor(
         val safeHash = torrentHash.trim()
         if (safeHash.isBlank()) throw IllegalArgumentException("Missing torrent hash")
 
-        val formHeaders = mapOf("Content-Type" to "application/x-www-form-urlencoded")
+        val formHeaders = qbittorrentMutationHeaders
         var activeInstance = instance
         when (action) {
             MediaArrAction.QBITTORRENT_PAUSE_TORRENT -> {
@@ -1412,6 +1475,14 @@ class MediaArrRepository @Inject constructor(
             qbittorrentItems = torrentItems
         )
     }
+
+    // qBittorrent mutations are routed through the controlled-action coordinator and must never be
+    // replayed against the fallback URL: an indeterminate transport outcome could otherwise pause,
+    // recheck or delete a torrent twice. Reads keep the normal primary/fallback behavior.
+    private val qbittorrentMutationHeaders = mapOf(
+        "Content-Type" to "application/x-www-form-urlencoded",
+        "X-Homelab-No-Fallback" to "true"
+    )
 
     private suspend fun <T> qbittorrentRequestWithSessionRecovery(
         instance: ServiceInstance,
