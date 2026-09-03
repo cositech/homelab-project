@@ -16,7 +16,14 @@ struct QbittorrentDashboard: View {
     @State private var isViewVisible = false
     @State private var isRunningTorrentAction = false
     @State private var actionMessage: String?
+    @State private var pendingConfirmation: QbConfirmation?
     private var arr: ArrStrings { localizer.arr }
+
+    private struct QbConfirmation: Identifiable {
+        let id = UUID()
+        let title: String
+        let perform: @MainActor () -> Void
+    }
     
     // Keep transfer stats closer to real time while refreshing the heavier torrent list less often.
     private let transferTimer = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
@@ -62,6 +69,26 @@ struct QbittorrentDashboard: View {
         .onReceive(listTimer) { _ in
             guard scenePhase == .active, isViewVisible else { return }
             Task { await fetchData(silent: true, includeTorrents: true) }
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingConfirmation != nil },
+                set: { if !$0 { pendingConfirmation = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingConfirmation
+        ) { confirmation in
+            Button(localizer.t.confirm, role: .destructive) {
+                let perform = confirmation.perform
+                pendingConfirmation = nil
+                perform()
+            }
+            Button(localizer.t.cancel, role: .cancel) {
+                pendingConfirmation = nil
+            }
+        } message: { _ in
+            Text(localizer.t.actionConfirmMessage)
         }
     }
     
@@ -296,23 +323,12 @@ struct QbittorrentDashboard: View {
                     .font(.title2.bold())
                 Spacer()
                 Button {
-                    Task {
-                        guard !isRunningTorrentAction else { return }
-                        isRunningTorrentAction = true
-                        defer { isRunningTorrentAction = false }
-                        do {
-                            HapticManager.medium()
-                            try await requireClient().toggleAlternativeSpeedLimits()
-                            actionMessage = arr.altLimitsToggled
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                actionMessage = nil
-                            }
-                            await fetchData(silent: false, includeTorrents: true)
-                        } catch {
-                            state = .error(.custom(error.localizedDescription))
-                            HapticManager.error()
-                        }
-                    }
+                    guardedAction(
+                        .transferToggleAltSpeed,
+                        targetRef: "transfer/all",
+                        confirmTitle: arr.altLimitsToggled,
+                        successMessage: arr.altLimitsToggled
+                    ) { try await $0.toggleAlternativeSpeedLimits() }
                 } label: {
                     Image(systemName: "speedometer")
                         .foregroundStyle(AppTheme.info)
@@ -323,23 +339,12 @@ struct QbittorrentDashboard: View {
                 .disabled(isRunningTorrentAction)
 
                 Button {
-                    Task {
-                        guard !isRunningTorrentAction else { return }
-                        isRunningTorrentAction = true
-                        defer { isRunningTorrentAction = false }
-                        HapticManager.medium()
-                        do {
-                            try await requireClient().resumeAll()
-                            actionMessage = arr.allResumed
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                actionMessage = nil
-                            }
-                            await fetchData(silent: false, includeTorrents: true)
-                        } catch {
-                            state = .error(.custom(error.localizedDescription))
-                            HapticManager.error()
-                        }
-                    }
+                    guardedAction(
+                        .transferResumeAll,
+                        targetRef: "transfer/all",
+                        confirmTitle: arr.allResumed,
+                        successMessage: arr.allResumed
+                    ) { try await $0.resumeAll() }
                 } label: {
                     Image(systemName: "play.fill")
                         .foregroundStyle(AppTheme.running)
@@ -349,25 +354,14 @@ struct QbittorrentDashboard: View {
                 .buttonStyle(.plain)
                 .disabled(isRunningTorrentAction)
                 .padding(.horizontal, 4)
-                
+
                 Button {
-                    Task {
-                        guard !isRunningTorrentAction else { return }
-                        isRunningTorrentAction = true
-                        defer { isRunningTorrentAction = false }
-                        HapticManager.medium()
-                        do {
-                            try await requireClient().pauseAll()
-                            actionMessage = arr.allPaused
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                actionMessage = nil
-                            }
-                            await fetchData(silent: false, includeTorrents: true)
-                        } catch {
-                            state = .error(.custom(error.localizedDescription))
-                            HapticManager.error()
-                        }
-                    }
+                    guardedAction(
+                        .transferPauseAll,
+                        targetRef: "transfer/all",
+                        confirmTitle: arr.allPaused,
+                        successMessage: arr.allPaused
+                    ) { try await $0.pauseAll() }
                 } label: {
                     Image(systemName: "pause.fill")
                         .foregroundStyle(AppTheme.warning)
@@ -418,48 +412,59 @@ struct QbittorrentDashboard: View {
                 Spacer()
                 
                 Menu {
+                    let torrentTarget = "torrent/\(torrent.hash)"
                     Button(torrent.isPaused ? localizer.t.actionResume : localizer.t.actionPause) {
-                        Task {
-                            await performTorrentAction(successMessage: torrent.isPaused ? arr.torrentResumed : arr.torrentPaused) {
-                                if torrent.isPaused {
-                                    try await requireClient().resumeTorrent(hash: torrent.hash)
-                                } else {
-                                    try await requireClient().pauseTorrent(hash: torrent.hash)
-                                }
-                            }
+                        if torrent.isPaused {
+                            guardedAction(
+                                .torrentResume,
+                                targetRef: torrentTarget,
+                                confirmTitle: localizer.t.actionResume,
+                                successMessage: arr.torrentResumed
+                            ) { try await $0.resumeTorrent(hash: torrent.hash) }
+                        } else {
+                            guardedAction(
+                                .torrentPause,
+                                targetRef: torrentTarget,
+                                confirmTitle: localizer.t.actionPause,
+                                successMessage: arr.torrentPaused
+                            ) { try await $0.pauseTorrent(hash: torrent.hash) }
                         }
                     }
 
                     Button(arr.recheck) {
-                        Task {
-                            await performTorrentAction(successMessage: arr.recheckStarted) {
-                                try await requireClient().recheckTorrent(hash: torrent.hash)
-                            }
-                        }
+                        guardedAction(
+                            .torrentRecheck,
+                            targetRef: torrentTarget,
+                            confirmTitle: arr.recheck,
+                            successMessage: arr.recheckStarted
+                        ) { try await $0.recheckTorrent(hash: torrent.hash) }
                     }
 
                     Button(arr.reannounce) {
-                        Task {
-                            await performTorrentAction(successMessage: arr.reannounceQueued) {
-                                try await requireClient().reannounceTorrent(hash: torrent.hash)
-                            }
-                        }
+                        guardedAction(
+                            .torrentReannounce,
+                            targetRef: torrentTarget,
+                            confirmTitle: arr.reannounce,
+                            successMessage: arr.reannounceQueued
+                        ) { try await $0.reannounceTorrent(hash: torrent.hash) }
                     }
 
                     Button(localizer.t.delete) {
-                        Task {
-                            await performTorrentAction(successMessage: arr.torrentDeleted) {
-                                try await requireClient().deleteTorrent(hash: torrent.hash, deleteFiles: false)
-                            }
-                        }
+                        guardedAction(
+                            .torrentDelete,
+                            targetRef: torrentTarget,
+                            confirmTitle: localizer.t.delete,
+                            successMessage: arr.torrentDeleted
+                        ) { try await $0.deleteTorrent(hash: torrent.hash, deleteFiles: false) }
                     }
 
                     Button(arr.deleteWithData, role: .destructive) {
-                        Task {
-                            await performTorrentAction(successMessage: arr.torrentAndDataDeleted) {
-                                try await requireClient().deleteTorrent(hash: torrent.hash, deleteFiles: true)
-                            }
-                        }
+                        guardedAction(
+                            .torrentDeleteWithData,
+                            targetRef: torrentTarget,
+                            confirmTitle: arr.deleteWithData,
+                            successMessage: arr.torrentAndDataDeleted
+                        ) { try await $0.deleteTorrent(hash: torrent.hash, deleteFiles: true) }
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -546,15 +551,55 @@ struct QbittorrentDashboard: View {
         .glassCard()
     }
 
+    // Gate every qBittorrent mutation on the controlled-action policy. Medium- and high-risk actions
+    // present an explicit confirmation first; low-risk actions run immediately. All of them execute
+    // through the shared coordinator and audit path with a normalized, payload-free target identity.
     @MainActor
-    private func performTorrentAction(successMessage: String, _ action: () async throws -> Void) async {
+    private func guardedAction(
+        _ action: QbittorrentControlledAction,
+        targetRef: String,
+        confirmTitle: String,
+        successMessage: String,
+        _ apiCall: @escaping @Sendable (QbittorrentAPIClient) async throws -> Void
+    ) {
+        let run: @MainActor () -> Void = {
+            Task {
+                await performGuarded(
+                    action,
+                    targetRef: targetRef,
+                    successMessage: successMessage,
+                    apiCall
+                )
+            }
+        }
+        if action.requiresConfirmation {
+            pendingConfirmation = QbConfirmation(title: confirmTitle, perform: run)
+        } else {
+            run()
+        }
+    }
+
+    @MainActor
+    private func performGuarded(
+        _ action: QbittorrentControlledAction,
+        targetRef: String,
+        successMessage: String,
+        _ apiCall: @escaping @Sendable (QbittorrentAPIClient) async throws -> Void
+    ) async {
         guard !isRunningTorrentAction else { return }
         isRunningTorrentAction = true
         defer { isRunningTorrentAction = false }
 
         do {
             HapticManager.light()
-            try await action()
+            let client = try requireClient()
+            try await executeControlledAction(
+                action,
+                targetRef: targetRef,
+                confirmed: action.requiresConfirmation
+            ) {
+                try await apiCall(client)
+            }
             actionMessage = successMessage
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 actionMessage = nil
@@ -563,6 +608,36 @@ struct QbittorrentDashboard: View {
         } catch {
             state = .error(.custom(error.localizedDescription))
             HapticManager.error()
+        }
+    }
+
+    private func executeControlledAction(
+        _ action: QbittorrentControlledAction,
+        targetRef: String,
+        confirmed: Bool,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                targetRef: targetRef,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .qbittorrent).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw QbittorrentControlledOperationFailure.map(error)
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
         }
     }
 

@@ -2505,6 +2505,44 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(transport.reasonCode, "pangolin-outcome-indeterminate")
         XCTAssertEqual(transport.disposition, .nonRetryable)
     }
+
+    func testQbittorrentActionsHaveStableRiskIdentityAndNoPayloadPersistence() {
+        XCTAssertEqual(QbittorrentControlledAction.torrentResume.risk, .low)
+        XCTAssertEqual(QbittorrentControlledAction.transferReannounceAll.risk, .low)
+        XCTAssertEqual(QbittorrentControlledAction.torrentPause.risk, .medium)
+        XCTAssertEqual(QbittorrentControlledAction.transferToggleAltSpeed.risk, .medium)
+        XCTAssertEqual(QbittorrentControlledAction.torrentDelete.risk, .high)
+        XCTAssertEqual(QbittorrentControlledAction.torrentDeleteWithData.risk, .high)
+        XCTAssertFalse(QbittorrentControlledAction.torrentResume.requiresConfirmation)
+        XCTAssertTrue(QbittorrentControlledAction.torrentPause.requiresConfirmation)
+        XCTAssertTrue(QbittorrentControlledAction.torrentDeleteWithData.requiresConfirmation)
+
+        let request = QbittorrentControlledAction.torrentDeleteWithData.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: " TORRENT/ABCDEF ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "qbittorrent:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "torrent.delete-with-data")
+        XCTAssertEqual(request.targetRef, "torrent/abcdef")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(request.parameters.isEmpty)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .qbittorrent).capabilities.contains(.writeActions)
+        )
+
+        let transport = QbittorrentControlledOperationFailure.map(APIError.networkError(URLError(.timedOut)))
+        XCTAssertEqual(transport.reasonCode, "qbittorrent-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+
+        let unauthorized = QbittorrentControlledOperationFailure.map(APIError.unauthorized)
+        XCTAssertEqual(unauthorized.reasonCode, "qbittorrent-invalid-credentials")
+        XCTAssertEqual(unauthorized.disposition, .nonRetryable)
+    }
 }
 
 private actor ActionInvocationCounter {
