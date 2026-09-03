@@ -892,6 +892,9 @@ struct PatchmonHostDetailView: View {
                 throw APIError.notConfigured
             }
             // The toolbar/card action already presented an explicit destructive confirmation.
+            // The coordinator records only a bounded reason code; keep the original PatchMon error
+            // so the alert still shows the localized, structured message.
+            let originalError = ErrorBox()
             let audit = await servicesStore.controlledActionCoordinator.execute(
                 request: PatchmonControlledAction.hostDelete.request(
                     instanceId: instanceId,
@@ -908,11 +911,12 @@ struct PatchmonHostDetailView: View {
                 } catch let error as ControlledActionOperationError {
                     throw error
                 } catch {
+                    await originalError.set(error)
                     throw PatchmonControlledOperationFailure.map(error)
                 }
             }
             guard audit.state == .succeeded else {
-                throw APIError.custom(audit.reasonCode)
+                throw (await originalError.value) ?? APIError.custom(audit.reasonCode)
             }
             HapticManager.success()
             onHostDeleted?(host.id)
@@ -964,4 +968,11 @@ enum PatchmonDetailTab: String, CaseIterable, Identifiable {
         case .integrations: return t.patchmonDocker
         }
     }
+}
+
+/// Carries the original provider error out of a `@Sendable` controlled-action operation so the UI
+/// can still render its localized, structured message after the coordinator records a reason code.
+private actor ErrorBox {
+    private(set) var value: Error?
+    func set(_ error: Error) { value = error }
 }

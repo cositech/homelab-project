@@ -160,6 +160,9 @@ class PatchmonHostDetailViewModel @Inject constructor(
             _isDeleting.value = true
             try {
                 // The detail screen already presents an explicit destructive confirmation dialog.
+                // The coordinator records only a bounded reason code; keep the original provider
+                // exception so the UI still renders PatchMon's localized error mappings.
+                var operationError: Exception? = null
                 val audit = controlledActionCoordinator.execute(
                     request = PatchmonControlledAction.HOST_DELETE.controlledRequest(
                         instanceId = instanceId,
@@ -176,11 +179,12 @@ class PatchmonHostDetailViewModel @Inject constructor(
                     } catch (error: ActionOperationException) {
                         throw error
                     } catch (error: Exception) {
+                        operationError = error
                         throw controlledFailure(error)
                     }
                 }
                 if (audit.state != ActionExecutionState.SUCCEEDED) {
-                    throw IllegalStateException(audit.reasonCode)
+                    throw operationError ?: IllegalStateException(audit.reasonCode)
                 }
                 _isDeleted.value = true
             } catch (error: Exception) {
