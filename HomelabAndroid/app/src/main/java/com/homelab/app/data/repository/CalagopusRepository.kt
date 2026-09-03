@@ -5,14 +5,47 @@ import com.homelab.app.data.remote.api.CalagopusApi
 import com.homelab.app.data.remote.dto.calagopus.CalagopusPowerRequest
 import com.homelab.app.data.remote.dto.calagopus.CalagopusResources
 import com.homelab.app.data.remote.dto.calagopus.CalagopusServer
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import kotlinx.serialization.SerializationException
 import okhttp3.Request
 import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+enum class CalagopusPowerAction(val signal: String, val risk: ActionRisk) {
+    START("start", ActionRisk.LOW),
+    STOP("stop", ActionRisk.MEDIUM),
+    RESTART("restart", ActionRisk.MEDIUM),
+    KILL("kill", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        uuidShort: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "calagopus:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = "server.power.$signal",
+        targetRef = "server/${uuidShort.trim().lowercase(Locale.ROOT)}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
 
 class CalagopusApiException(
     val kind: Kind,
@@ -73,9 +106,11 @@ class CalagopusRepository @Inject constructor(
         }
     }
 
-    suspend fun sendPowerSignal(instanceId: String, uuidShort: String, signal: String) {
+    suspend fun sendPowerSignal(instanceId: String, uuidShort: String, action: CalagopusPowerAction) {
         try {
-            api.sendPowerSignal(instanceId, uuidShort, CalagopusPowerRequest(signal))
+            api.sendPowerSignal(instanceId, uuidShort, CalagopusPowerRequest(action.signal))
+        } catch (error: CancellationException) {
+            throw error
         } catch (e: Exception) {
             throw handleException(e)
         }

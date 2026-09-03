@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.VpnLock
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -146,11 +147,13 @@ fun PangolinDashboardScreen(
     val strings = rememberPangolinStrings()
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.45f
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var editingPublicResource by remember { mutableStateOf<PangolinPublicEditorState?>(null) }
     var editingPrivateResource by remember { mutableStateOf<PangolinSiteResource?>(null) }
     var creatingPublicResource by remember { mutableStateOf(false) }
     var creatingPrivateResource by remember { mutableStateOf(false) }
     var togglingResourceKey by remember { mutableStateOf<String?>(null) }
+    var pendingDisablePublicResource by remember { mutableStateOf<PangolinResource?>(null) }
     val topBarColor = pangolinTopBarColor(isDarkTheme, accent)
 
     LaunchedEffect(viewModel.instanceId) {
@@ -240,6 +243,9 @@ fun PangolinDashboardScreen(
                         creatingPrivateResource = true
                     },
                     onTogglePublicResource = { resource ->
+                        if (resource.enabled) {
+                            pendingDisablePublicResource = resource
+                        } else {
                         val actionKey = "public-${resource.resourceId}"
                         togglingResourceKey = actionKey
                         val result = viewModel.togglePublicResource(resource)
@@ -252,6 +258,7 @@ fun PangolinDashboardScreen(
                                 snackbarHostState.showSnackbar(error.message ?: strings.error)
                             }
                         )
+                        }
                     },
                     togglingResourceKey = togglingResourceKey
                 )
@@ -260,6 +267,41 @@ fun PangolinDashboardScreen(
         }
     }
 
+    pendingDisablePublicResource?.let { resource ->
+        AlertDialog(
+            onDismissRequest = { pendingDisablePublicResource = null },
+            title = { Text(strings.disableAction) },
+            text = { Text(resource.name) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDisablePublicResource = null
+                    scope.launch {
+                        val actionKey = "public-${resource.resourceId}"
+                        togglingResourceKey = actionKey
+                        val result = viewModel.togglePublicResource(resource, confirmed = true)
+                        togglingResourceKey = null
+                        result.fold(
+                            onSuccess = { enabled ->
+                                snackbarHostState.showSnackbar(
+                                    "${resource.name} • ${if (enabled) strings.enabled else strings.disabled}"
+                                )
+                            },
+                            onFailure = { error ->
+                                snackbarHostState.showSnackbar(error.message ?: strings.error)
+                            }
+                        )
+                    }
+                }) {
+                    Text(strings.disableAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDisablePublicResource = null }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
     editingPublicResource?.let { editor ->
         PangolinPublicResourceEditorSheet(
             strings = strings,

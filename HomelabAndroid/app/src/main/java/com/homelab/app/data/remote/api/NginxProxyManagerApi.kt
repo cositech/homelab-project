@@ -52,6 +52,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/proxy-hosts")
     suspend fun createProxyHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmProxyHostRequest
@@ -59,6 +60,7 @@ interface NginxProxyManagerApi {
 
     @PUT("api/nginx/proxy-hosts/{hostId}")
     suspend fun updateProxyHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int,
@@ -67,6 +69,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/nginx/proxy-hosts/{hostId}")
     suspend fun deleteProxyHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int
@@ -74,6 +77,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/proxy-hosts/{hostId}/enable")
     suspend fun enableProxyHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int
@@ -81,6 +85,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/proxy-hosts/{hostId}/disable")
     suspend fun disableProxyHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int
@@ -94,6 +99,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/redirection-hosts")
     suspend fun createRedirectionHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmRedirectionHostRequest
@@ -101,6 +107,7 @@ interface NginxProxyManagerApi {
 
     @PUT("api/nginx/redirection-hosts/{hostId}")
     suspend fun updateRedirectionHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int,
@@ -109,6 +116,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/nginx/redirection-hosts/{hostId}")
     suspend fun deleteRedirectionHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int
@@ -122,6 +130,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/streams")
     suspend fun createStream(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmStreamRequest
@@ -129,6 +138,7 @@ interface NginxProxyManagerApi {
 
     @PUT("api/nginx/streams/{streamId}")
     suspend fun updateStream(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("streamId") streamId: Int,
@@ -137,6 +147,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/nginx/streams/{streamId}")
     suspend fun deleteStream(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("streamId") streamId: Int
@@ -150,6 +161,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/dead-hosts")
     suspend fun createDeadHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmDeadHostRequest
@@ -157,6 +169,7 @@ interface NginxProxyManagerApi {
 
     @PUT("api/nginx/dead-hosts/{hostId}")
     suspend fun updateDeadHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int,
@@ -165,6 +178,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/nginx/dead-hosts/{hostId}")
     suspend fun deleteDeadHost(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("hostId") hostId: Int
@@ -178,6 +192,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/certificates")
     suspend fun createCertificate(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmCertificateRequest
@@ -185,6 +200,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/nginx/certificates/{certId}")
     suspend fun deleteCertificate(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("certId") certId: Int
@@ -192,6 +208,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/certificates/{certId}/renew")
     suspend fun renewCertificate(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("certId") certId: Int
@@ -205,6 +222,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/nginx/access-lists")
     suspend fun createAccessList(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmAccessListRequest
@@ -212,6 +230,7 @@ interface NginxProxyManagerApi {
 
     @PUT("api/nginx/access-lists/{listId}")
     suspend fun updateAccessList(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("listId") listId: Int,
@@ -220,6 +239,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/nginx/access-lists/{listId}")
     suspend fun deleteAccessList(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("listId") listId: Int
@@ -233,6 +253,7 @@ interface NginxProxyManagerApi {
 
     @POST("api/users")
     suspend fun createUser(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Body request: NpmUserRequest
@@ -240,6 +261,7 @@ interface NginxProxyManagerApi {
 
     @PUT("api/users/{userId}")
     suspend fun updateUser(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("userId") userId: Int,
@@ -248,6 +270,7 @@ interface NginxProxyManagerApi {
 
     @DELETE("api/users/{userId}")
     suspend fun deleteUser(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "NginxProxyManager",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("userId") userId: Int

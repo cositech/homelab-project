@@ -609,7 +609,15 @@ enum ProviderRegistry {
                 capabilities = [.health, .resources, .events, .metrics, .readActions, .writeActions]
             case .adguardHome:
                 capabilities = [.health, .writeActions]
-            case .healthchecks:
+            case .pihole:
+                capabilities = [.health, .writeActions]
+            case .technitium:
+                capabilities = [.health, .writeActions]
+            case .healthchecks, .dockhand, .dockmon, .linuxUpdate, .komodo, .nginxProxyManager:
+                capabilities = [.health, .writeActions]
+            case .pangolin:
+                capabilities = [.health, .writeActions]
+            case .pterodactyl, .calagopus, .craftyController:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
                 capabilities = [.health, .resources, .events, .metrics]
@@ -745,6 +753,307 @@ enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendab
     }
 }
 
+enum PortainerControlledConfigurationAction: String, CaseIterable, Equatable, Sendable {
+    case renameContainer = "container.rename"
+    case updateStack = "stack.update"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .renameContainer: return .medium
+        case .updateStack: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { true }
+
+    func request(
+        instanceId: UUID,
+        endpointId: Int,
+        targetId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        let targetKind: String
+        switch self {
+        case .renameContainer:
+            targetKind = "container"
+        case .updateStack:
+            targetKind = "stack"
+        }
+        return ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "portainer:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "endpoint/\(endpointId)/\(targetKind)/\(targetId.trimmingCharacters(in: .whitespacesAndNewlines))",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum DockhandControlledAction: String, CaseIterable, Equatable, Sendable {
+    case containerStart = "container.start"
+    case containerStop = "container.stop"
+    case containerRestart = "container.restart"
+    case stackStart = "stack.start"
+    case stackStop = "stack.stop"
+    case stackRestart = "stack.restart"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .containerStart, .stackStart: return .low
+        case .containerStop, .containerRestart, .stackStop, .stackRestart: return .medium
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        environmentId: String?,
+        targetKind: String,
+        targetId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        let environment = environmentId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedTarget = targetId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "dockhand:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "environment/\(environment?.isEmpty == false ? environment! : "default")/\(targetKind)/\(normalizedTarget)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum DockmonControlledAction: String, CaseIterable, Equatable, Sendable {
+    case restart = "container.restart"
+    case update = "container.update"
+
+    var risk: ControlledActionRisk { self == .restart ? .medium : .high }
+    var requiresConfirmation: Bool { true }
+
+    func request(
+        instanceId: UUID,
+        containerId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "dockmon:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "container/\(containerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum LinuxUpdateControlledAction: String, CaseIterable, Equatable, Sendable {
+    case checkAll = "systems.check-all"
+    case refreshCache = "cache.refresh"
+    case checkSystem = "system.check"
+    case upgradePackage = "package.upgrade"
+    case upgradeAll = "system.upgrade"
+    case fullUpgrade = "system.full-upgrade"
+    case reboot = "system.reboot"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .checkAll, .refreshCache, .checkSystem: return .low
+        case .upgradePackage: return .medium
+        case .upgradeAll, .fullUpgrade, .reboot: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func targetRef(systemId: Int? = nil, packageName: String? = nil) -> String {
+        switch self {
+        case .checkAll:
+            return "systems/all"
+        case .refreshCache:
+            return "cache/global"
+        case .upgradePackage:
+            let package = packageName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            return "system/\(systemId ?? 0)/package/\(package)"
+        case .checkSystem, .upgradeAll, .fullUpgrade, .reboot:
+            return "system/\(systemId ?? 0)"
+        }
+    }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "linux-update:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum TechnitiumControlledAction: String, CaseIterable, Equatable, Sendable {
+    case enableBlocking = "blocking.enable"
+    case disableBlocking = "blocking.disable"
+    case temporaryDisable = "blocking.disable-temporary"
+    case refreshBlockLists = "blocklist.refresh"
+    case addBlockedDomain = "blocked-domain.add"
+    case removeBlockedDomain = "blocked-domain.remove"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .enableBlocking, .refreshBlockLists: return .low
+        case .disableBlocking, .temporaryDisable, .removeBlockedDomain: return .medium
+        case .addBlockedDomain: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "technitium:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum NpmProxyHostControlledAction: String, CaseIterable, Equatable, Sendable {
+    case create = "proxy-host.create"
+    case update = "proxy-host.update"
+    case enable = "proxy-host.enable"
+    case disable = "proxy-host.disable"
+    case delete = "proxy-host.delete"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .enable: return .low
+        case .disable: return .medium
+        case .create, .update, .delete: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        hostId: Int?,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "nginx-proxy-manager:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "proxy-host/\(hostId.map(String.init) ?? "new")",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum NpmConfigurationControlledAction: String, CaseIterable, Equatable, Sendable {
+    case createRedirectionHost = "redirection-host.create"
+    case updateRedirectionHost = "redirection-host.update"
+    case deleteRedirectionHost = "redirection-host.delete"
+    case createStream = "stream.create"
+    case updateStream = "stream.update"
+    case deleteStream = "stream.delete"
+    case createDeadHost = "dead-host.create"
+    case updateDeadHost = "dead-host.update"
+    case deleteDeadHost = "dead-host.delete"
+    case createCertificate = "certificate.create"
+    case renewCertificate = "certificate.renew"
+    case deleteCertificate = "certificate.delete"
+    case createAccessList = "access-list.create"
+    case updateAccessList = "access-list.update"
+    case deleteAccessList = "access-list.delete"
+    case createUser = "user.create"
+    case updateUser = "user.update"
+    case deleteUser = "user.delete"
+
+    var targetKind: String {
+        switch self {
+        case .createRedirectionHost, .updateRedirectionHost, .deleteRedirectionHost: return "redirection-host"
+        case .createStream, .updateStream, .deleteStream: return "stream"
+        case .createDeadHost, .updateDeadHost, .deleteDeadHost: return "dead-host"
+        case .createCertificate, .renewCertificate, .deleteCertificate: return "certificate"
+        case .createAccessList, .updateAccessList, .deleteAccessList: return "access-list"
+        case .createUser, .updateUser, .deleteUser: return "user"
+        }
+    }
+
+    var risk: ControlledActionRisk {
+        self == .renewCertificate ? .medium : .high
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetId: Int?,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "nginx-proxy-manager:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "\(targetKind)/\(targetId.map(String.init) ?? "new")",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum AdGuardControlledProtectionAction: String, CaseIterable, Equatable, Sendable {
     case enable, disable
 
@@ -763,6 +1072,48 @@ enum AdGuardControlledProtectionAction: String, CaseIterable, Equatable, Sendabl
             providerRef: "adguard-home:\(instanceId.uuidString.lowercased())",
             action: actionName,
             targetRef: "protection/global",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum AdGuardControlledConfigurationAction: String, CaseIterable, Equatable, Sendable {
+    case updateUserRules = "filtering.user-rules.update"
+    case createFilter = "filter-list.create"
+    case updateFilter = "filter-list.update"
+    case deleteFilter = "filter-list.delete"
+    case updateBlockedServices = "blocked-services.update"
+    case createRewrite = "rewrite.create"
+    case updateRewrite = "rewrite.update"
+    case deleteRewrite = "rewrite.delete"
+
+    var targetKind: String {
+        switch self {
+        case .updateUserRules: return "user-rules"
+        case .createFilter, .updateFilter, .deleteFilter: return "filter-list"
+        case .updateBlockedServices: return "blocked-services"
+        case .createRewrite, .updateRewrite, .deleteRewrite: return "rewrite"
+        }
+    }
+
+    var risk: ControlledActionRisk { .high }
+
+    func request(
+        instanceId: UUID,
+        targetId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "adguard-home:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "\(targetKind)/\(targetId)",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,
@@ -1120,6 +1471,73 @@ enum ActionFailureDisposition: String, Codable, Equatable, Sendable {
 struct ControlledActionOperationError: Error, Sendable {
     let reasonCode: String
     let disposition: ActionFailureDisposition
+}
+
+enum PortainerControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return indeterminateOutcome()
+        }
+        guard let apiError = error as? APIError else {
+            return providerReportedFailure()
+        }
+
+        switch apiError {
+        case .networkError:
+            return indeterminateOutcome()
+        case .bothURLsFailed:
+            return indeterminateOutcome()
+        case .unauthorized:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-unauthorized",
+                disposition: .nonRetryable
+            )
+        case .httpError(let statusCode, _):
+            return ControlledActionOperationError(
+                reasonCode: "portainer-http-\(statusCode)",
+                disposition: .nonRetryable
+            )
+        case .notConfigured:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-not-configured",
+                disposition: .nonRetryable
+            )
+        case .invalidURL:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-invalid-url",
+                disposition: .nonRetryable
+            )
+        case .decodingError:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-response-decode-failure",
+                disposition: .nonRetryable
+            )
+        case .requestConfigurationRequired:
+            return ControlledActionOperationError(
+                reasonCode: "portainer-configuration-required",
+                disposition: .nonRetryable
+            )
+        case .custom:
+            return providerReportedFailure()
+        }
+    }
+
+    private static func indeterminateOutcome() -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: "portainer-outcome-indeterminate",
+            disposition: .nonRetryable
+        )
+    }
+
+    private static func providerReportedFailure() -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: "portainer-provider-reported-failure",
+            disposition: .nonRetryable
+        )
+    }
 }
 
 actor ControlledActionLedger {

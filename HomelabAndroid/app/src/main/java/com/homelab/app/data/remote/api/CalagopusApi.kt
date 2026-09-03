@@ -26,6 +26,7 @@ interface CalagopusApi {
     suspend fun sendPowerSignal(
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("uuidShort") uuidShort: String,
-        @Body body: CalagopusPowerRequest
+        @Body body: CalagopusPowerRequest,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     )
 }

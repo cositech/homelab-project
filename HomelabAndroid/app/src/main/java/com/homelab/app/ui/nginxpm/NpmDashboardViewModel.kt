@@ -7,6 +7,14 @@ import androidx.lifecycle.viewModelScope
 import com.homelab.app.R
 import com.homelab.app.data.remote.dto.nginxpm.*
 import com.homelab.app.data.repository.NginxProxyManagerRepository
+import com.homelab.app.data.repository.NpmProxyHostControlledAction
+import com.homelab.app.data.repository.NpmConfigurationControlledAction
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.ErrorHandler
@@ -15,6 +23,7 @@ import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,6 +59,7 @@ class NpmDashboardViewModel @Inject constructor(
     private val repository: NginxProxyManagerRepository,
     private val servicesRepository: ServicesRepository,
     savedStateHandle: SavedStateHandle,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -113,26 +123,46 @@ class NpmDashboardViewModel @Inject constructor(
 
     // ── Proxy Hosts ──
 
-    fun createProxyHost(request: NpmProxyHostRequest) {
-        performAction(R.string.npm_save_success) {
+    fun createProxyHost(request: NpmProxyHostRequest, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = NpmProxyHostControlledAction.CREATE,
+            hostId = null,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_save_success
+        ) {
             repository.createProxyHost(instanceId, request)
         }
     }
 
-    fun updateProxyHost(hostId: Int, request: NpmProxyHostRequest) {
-        performAction(R.string.npm_save_success) {
+    fun updateProxyHost(hostId: Int, request: NpmProxyHostRequest, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = NpmProxyHostControlledAction.UPDATE,
+            hostId = hostId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_save_success
+        ) {
             repository.updateProxyHost(instanceId, hostId, request)
         }
     }
 
-    fun deleteProxyHost(hostId: Int) {
-        performAction(R.string.npm_delete_success) {
+    fun deleteProxyHost(hostId: Int, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = NpmProxyHostControlledAction.DELETE,
+            hostId = hostId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_delete_success
+        ) {
             repository.deleteProxyHost(instanceId, hostId)
         }
     }
 
-    fun toggleProxyHost(hostId: Int, enabled: Boolean) {
-        performAction(R.string.npm_save_success) {
+    fun toggleProxyHost(hostId: Int, enabled: Boolean, confirmed: Boolean) {
+        performControlledProxyHostAction(
+            action = if (enabled) NpmProxyHostControlledAction.ENABLE else NpmProxyHostControlledAction.DISABLE,
+            hostId = hostId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_save_success
+        ) {
             if (enabled) repository.enableProxyHost(instanceId, hostId)
             else repository.disableProxyHost(instanceId, hostId)
         }
@@ -141,98 +171,129 @@ class NpmDashboardViewModel @Inject constructor(
     // ── Redirection Hosts ──
 
     fun createRedirectionHost(request: NpmRedirectionHostRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.createRedirectionHost(instanceId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.CREATE_REDIRECTION_HOST,
+            targetId = null,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.createRedirectionHost(instanceId, request) }
     }
 
     fun updateRedirectionHost(hostId: Int, request: NpmRedirectionHostRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.updateRedirectionHost(instanceId, hostId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.UPDATE_REDIRECTION_HOST,
+            targetId = hostId,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.updateRedirectionHost(instanceId, hostId, request) }
     }
 
     fun deleteRedirectionHost(hostId: Int) {
-        performAction(R.string.npm_delete_success) {
-            repository.deleteRedirectionHost(instanceId, hostId)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.DELETE_REDIRECTION_HOST,
+            targetId = hostId,
+            confirmed = true,
+            successMsgRes = R.string.npm_delete_success
+        ) { repository.deleteRedirectionHost(instanceId, hostId) }
     }
 
     // ── Streams ──
 
     fun createStream(request: NpmStreamRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.createStream(instanceId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.CREATE_STREAM,
+            targetId = null,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.createStream(instanceId, request) }
     }
 
     fun updateStream(streamId: Int, request: NpmStreamRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.updateStream(instanceId, streamId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.UPDATE_STREAM,
+            targetId = streamId,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.updateStream(instanceId, streamId, request) }
     }
 
     fun deleteStream(streamId: Int) {
-        performAction(R.string.npm_delete_success) {
-            repository.deleteStream(instanceId, streamId)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.DELETE_STREAM,
+            targetId = streamId,
+            confirmed = true,
+            successMsgRes = R.string.npm_delete_success
+        ) { repository.deleteStream(instanceId, streamId) }
     }
 
     // ── Dead Hosts ──
 
     fun createDeadHost(request: NpmDeadHostRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.createDeadHost(instanceId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.CREATE_DEAD_HOST,
+            targetId = null,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.createDeadHost(instanceId, request) }
     }
 
     fun updateDeadHost(hostId: Int, request: NpmDeadHostRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.updateDeadHost(instanceId, hostId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.UPDATE_DEAD_HOST,
+            targetId = hostId,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.updateDeadHost(instanceId, hostId, request) }
     }
 
     fun deleteDeadHost(hostId: Int) {
-        performAction(R.string.npm_delete_success) {
-            repository.deleteDeadHost(instanceId, hostId)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.DELETE_DEAD_HOST,
+            targetId = hostId,
+            confirmed = true,
+            successMsgRes = R.string.npm_delete_success
+        ) { repository.deleteDeadHost(instanceId, hostId) }
     }
 
     // ── Certificates ──
 
     fun createCertificate(request: NpmCertificateRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.createCertificate(instanceId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.CREATE_CERTIFICATE,
+            targetId = null,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.createCertificate(instanceId, request) }
     }
 
     fun deleteCertificate(certId: Int) {
-        performAction(R.string.npm_delete_success) {
-            repository.deleteCertificate(instanceId, certId)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.DELETE_CERTIFICATE,
+            targetId = certId,
+            confirmed = true,
+            successMsgRes = R.string.npm_delete_success
+        ) { repository.deleteCertificate(instanceId, certId) }
     }
 
-    fun renewCertificate(certId: Int) {
-        performAction(R.string.npm_renew_success) {
-            repository.renewCertificate(instanceId, certId)
-        }
+    fun renewCertificate(certId: Int, confirmed: Boolean) {
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.RENEW_CERTIFICATE,
+            targetId = certId,
+            confirmed = confirmed,
+            successMsgRes = R.string.npm_renew_success
+        ) { repository.renewCertificate(instanceId, certId) }
     }
 
     // ── Access Lists ──
 
-    fun createAccessList(
-        name: String,
-        items: List<NpmAccessListItem>,
-        clients: List<NpmAccessListClient>
-    ) {
-        performAction(R.string.npm_save_success) {
-            val request = NpmAccessListRequest(
-                name = name,
-                items = items,
-                clients = clients
-            )
-            repository.createAccessList(instanceId, request)
-        }
+    fun createAccessList(name: String, items: List<NpmAccessListItem>, clients: List<NpmAccessListClient>) {
+        val request = NpmAccessListRequest(name = name, items = items, clients = clients)
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.CREATE_ACCESS_LIST,
+            targetId = null,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.createAccessList(instanceId, request) }
     }
 
     fun updateAccessList(
@@ -241,40 +302,51 @@ class NpmDashboardViewModel @Inject constructor(
         items: List<NpmAccessListItem>,
         clients: List<NpmAccessListClient>
     ) {
-        performAction(R.string.npm_save_success) {
-            val request = NpmAccessListRequest(
-                name = name,
-                items = items,
-                clients = clients
-            )
-            repository.updateAccessList(instanceId, id, request)
-        }
+        val request = NpmAccessListRequest(name = name, items = items, clients = clients)
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.UPDATE_ACCESS_LIST,
+            targetId = id,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.updateAccessList(instanceId, id, request) }
     }
 
     fun deleteAccessList(id: Int) {
-        performAction(R.string.npm_delete_success) {
-            repository.deleteAccessList(instanceId, id)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.DELETE_ACCESS_LIST,
+            targetId = id,
+            confirmed = true,
+            successMsgRes = R.string.npm_delete_success
+        ) { repository.deleteAccessList(instanceId, id) }
     }
 
     // ── Users ──
 
     fun createUser(request: NpmUserRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.createUser(instanceId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.CREATE_USER,
+            targetId = null,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.createUser(instanceId, request) }
     }
 
     fun updateUser(userId: Int, request: NpmUserRequest) {
-        performAction(R.string.npm_save_success) {
-            repository.updateUser(instanceId, userId, request)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.UPDATE_USER,
+            targetId = userId,
+            confirmed = true,
+            successMsgRes = R.string.npm_save_success
+        ) { repository.updateUser(instanceId, userId, request) }
     }
 
     fun deleteUser(userId: Int) {
-        performAction(R.string.npm_delete_success) {
-            repository.deleteUser(instanceId, userId)
-        }
+        performControlledConfigurationAction(
+            NpmConfigurationControlledAction.DELETE_USER,
+            targetId = userId,
+            confirmed = true,
+            successMsgRes = R.string.npm_delete_success
+        ) { repository.deleteUser(instanceId, userId) }
     }
 
     fun setPreferredInstance(newInstanceId: String) {
@@ -283,16 +355,90 @@ class NpmDashboardViewModel @Inject constructor(
         }
     }
 
-    private fun performAction(successMsgRes: Int, action: suspend () -> Unit) {
+    private fun performControlledConfigurationAction(
+        action: NpmConfigurationControlledAction,
+        targetId: Int?,
+        confirmed: Boolean,
+        successMsgRes: Int,
+        operation: suspend () -> Unit
+    ) {
         viewModelScope.launch {
             _isPerformingAction.value = true
             try {
-                action()
-                _actionEvent.emit(NpmActionEvent.Success(context.getString(successMsgRes)))
-                fetchDashboard()
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, targetId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)
+                ) {
+                    try {
+                        operation()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "nginx-proxy-manager-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _actionEvent.emit(NpmActionEvent.Success(context.getString(successMsgRes)))
+                    fetchDashboard()
+                } else {
+                    _actionEvent.emit(NpmActionEvent.Error(audit.reasonCode))
+                }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                val message = ErrorHandler.getMessage(context, error)
-                _actionEvent.emit(NpmActionEvent.Error(message))
+                _actionEvent.emit(NpmActionEvent.Error(ErrorHandler.getMessage(context, error)))
+            } finally {
+                _isPerformingAction.value = false
+            }
+        }
+    }
+
+    private fun performControlledProxyHostAction(
+        action: NpmProxyHostControlledAction,
+        hostId: Int?,
+        confirmed: Boolean,
+        successMsgRes: Int,
+        operation: suspend () -> Unit
+    ) {
+        viewModelScope.launch {
+            _isPerformingAction.value = true
+            try {
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, hostId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)
+                ) {
+                    try {
+                        operation()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "nginx-proxy-manager-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _actionEvent.emit(NpmActionEvent.Success(context.getString(successMsgRes)))
+                    fetchDashboard()
+                } else {
+                    _actionEvent.emit(NpmActionEvent.Error(audit.reasonCode))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _actionEvent.emit(NpmActionEvent.Error(ErrorHandler.getMessage(context, error)))
             } finally {
                 _isPerformingAction.value = false
             }

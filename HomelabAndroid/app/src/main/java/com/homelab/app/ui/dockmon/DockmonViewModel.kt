@@ -5,16 +5,24 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.repository.DockmonContainer
+import com.homelab.app.data.repository.DockmonControlledAction
 import com.homelab.app.data.repository.DockmonDashboardData
 import com.homelab.app.data.repository.DockmonRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +38,7 @@ import kotlinx.coroutines.launch
 class DockmonViewModel @Inject constructor(
     private val repository: DockmonRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -145,39 +154,63 @@ class DockmonViewModel @Inject constructor(
         }
     }
 
-    fun restartSelectedContainer() {
-        val containerId = _selectedContainerId.value ?: return
-        if (_isRunningAction.value) return
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = repository.restartContainer(instanceId = instanceId, containerId = containerId)
-                _messages.tryEmit(result.message.orEmpty().ifBlank { "Container restart requested." })
-                fetchDashboard(forceLoading = false)
-                refreshLogs(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
-            }
-        }
+    fun restartSelectedContainer(confirmed: Boolean = false) {
+        runSelectedContainerAction(DockmonControlledAction.RESTART, confirmed)
     }
 
-    fun updateSelectedContainer() {
+    fun updateSelectedContainer(confirmed: Boolean = false) {
+        runSelectedContainerAction(DockmonControlledAction.UPDATE, confirmed)
+    }
+
+    private fun runSelectedContainerAction(action: DockmonControlledAction, confirmed: Boolean) {
         val containerId = _selectedContainerId.value ?: return
         if (_isRunningAction.value) return
         viewModelScope.launch {
             _isRunningAction.value = true
             try {
-                val result = repository.updateContainer(
-                    instanceId = instanceId,
-                    containerId = containerId,
-                    image = _imageDraft.value
-                )
-                _messages.tryEmit(result.message.orEmpty().ifBlank { "Container update requested." })
-                _imageDraft.value = ""
-                fetchDashboard(forceLoading = false)
-                refreshLogs(forceLoading = false)
+                var message: String? = null
+                val requestedImage = _imageDraft.value
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, containerId, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.DOCKMON)
+                ) {
+                    try {
+                        val result = when (action) {
+                            DockmonControlledAction.RESTART -> repository.restartContainer(instanceId, containerId)
+                            DockmonControlledAction.UPDATE -> repository.updateContainer(instanceId, containerId, requestedImage)
+                        }
+                        if (!result.success) {
+                            throw ActionOperationException(
+                                "dockmon-provider-reported-failure",
+                                ActionFailureDisposition.NON_RETRYABLE
+                            )
+                        }
+                        message = result.message
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "dockmon-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _messages.tryEmit(message.orEmpty().ifBlank {
+                        if (action == DockmonControlledAction.RESTART) "Container restart requested." else "Container update requested."
+                    })
+                    if (action == DockmonControlledAction.UPDATE) _imageDraft.value = ""
+                    fetchDashboard(forceLoading = false)
+                    refreshLogs(forceLoading = false)
+                } else {
+                    _messages.tryEmit(audit.reasonCode)
+                }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {
