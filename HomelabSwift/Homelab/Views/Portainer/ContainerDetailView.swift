@@ -1,5 +1,10 @@
 import SwiftUI
 
+private enum PendingPortainerConfigurationAction {
+    case renameContainer(newName: String)
+    case updateStack(stackId: Int, content: String)
+}
+
 // Maps to app/portainer/[containerId].tsx
 
 struct ContainerDetailView: View {
@@ -28,6 +33,7 @@ struct ContainerDetailView: View {
         action: PortainerControlledContainerAction,
         apiAction: ContainerAction?
     )?
+    @State private var pendingConfigurationAction: PendingPortainerConfigurationAction?
 
     private let portainerColor = ServiceType.portainer.colors.primary
 
@@ -118,6 +124,30 @@ struct ContainerDetailView: View {
         } message: {
             Text(pendingAction?.action == .remove ? localizer.t.actionRemoveMessage : localizer.t.actionConfirmMessage)
         }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingConfigurationAction != nil },
+                set: { if !$0 { pendingConfigurationAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(localizer.t.confirm) {
+                guard let pendingConfigurationAction else { return }
+                self.pendingConfigurationAction = nil
+                Task {
+                    switch pendingConfigurationAction {
+                    case .renameContainer(let newName):
+                        await renameContainer(newName)
+                    case .updateStack(let stackId, let content):
+                        await saveCompose(stackId: stackId, content: content)
+                    }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingConfigurationAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
+        }
     }
 
     // MARK: - Header Card
@@ -135,8 +165,9 @@ struct ContainerDetailView: View {
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(portainerColor, lineWidth: 1))
                         Button {
-                            if !editName.trimmingCharacters(in: .whitespaces).isEmpty, editName.trimmingCharacters(in: .whitespaces) != containerName {
-                                Task { await renameContainer(editName.trimmingCharacters(in: .whitespaces)) }
+                            let newName = editName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !newName.isEmpty, newName != containerName {
+                                pendingConfigurationAction = .renameContainer(newName: newName)
                             }
                             isEditing = false
                         } label: {
@@ -659,7 +690,7 @@ struct ContainerDetailView: View {
 
                 if composeEdited {
                     Button {
-                        Task { await saveCompose(stack) }
+                        pendingConfigurationAction = .updateStack(stackId: stack.Id, content: composeContent)
                     } label: {
                         HStack(spacing: 8) {
                             if isSavingCompose {
@@ -788,7 +819,16 @@ struct ContainerDetailView: View {
             guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.renameContainer(endpointId: endpointId, containerId: containerId, newName: newName)
+            try await executeControlledConfigurationAction(
+                .renameContainer,
+                targetId: containerId
+            ) {
+                try await client.renameContainer(
+                    endpointId: endpointId,
+                    containerId: containerId,
+                    newName: newName
+                )
+            }
             HapticManager.success()
             await fetchDetail()
         } catch {
@@ -798,20 +838,59 @@ struct ContainerDetailView: View {
         }
     }
 
-    private func saveCompose(_ stack: PortainerStack) async {
+    private func saveCompose(stackId: Int, content: String) async {
         isSavingCompose = true
         defer { isSavingCompose = false }
         do {
             guard let client = await servicesStore.portainerClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.updateStackFile(stackId: stack.Id, endpointId: endpointId, stackFileContent: composeContent)
+            try await executeControlledConfigurationAction(
+                .updateStack,
+                targetId: String(stackId)
+            ) {
+                try await client.updateStackFile(
+                    stackId: stackId,
+                    endpointId: endpointId,
+                    stackFileContent: content
+                )
+            }
             HapticManager.success()
             composeEdited = false
         } catch {
             HapticManager.error()
             actionError = error.localizedDescription
             showActionError = true
+        }
+    }
+
+    private func executeControlledConfigurationAction(
+        _ action: PortainerControlledConfigurationAction,
+        targetId: String,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                endpointId: endpointId,
+                targetId: targetId,
+                confirmed: true
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .portainer).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw PortainerControlledOperationFailure.map(error)
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
         }
     }
 }

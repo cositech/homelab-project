@@ -251,3 +251,37 @@ enum class AdGuardControlledProtectionAction(
         confirmed = confirmed
     )
 }
+
+enum class AdGuardControlledConfigurationAction(
+    val wireName: String,
+    val targetKind: String,
+    val risk: ActionRisk
+) {
+    UPDATE_USER_RULES("filtering.user-rules.update", "user-rules", ActionRisk.HIGH),
+    CREATE_FILTER("filter-list.create", "filter-list", ActionRisk.HIGH),
+    UPDATE_FILTER("filter-list.update", "filter-list", ActionRisk.HIGH),
+    DELETE_FILTER("filter-list.delete", "filter-list", ActionRisk.HIGH),
+    UPDATE_BLOCKED_SERVICES("blocked-services.update", "blocked-services", ActionRisk.HIGH),
+    CREATE_REWRITE("rewrite.create", "rewrite", ActionRisk.HIGH),
+    UPDATE_REWRITE("rewrite.update", "rewrite", ActionRisk.HIGH),
+    DELETE_REWRITE("rewrite.delete", "rewrite", ActionRisk.HIGH),
+    UPDATE_REWRITE_SETTINGS("rewrite-settings.update", "rewrite-settings", ActionRisk.MEDIUM);
+
+    fun controlledRequest(
+        instanceId: String,
+        targetId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "adguard-home:$instanceId",
+        action = wireName,
+        targetRef = "$targetKind/$targetId",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}

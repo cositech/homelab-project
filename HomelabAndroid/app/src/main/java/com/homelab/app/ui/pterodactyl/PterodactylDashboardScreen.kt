@@ -24,8 +24,10 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,7 +46,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homelab.app.R
 import com.homelab.app.data.remote.dto.pterodactyl.PterodactylResources
+import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.ui.components.ServiceInstancePicker
 import com.homelab.app.ui.common.ErrorScreen
 import com.homelab.app.util.ServiceType
@@ -78,6 +83,7 @@ fun PterodactylDashboardScreen(
     val title = currentInstance?.label?.takeIf { it.isNotBlank() } ?: ServiceType.PTERODACTYL.displayName
 
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingAction by remember { mutableStateOf<PendingPowerAction?>(null) }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -152,8 +158,12 @@ fun PterodactylDashboardScreen(
                                     PterodactylServerCard(
                                         item = item,
                                         isActionPending = actionServerId == item.server.identifier,
-                                        onPowerSignal = { signal ->
-                                            viewModel.sendPowerSignal(item.server.identifier, signal)
+                                        onPowerSignal = { action ->
+                                            if (action.requiresConfirmation) {
+                                                pendingAction = PendingPowerAction(item.server.identifier, action)
+                                            } else {
+                                                viewModel.sendPowerSignal(item.server.identifier, action)
+                                            }
                                         }
                                     )
                                 }
@@ -165,14 +175,48 @@ fun PterodactylDashboardScreen(
             }
         }
     }
+
+    pendingAction?.let { pending ->
+        val actionLabel = stringResource(
+            when (pending.action) {
+                PterodactylPowerAction.START -> R.string.pterodactyl_action_start
+                PterodactylPowerAction.STOP -> R.string.pterodactyl_action_stop
+                PterodactylPowerAction.RESTART -> R.string.pterodactyl_action_restart
+                PterodactylPowerAction.KILL -> R.string.pterodactyl_action_kill
+            }
+        )
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.game_server_confirm_action, actionLabel)) },
+            text = { Text(stringResource(R.string.game_server_confirm_action_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingAction = null
+                    viewModel.sendPowerSignal(pending.serverId, pending.action, confirmed = true)
+                }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 }
+
+private data class PendingPowerAction(
+    val serverId: String,
+    val action: PterodactylPowerAction
+)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PterodactylServerCard(
     item: PterodactylServerWithResources,
     isActionPending: Boolean,
-    onPowerSignal: (String) -> Unit
+    onPowerSignal: (PterodactylPowerAction) -> Unit
 ) {
     val server = item.server
     val res = item.resources
@@ -265,7 +309,7 @@ private fun PterodactylServerCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!isRunning && !isStarting) {
                         OutlinedButton(
-                            onClick = { onPowerSignal("start") },
+                            onClick = { onPowerSignal(PterodactylPowerAction.START) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.pterodactyl_action_start))
@@ -273,13 +317,13 @@ private fun PterodactylServerCard(
                     }
                     if (isRunning || isStarting) {
                         OutlinedButton(
-                            onClick = { onPowerSignal("restart") },
+                            onClick = { onPowerSignal(PterodactylPowerAction.RESTART) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.pterodactyl_action_restart))
                         }
                         OutlinedButton(
-                            onClick = { onPowerSignal("stop") },
+                            onClick = { onPowerSignal(PterodactylPowerAction.STOP) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.pterodactyl_action_stop))
@@ -287,7 +331,7 @@ private fun PterodactylServerCard(
                     }
                     if (isRunning) {
                         OutlinedButton(
-                            onClick = { onPowerSignal("kill") },
+                            onClick = { onPowerSignal(PterodactylPowerAction.KILL) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.pterodactyl_action_kill))

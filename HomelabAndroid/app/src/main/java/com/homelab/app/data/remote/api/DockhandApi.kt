@@ -51,6 +51,7 @@ interface DockhandApi {
     suspend fun startContainer(
         @Path("id") containerId: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Dockhand",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("env") env: String? = null
@@ -60,6 +61,7 @@ interface DockhandApi {
     suspend fun stopContainer(
         @Path("id") containerId: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Dockhand",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("env") env: String? = null
@@ -69,6 +71,7 @@ interface DockhandApi {
     suspend fun restartContainer(
         @Path("id") containerId: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Dockhand",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("env") env: String? = null
@@ -101,6 +104,7 @@ interface DockhandApi {
     suspend fun startStack(
         @Path("name", encoded = true) stackName: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Dockhand",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("env") env: String? = null
@@ -110,6 +114,7 @@ interface DockhandApi {
     suspend fun stopStack(
         @Path("name", encoded = true) stackName: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Dockhand",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("env") env: String? = null
@@ -119,6 +124,7 @@ interface DockhandApi {
     suspend fun restartStack(
         @Path("name", encoded = true) stackName: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Dockhand",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("env") env: String? = null

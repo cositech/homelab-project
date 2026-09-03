@@ -18,6 +18,11 @@ private struct CalagopusDashboardData: Equatable {
     var runningCount: Int { rows.filter(\.isRunning).count }
 }
 
+private struct PendingCalagopusPowerAction {
+    let serverId: String
+    let signal: CalagopusPowerSignal
+}
+
 struct CalagopusDashboard: View {
     let instanceId: UUID
 
@@ -29,6 +34,7 @@ struct CalagopusDashboard: View {
     @State private var state: LoadableState<Void> = .idle
     @State private var actionServerId: String?
     @State private var actionErrorMessage: String?
+    @State private var pendingPowerAction: PendingCalagopusPowerAction?
 
     private let accentColor = ServiceType.calagopus.colors.primary
     private let twoColumnGrid = [GridItem(.flexible()), GridItem(.flexible())]
@@ -68,6 +74,44 @@ struct CalagopusDashboard: View {
         .navigationTitle(ServiceType.calagopus.displayName)
         .task(id: selectedInstanceId) {
             await fetchDashboard()
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingPowerAction != nil },
+                set: { if !$0 { pendingPowerAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pending = pendingPowerAction {
+                Button(
+                    powerActionLabel(pending.signal),
+                    role: pending.signal == .kill ? .destructive : nil
+                ) {
+                    pendingPowerAction = nil
+                    Task {
+                        await performPower(
+                            pending.signal,
+                            uuidShort: pending.serverId,
+                            confirmed: true
+                        )
+                    }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingPowerAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
+        }
+        .alert(
+            localizer.t.error,
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button(localizer.t.confirm, role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? localizer.t.error)
         }
     }
 
@@ -218,21 +262,21 @@ struct CalagopusDashboard: View {
                     enabled: actionsEnabled && !row.isRunning,
                     primary: true
                 ) {
-                    await performPower(.start, uuidShort: row.server.uuidShort)
+                    await requestPower(.start, uuidShort: row.server.uuidShort)
                 }
                 actionButton(
                     title: localizer.t.actionStop,
                     icon: "stop.fill",
                     enabled: actionsEnabled && row.isRunning
                 ) {
-                    await performPower(.stop, uuidShort: row.server.uuidShort)
+                    await requestPower(.stop, uuidShort: row.server.uuidShort)
                 }
                 actionButton(
                     title: localizer.t.actionRestart,
                     icon: "arrow.clockwise",
                     enabled: actionsEnabled && row.isRunning
                 ) {
-                    await performPower(.restart, uuidShort: row.server.uuidShort)
+                    await requestPower(.restart, uuidShort: row.server.uuidShort)
                 }
                 actionButton(
                     title: localizer.t.actionKill,
@@ -240,7 +284,7 @@ struct CalagopusDashboard: View {
                     enabled: actionsEnabled && row.isRunning,
                     destructive: true
                 ) {
-                    await performPower(.kill, uuidShort: row.server.uuidShort)
+                    await requestPower(.kill, uuidShort: row.server.uuidShort)
                 }
             }
         }
@@ -391,19 +435,68 @@ struct CalagopusDashboard: View {
 
     // MARK: - Power actions
 
-    private func performPower(_ signal: CalagopusPowerSignal, uuidShort: String) async {
+    private func requestPower(_ signal: CalagopusPowerSignal, uuidShort: String) async {
+        if signal.requiresConfirmation {
+            pendingPowerAction = PendingCalagopusPowerAction(serverId: uuidShort, signal: signal)
+        } else {
+            await performPower(signal, uuidShort: uuidShort, confirmed: false)
+        }
+    }
+
+    private func performPower(
+        _ signal: CalagopusPowerSignal,
+        uuidShort: String,
+        confirmed: Bool
+    ) async {
+        guard actionServerId == nil else { return }
+        actionServerId = uuidShort
+        actionErrorMessage = nil
+        defer { actionServerId = nil }
+
         do {
-            actionServerId = uuidShort
-            actionErrorMessage = nil
-            guard let client = await servicesStore.calagopusClient(instanceId: selectedInstanceId) else { return }
-            try await client.sendPowerSignal(uuidShort: uuidShort, signal: signal)
+            guard let client = await servicesStore.calagopusClient(instanceId: selectedInstanceId) else {
+                throw APIError.notConfigured
+            }
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: signal.request(
+                    instanceId: selectedInstanceId,
+                    uuidShort: uuidShort,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .calagopus).capabilities
+            ) {
+                do {
+                    try await client.sendPowerSignal(uuidShort: uuidShort, signal: signal)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "calagopus-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard audit.state == .succeeded else {
+                throw APIError.custom(audit.reasonCode)
+            }
             HapticManager.success()
             await syncServerAfterAction(uuidShort: uuidShort, signal: signal)
         } catch {
             HapticManager.error()
             actionErrorMessage = error.localizedDescription
         }
-        actionServerId = nil
+    }
+
+    private func powerActionLabel(_ signal: CalagopusPowerSignal) -> String {
+        switch signal {
+        case .start: return localizer.t.actionStart
+        case .stop: return localizer.t.actionStop
+        case .restart: return localizer.t.actionRestart
+        case .kill: return localizer.t.actionKill
+        }
     }
 
     private func syncServerAfterAction(uuidShort: String, signal: CalagopusPowerSignal) async {

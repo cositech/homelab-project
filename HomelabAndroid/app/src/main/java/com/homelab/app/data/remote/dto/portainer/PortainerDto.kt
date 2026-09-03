@@ -278,6 +278,42 @@ data class UpdateStackRequest(
     val prune: Boolean = false
 )
 
+enum class PortainerControlledConfigurationAction(
+    val wireName: String,
+    val risk: ActionRisk
+) {
+    RENAME_CONTAINER("container.rename", ActionRisk.MEDIUM),
+    UPDATE_STACK("stack.update", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = true
+
+    fun controlledRequest(
+        instanceId: String,
+        endpointId: Int,
+        targetId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ): ControlledActionRequest {
+        val normalizedTargetId = targetId.trim()
+        val targetRef = when (this) {
+            RENAME_CONTAINER -> "endpoint/$endpointId/container/$normalizedTargetId"
+            UPDATE_STACK -> "endpoint/$endpointId/stack/$normalizedTargetId"
+        }
+        return ControlledActionRequest(
+            id = requestId,
+            providerRef = "portainer:${instanceId.trim()}",
+            action = wireName,
+            targetRef = targetRef,
+            risk = risk,
+            requestedAt = requestedAt,
+            idempotencyKey = idempotencyKey,
+            confirmed = confirmed
+        )
+    }
+}
+
 enum class ContainerAction(
     val displayName: String,
     val isDestructive: Boolean,

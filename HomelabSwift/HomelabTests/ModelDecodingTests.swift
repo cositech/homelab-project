@@ -1496,6 +1496,173 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(maximumConcurrent, 1)
     }
 
+    func testDockhandIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = DockhandControlledAction.containerRestart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            environmentId: "production",
+            targetKind: "container",
+            targetId: "web-01",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "dockhand-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "dockhand-outcome-indeterminate")
+    }
+
+    func testDockmonIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = DockmonControlledAction.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            containerId: "web-01",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "dockmon-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "dockmon-outcome-indeterminate")
+    }
+
+    func testKomodoIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = KomodoStackAction.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            stackId: "core-stack",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "komodo-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "komodo-outcome-indeterminate")
+    }
+
+    func testGameServerPowerActionsHaveStableRiskClassificationAndIdentity() throws {
+        XCTAssertEqual(PterodactylPowerSignal.start.risk, .low)
+        XCTAssertEqual(PterodactylPowerSignal.stop.risk, .medium)
+        XCTAssertEqual(PterodactylPowerSignal.restart.risk, .medium)
+        XCTAssertEqual(PterodactylPowerSignal.kill.risk, .high)
+        XCTAssertFalse(PterodactylPowerSignal.start.requiresConfirmation)
+        XCTAssertTrue(PterodactylPowerSignal.restart.requiresConfirmation)
+        XCTAssertEqual(CalagopusPowerSignal.start.risk, .low)
+        XCTAssertEqual(CalagopusPowerSignal.kill.risk, .high)
+
+        let instanceId = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let pterodactyl = PterodactylPowerSignal.kill.request(
+            instanceId: instanceId,
+            identifier: "MC-Primary",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        XCTAssertEqual(pterodactyl.providerRef, "pterodactyl:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(pterodactyl.action, "server.power.kill")
+        XCTAssertEqual(pterodactyl.targetRef, "server/mc-primary")
+        XCTAssertTrue(pterodactyl.confirmed)
+
+        let calagopus = CalagopusPowerSignal.restart.request(
+            instanceId: instanceId,
+            uuidShort: "Game-02",
+            confirmed: true
+        )
+        XCTAssertEqual(calagopus.providerRef, "calagopus:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(calagopus.action, "server.power.restart")
+        XCTAssertEqual(calagopus.targetRef, "server/game-02")
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .pterodactyl).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .calagopus).capabilities.contains(.writeActions))
+    }
+
+    func testPterodactylIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let request = PterodactylPowerSignal.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            identifier: "mc-primary",
+            confirmed: true
+        )
+        let result = await ControlledActionCoordinator().execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "pterodactyl-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "pterodactyl-outcome-indeterminate")
+    }
+
+    func testCalagopusIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let request = CalagopusPowerSignal.restart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            uuidShort: "game-02",
+            confirmed: true
+        )
+        let result = await ControlledActionCoordinator().execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "calagopus-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "calagopus-outcome-indeterminate")
+    }
+
     func testControlledActionDeduplicatesConcurrentSameKey() async {
         let counter = ActionInvocationCounter()
         let coordinator = ControlledActionCoordinator()
@@ -1798,6 +1965,276 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ContainerAction.unpause.controlledAction, .resume)
     }
 
+    func testPortainerConfigurationActionsRequireConfirmationAndHaveStableIdentity() {
+        XCTAssertEqual(PortainerControlledConfigurationAction.renameContainer.risk, .medium)
+        XCTAssertEqual(PortainerControlledConfigurationAction.updateStack.risk, .high)
+        XCTAssertTrue(PortainerControlledConfigurationAction.renameContainer.requiresConfirmation)
+        XCTAssertTrue(PortainerControlledConfigurationAction.updateStack.requiresConfirmation)
+
+        let renameRequest = PortainerControlledConfigurationAction.renameContainer.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            endpointId: 7,
+            targetId: "container-42",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        let stackRequest = PortainerControlledConfigurationAction.updateStack.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            endpointId: 7,
+            targetId: "23",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+        )
+
+        XCTAssertEqual(renameRequest.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(renameRequest.action, "container.rename")
+        XCTAssertEqual(renameRequest.targetRef, "endpoint/7/container/container-42")
+        XCTAssertEqual(stackRequest.providerRef, "portainer:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(stackRequest.action, "stack.update")
+        XCTAssertEqual(stackRequest.targetRef, "endpoint/7/stack/23")
+        XCTAssertTrue(renameRequest.confirmed)
+        XCTAssertTrue(stackRequest.confirmed)
+        XCTAssertTrue(renameRequest.parameters.isEmpty)
+        XCTAssertTrue(stackRequest.parameters.isEmpty)
+    }
+
+    func testPortainerControlledOperationFailurePreservesDeterministicReasonCodes() {
+        let unauthorized = PortainerControlledOperationFailure.map(APIError.unauthorized)
+        let conflict = PortainerControlledOperationFailure.map(
+            APIError.httpError(statusCode: 409, body: "conflict")
+        )
+        let transport = PortainerControlledOperationFailure.map(
+            URLError(.networkConnectionLost)
+        )
+
+        XCTAssertEqual(unauthorized.reasonCode, "portainer-unauthorized")
+        XCTAssertEqual(unauthorized.disposition, .nonRetryable)
+        XCTAssertEqual(conflict.reasonCode, "portainer-http-409")
+        XCTAssertEqual(conflict.disposition, .nonRetryable)
+        XCTAssertEqual(transport.reasonCode, "portainer-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+    }
+
+    func testDockhandLifecycleActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(DockhandControlledAction.containerStart.risk, .low)
+        XCTAssertEqual(DockhandControlledAction.containerStop.risk, .medium)
+        XCTAssertEqual(DockhandControlledAction.stackRestart.risk, .medium)
+        XCTAssertFalse(DockhandControlledAction.containerStart.requiresConfirmation)
+        XCTAssertTrue(DockhandControlledAction.stackStop.requiresConfirmation)
+
+        let request = DockhandControlledAction.containerRestart.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            environmentId: "Production",
+            targetKind: "container",
+            targetId: "Web-01",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "dockhand:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "container.restart")
+        XCTAssertEqual(request.targetRef, "environment/production/container/web-01")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .dockhand).capabilities.contains(.writeActions))
+    }
+
+    func testDockmonActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(DockmonControlledAction.restart.risk, .medium)
+        XCTAssertEqual(DockmonControlledAction.update.risk, .high)
+        XCTAssertTrue(DockmonControlledAction.restart.requiresConfirmation)
+        XCTAssertTrue(DockmonControlledAction.update.requiresConfirmation)
+
+        let request = DockmonControlledAction.update.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            containerId: "Web-01",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "dockmon:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "container.update")
+        XCTAssertEqual(request.targetRef, "container/web-01")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .dockmon).capabilities.contains(.writeActions))
+    }
+
+    func testKomodoStackActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(KomodoStackAction.deploy.risk, .high)
+        XCTAssertEqual(KomodoStackAction.start.risk, .medium)
+        XCTAssertEqual(KomodoStackAction.stop.risk, .medium)
+        XCTAssertEqual(KomodoStackAction.restart.risk, .medium)
+        XCTAssertTrue(KomodoStackAction.deploy.requiresConfirmation)
+        XCTAssertTrue(KomodoStackAction.restart.requiresConfirmation)
+
+        let request = KomodoStackAction.deploy.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            stackId: "Core-Stack",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "komodo:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "stack.deploy")
+        XCTAssertEqual(request.targetRef, "stack/core-stack")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .komodo).capabilities.contains(.writeActions))
+    }
+
+    func testLinuxUpdateActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(LinuxUpdateControlledAction.checkAll.risk, .low)
+        XCTAssertEqual(LinuxUpdateControlledAction.refreshCache.risk, .low)
+        XCTAssertEqual(LinuxUpdateControlledAction.checkSystem.risk, .low)
+        XCTAssertEqual(LinuxUpdateControlledAction.upgradePackage.risk, .medium)
+        XCTAssertEqual(LinuxUpdateControlledAction.upgradeAll.risk, .high)
+        XCTAssertEqual(LinuxUpdateControlledAction.fullUpgrade.risk, .high)
+        XCTAssertEqual(LinuxUpdateControlledAction.reboot.risk, .high)
+        XCTAssertFalse(LinuxUpdateControlledAction.checkSystem.requiresConfirmation)
+        XCTAssertTrue(LinuxUpdateControlledAction.upgradePackage.requiresConfirmation)
+
+        let request = LinuxUpdateControlledAction.upgradePackage.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: LinuxUpdateControlledAction.upgradePackage.targetRef(
+                systemId: 42,
+                packageName: "OpenSSL"
+            ),
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "linux-update:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "package.upgrade")
+        XCTAssertEqual(request.targetRef, "system/42/package/openssl")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .linuxUpdate).capabilities.contains(.writeActions))
+    }
+
+    func testLinuxUpdateIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = LinuxUpdateControlledAction.checkSystem.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: LinuxUpdateControlledAction.checkSystem.targetRef(systemId: 42),
+            confirmed: false
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "linux-update-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "linux-update-outcome-indeterminate")
+    }
+
+    func testTechnitiumActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(TechnitiumControlledAction.enableBlocking.risk, .low)
+        XCTAssertEqual(TechnitiumControlledAction.disableBlocking.risk, .medium)
+        XCTAssertEqual(TechnitiumControlledAction.temporaryDisable.risk, .medium)
+        XCTAssertEqual(TechnitiumControlledAction.refreshBlockLists.risk, .low)
+        XCTAssertEqual(TechnitiumControlledAction.addBlockedDomain.risk, .high)
+        XCTAssertEqual(TechnitiumControlledAction.removeBlockedDomain.risk, .medium)
+        XCTAssertFalse(TechnitiumControlledAction.enableBlocking.requiresConfirmation)
+        XCTAssertTrue(TechnitiumControlledAction.addBlockedDomain.requiresConfirmation)
+
+        let request = TechnitiumControlledAction.addBlockedDomain.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: "blocked-domain/Example.COM",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "technitium:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "blocked-domain.add")
+        XCTAssertEqual(request.targetRef, "blocked-domain/example.com")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .technitium).capabilities.contains(.writeActions))
+    }
+
+    func testTechnitiumIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator()
+        let request = TechnitiumControlledAction.disableBlocking.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: "protection/global",
+            confirmed: true
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "technitium-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "technitium-outcome-indeterminate")
+    }
+
+    func testPiholeDomainActionsRequireConfirmationAndHaveStableIdentity() {
+        XCTAssertEqual(PiholeControlledDomainAction.add.risk, .high)
+        XCTAssertEqual(PiholeControlledDomainAction.remove.risk, .medium)
+        XCTAssertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                risk: PiholeControlledDomainAction.add.risk,
+                completedAttempts: 0
+            )
+        )
+
+        let request = PiholeControlledDomainAction.remove.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            domain: "Example.COM",
+            listType: .deny,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "pi-hole:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "domain.remove")
+        XCTAssertEqual(request.targetRef, "domain/deny/example.com")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .pihole).capabilities.contains(.writeActions))
+    }
+
+    func testPiholeLegacyMutationFallbackRequiresUnsupportedEndpointStatus() {
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 404, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 405, body: "")))
+        XCTAssertTrue(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 501, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(APIError.httpError(statusCode: 500, body: "")))
+        XCTAssertFalse(PiHoleAPIClient.shouldUseLegacyDomainMutation(URLError(.timedOut)))
+    }
+
     func testAdGuardProtectionActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(AdGuardControlledProtectionAction.enable.risk, .low)
         XCTAssertEqual(AdGuardControlledProtectionAction.disable.risk, .medium)
@@ -1818,6 +2255,31 @@ final class ModelDecodingTests: XCTestCase {
             ProviderRegistry.descriptor(for: .adguardHome).capabilities.contains(.writeActions)
         )
     }
+
+    func testAdGuardConfigurationActionsAreHighRiskAndHaveStableIdentity() {
+        XCTAssertTrue(AdGuardControlledConfigurationAction.allCases.allSatisfy { $0.risk == .high })
+        XCTAssertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                risk: AdGuardControlledConfigurationAction.createRewrite.risk,
+                completedAttempts: 0
+            )
+        )
+
+        let request = AdGuardControlledConfigurationAction.updateFilter.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetId: "42",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "adguard-home:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "filter-list.update")
+        XCTAssertEqual(request.targetRef, "filter-list/42")
+        XCTAssertTrue(request.confirmed)
+    }
+
     func testHealthchecksCheckActionsHaveStableRiskClassificationAndIdentity() {
         XCTAssertEqual(HealthchecksControlledCheckAction.create.risk, .high)
         XCTAssertFalse(
@@ -1863,6 +2325,186 @@ final class ModelDecodingTests: XCTestCase {
         )
     }
 
+
+    func testNpmProxyHostActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(NpmProxyHostControlledAction.create.risk, .high)
+        XCTAssertEqual(NpmProxyHostControlledAction.update.risk, .high)
+        XCTAssertEqual(NpmProxyHostControlledAction.enable.risk, .low)
+        XCTAssertEqual(NpmProxyHostControlledAction.disable.risk, .medium)
+        XCTAssertEqual(NpmProxyHostControlledAction.delete.risk, .high)
+        XCTAssertFalse(NpmProxyHostControlledAction.enable.requiresConfirmation)
+        XCTAssertTrue(NpmProxyHostControlledAction.disable.requiresConfirmation)
+
+        let request = NpmProxyHostControlledAction.delete.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            hostId: 42,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "nginx-proxy-manager:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "proxy-host.delete")
+        XCTAssertEqual(request.targetRef, "proxy-host/42")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities.contains(.writeActions)
+        )
+    }
+
+    func testNpmConfigurationActionsHaveStableRiskClassificationAndIdentity() {
+        for action in NpmConfigurationControlledAction.allCases where action != .renewCertificate {
+            XCTAssertEqual(action.risk, .high)
+            XCTAssertTrue(action.requiresConfirmation)
+        }
+        XCTAssertEqual(NpmConfigurationControlledAction.renewCertificate.risk, .medium)
+        XCTAssertTrue(NpmConfigurationControlledAction.renewCertificate.requiresConfirmation)
+
+        let request = NpmConfigurationControlledAction.deleteAccessList.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetId: 17,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        let createRequest = NpmConfigurationControlledAction.createRedirectionHost.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetId: nil,
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+        )
+
+        XCTAssertEqual(request.providerRef, "nginx-proxy-manager:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "access-list.delete")
+        XCTAssertEqual(request.targetRef, "access-list/17")
+        XCTAssertEqual(createRequest.targetRef, "redirection-host/new")
+        XCTAssertTrue(request.confirmed)
+    }
+
+    func testNpmProxyHostIndeterminateMutationIsNonRetryable() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(waitBeforeRetry: { _ in })
+        let request = NpmProxyHostControlledAction.enable.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            hostId: 42,
+            confirmed: false,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        let result = await coordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+            throw ControlledActionOperationError(
+                reasonCode: "nginx-proxy-manager-outcome-indeterminate",
+                disposition: .nonRetryable
+            )
+        }
+
+        let invocations = await counter.value
+        XCTAssertEqual(result.state, .failed)
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(result.reasonCode, "nginx-proxy-manager-outcome-indeterminate")
+    }
+
+    func testCraftyActionsHaveStableRiskIdentityAndNoPersistedCommandPayload() {
+        XCTAssertEqual(CraftyAction.start.risk, .low)
+        XCTAssertEqual(CraftyAction.stop.risk, .medium)
+        XCTAssertEqual(CraftyAction.restart.risk, .medium)
+        XCTAssertEqual(CraftyAction.backup.risk, .medium)
+        XCTAssertEqual(CraftyAction.updateExecutable.risk, .high)
+        XCTAssertEqual(CraftyAction.kill.risk, .high)
+        XCTAssertFalse(CraftyAction.start.requiresConfirmation)
+        XCTAssertTrue(CraftyAction.stop.requiresConfirmation)
+        XCTAssertTrue(CraftyCommandAction.send.requiresConfirmation)
+
+        let instanceId = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let lifecycleRequest = CraftyAction.updateExecutable.request(
+            instanceId: instanceId,
+            serverId: " SERVER-42 ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        let commandRequest = CraftyCommandAction.send.request(
+            instanceId: instanceId,
+            serverId: " SERVER-42 ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
+        )
+
+        XCTAssertEqual(lifecycleRequest.providerRef, "crafty-controller:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(lifecycleRequest.action, "server.executable.update")
+        XCTAssertEqual(lifecycleRequest.targetRef, "server/server-42")
+        XCTAssertEqual(commandRequest.risk, .high)
+        XCTAssertEqual(commandRequest.action, "server.command.send")
+        XCTAssertEqual(commandRequest.targetRef, "server/server-42")
+        XCTAssertTrue(lifecycleRequest.confirmed)
+        XCTAssertTrue(commandRequest.confirmed)
+        XCTAssertTrue(lifecycleRequest.parameters.isEmpty)
+        XCTAssertTrue(commandRequest.parameters.isEmpty)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .craftyController).capabilities.contains(.writeActions)
+        )
+    }
+
+    func testCraftyMutationFailureMappingIsDeterministicAndNonRetryable() {
+        let transport = CraftyControlledOperationFailure.map(
+            APIError.networkError(URLError(.timedOut))
+        )
+        let unauthorized = CraftyControlledOperationFailure.map(APIError.unauthorized)
+        let providerFailure = CraftyControlledOperationFailure.map(
+            APIError.custom("provider response must not enter the audit reason")
+        )
+
+        XCTAssertEqual(transport.reasonCode, "crafty-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+        XCTAssertEqual(unauthorized.reasonCode, "crafty-invalid-credentials")
+        XCTAssertEqual(unauthorized.disposition, .nonRetryable)
+        XCTAssertEqual(providerFailure.reasonCode, "crafty-provider-reported-failure")
+        XCTAssertEqual(providerFailure.disposition, .nonRetryable)
+    }
+    func testPangolinActionsHaveStableRiskIdentityAndNoPayloadPersistence() {
+        XCTAssertEqual(PangolinControlledAction.publicResourceCreate.risk, .high)
+        XCTAssertEqual(PangolinControlledAction.privateResourceUpdate.risk, .high)
+        XCTAssertEqual(PangolinControlledAction.publicResourceEnable.risk, .low)
+        XCTAssertEqual(PangolinControlledAction.publicResourceDisable.risk, .medium)
+        XCTAssertFalse(PangolinControlledAction.publicResourceEnable.requiresConfirmation)
+        XCTAssertTrue(PangolinControlledAction.publicResourceDisable.requiresConfirmation)
+
+        let request = PangolinControlledAction.publicResourceUpdate.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: " PUBLIC-RESOURCE/42 ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "pangolin:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "public-resource.update")
+        XCTAssertEqual(request.targetRef, "public-resource/42")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(request.parameters.isEmpty)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .pangolin).capabilities.contains(.writeActions)
+        )
+
+        let transport = PangolinControlledOperationFailure.map(APIError.networkError(URLError(.timedOut)))
+        XCTAssertEqual(transport.reasonCode, "pangolin-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+    }
 }
 
 private actor ActionInvocationCounter {

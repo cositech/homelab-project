@@ -30,6 +30,9 @@ class PiholeRepository @Inject constructor(
         return error is HttpException && error.code() == 401
     }
 
+    internal fun shouldUseLegacyDomainMutation(error: Throwable): Boolean =
+        error is HttpException && error.code() in setOf(404, 405, 501)
+
     private suspend fun refreshAuth(instance: ServiceInstance): String? {
         val secret = instance.piHoleStoredSecret ?: return instance.token.takeIf { it.isNotBlank() }
         val refreshed = authenticate(url = instance.url, password = secret, allowSelfSigned = instance.allowSelfSigned)
@@ -128,6 +131,7 @@ class PiholeRepository @Inject constructor(
             try {
                 api.addDomain(instanceId = instanceId, list = list.value, auth = auth, request = PiholeAddDomainRequest(domain = domain))
             } catch (e: Exception) {
+                if (!shouldUseLegacyDomainMutation(e)) throw e
                 val legacyList = if (list == PiholeDomainListType.ALLOW) "white" else "black"
                 api.addDomainLegacy(instanceId = instanceId, list = legacyList, domain = domain, auth = auth)
             }
@@ -139,6 +143,7 @@ class PiholeRepository @Inject constructor(
             try {
                 api.removeDomain(instanceId = instanceId, list = list.value, domain = domain, auth = auth)
             } catch (e: Exception) {
+                if (!shouldUseLegacyDomainMutation(e)) throw e
                 val legacyList = if (list == PiholeDomainListType.ALLOW) "white" else "black"
                 api.removeDomainLegacy(instanceId = instanceId, list = legacyList, domain = domain, auth = auth)
             }

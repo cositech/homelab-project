@@ -2,6 +2,11 @@ package com.homelab.app.data.repository
 
 import com.homelab.app.data.remote.TlsClientSelector
 import com.homelab.app.data.remote.api.KomodoApi
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -71,11 +76,31 @@ data class KomodoStackDetail(
     val services: List<KomodoStackService>
 )
 
-enum class KomodoStackAction {
-    DEPLOY,
-    START,
-    STOP,
-    RESTART
+enum class KomodoStackAction(val wireName: String, val risk: ActionRisk) {
+    DEPLOY("stack.deploy", ActionRisk.HIGH),
+    START("stack.start", ActionRisk.MEDIUM),
+    STOP("stack.stop", ActionRisk.MEDIUM),
+    RESTART("stack.restart", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = true
+
+    fun controlledRequest(
+        instanceId: String,
+        stackId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "komodo:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = wireName,
+        targetRef = "stack/${stackId.trim().lowercase(Locale.ROOT)}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
 
 data class KomodoSummary(
