@@ -722,7 +722,8 @@ class MediaArrRepository @Inject constructor(
                     "/v1",
                     method = "POST",
                     body = listPayload,
-                    extraHeaders = mapOf("Content-Type" to "application/json")
+                    extraHeaders = mapOf("Content-Type" to "application/json"),
+                    noFallback = false
                 )
                 val sessions = sessionsResponse.asJsonObject
                     ?.optJSONArray("sessions")
@@ -1133,7 +1134,8 @@ class MediaArrRepository @Inject constructor(
             "/v1",
             method = "POST",
             body = JSONObject().put("cmd", "sessions.list").toString(),
-            extraHeaders = mapOf("Content-Type" to "application/json")
+            extraHeaders = mapOf("Content-Type" to "application/json"),
+            noFallback = false
         ).asJsonObject ?: JSONObject()
         val sessionsArray = sessionsObj.optJSONArray("sessions") ?: JSONArray()
 
@@ -2355,7 +2357,8 @@ class MediaArrRepository @Inject constructor(
             "/v1",
             method = "POST",
             body = JSONObject().put("cmd", "sessions.list").toString(),
-            extraHeaders = mapOf("Content-Type" to "application/json")
+            extraHeaders = mapOf("Content-Type" to "application/json"),
+            noFallback = false
         ).asJsonObject ?: JSONObject()
 
         val sessionsArray = sessionsObj.optJSONArray("sessions") ?: JSONArray()
@@ -2499,15 +2502,18 @@ class MediaArrRepository @Inject constructor(
         method: String = "GET",
         body: String? = null,
         extraHeaders: Map<String, String> = emptyMap(),
-        expectJson: Boolean = true
+        expectJson: Boolean = true,
+        noFallback: Boolean? = null
     ): RawResponse {
-        // Every media-service mutation is routed through the controlled-action coordinator and must
-        // never be replayed against the fallback URL; an indeterminate transport outcome could
-        // otherwise run a command, add content or approve a request twice. Reads keep normal fallback.
+        // Media-service mutations routed through the controlled-action coordinator opt out of
+        // fallback replay so an indeterminate transport outcome cannot run a command, add content
+        // or approve a request twice. By default every non-GET request is treated as a mutation;
+        // the POST-based FlareSolverr session-list read passes noFallback = false to keep fallback.
+        val suppressFallback = noFallback ?: !method.equals("GET", ignoreCase = true)
         val headers = buildMap {
             putAll(extraHeaders)
             put("X-Homelab-Instance-Id", instance.id)
-            if (!method.equals("GET", ignoreCase = true)) {
+            if (suppressFallback) {
                 put("X-Homelab-No-Fallback", "true")
             }
         }

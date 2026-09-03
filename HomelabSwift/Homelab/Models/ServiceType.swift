@@ -1567,6 +1567,9 @@ func executeControlledMediaAction(
     confirmed: Bool = false,
     operation: @escaping @Sendable () async throws -> Void
 ) async throws {
+    // The coordinator records only a bounded reason code; keep the original provider error so the
+    // dashboard can still render its real, localized failure message.
+    let originalError = ControlledActionErrorBox()
     let audit = await coordinator.execute(
         request: action.request(
             serviceType: serviceType,
@@ -1584,12 +1587,23 @@ func executeControlledMediaAction(
         } catch let error as ControlledActionOperationError {
             throw error
         } catch {
+            await originalError.set(error)
             throw MediaServiceControlledOperationFailure.map(error)
         }
     }
-    guard audit.state == .succeeded else {
-        throw APIError.custom(audit.reasonCode)
+    if audit.state == .cancelled {
+        throw CancellationError()
     }
+    guard audit.state == .succeeded else {
+        throw (await originalError.value) ?? APIError.custom(audit.reasonCode)
+    }
+}
+
+/// Carries the original provider error out of a `@Sendable` controlled-action operation so callers
+/// can still show its localized message after the coordinator records a bounded reason code.
+actor ControlledActionErrorBox {
+    private(set) var value: Error?
+    func set(_ error: Error) { value = error }
 }
 
 enum PortainerControlledOperationFailure {

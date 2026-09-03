@@ -1274,15 +1274,19 @@ fun MediaServiceDashboardScreen(
 
             pendingActionConfirmation?.let { pending ->
                 val detail = pending.detail?.takeIf { it.isNotBlank() }
-                val fallbackDetail = if (pending.action == MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED) {
-                    actionLabel(pending.action)
-                } else {
-                    stringResource(R.string.media_action_qb_confirm_all)
-                }
+                val isQbBulk = pending.action in setOf(
+                    MediaArrAction.QBITTORRENT_PAUSE_ALL,
+                    MediaArrAction.QBITTORRENT_RESUME_ALL,
+                    MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED,
+                    MediaArrAction.QBITTORRENT_FORCE_RECHECK,
+                    MediaArrAction.QBITTORRENT_REANNOUNCE
+                )
+                val body: String? = detail
+                    ?: if (isQbBulk) stringResource(R.string.media_action_qb_confirm_all) else null
                 AlertDialog(
                     onDismissRequest = { pendingActionConfirmation = null },
                     title = { Text(actionLabel(pending.action)) },
-                    text = { Text(detail ?: fallbackDetail) },
+                    text = body?.let { { Text(it) } },
                     confirmButton = {
                         TextButton(onClick = {
                             val confirmed = pending
