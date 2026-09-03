@@ -621,6 +621,8 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .patchmon:
                 capabilities = [.health, .writeActions]
+            case .radarr, .sonarr, .lidarr:
+                capabilities = [.health, .writeActions]
             case .pterodactyl, .calagopus, .craftyController:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
@@ -1475,6 +1477,119 @@ enum ActionFailureDisposition: String, Codable, Equatable, Sendable {
 struct ControlledActionOperationError: Error, Sendable {
     let reasonCode: String
     let disposition: ActionFailureDisposition
+}
+
+/// Controlled-action identity for the remaining media-service mutations. Background maintenance
+/// commands are low risk; adding content to a library is medium risk and requires explicit
+/// confirmation. The provider ref carries the concrete service so identical action names stay
+/// distinct per provider, and the request never carries a payload.
+enum MediaServiceControlledAction: String, CaseIterable, Equatable, Sendable {
+    case commandSearchMissing = "command.search-missing"
+    case commandRssSync = "command.rss-sync"
+    case commandRefresh = "command.refresh"
+    case commandRescan = "command.rescan"
+    case commandDownloadedScan = "command.downloaded-scan"
+    case commandHealthCheck = "command.health-check"
+    case libraryAdd = "library.add"
+
+    var risk: ControlledActionRisk { self == .libraryAdd ? .medium : .low }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        serviceType: ServiceType,
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "\(serviceType.rawValue):\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum MediaServiceControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return failure("media-service-outcome-indeterminate")
+        }
+        guard let apiError = error as? APIError else {
+            return failure("media-service-provider-error")
+        }
+
+        switch apiError {
+        case .networkError, .bothURLsFailed:
+            return failure("media-service-outcome-indeterminate")
+        case .unauthorized:
+            return failure("media-service-invalid-credentials")
+        case .httpError(let statusCode, _):
+            return failure("media-service-http-\(statusCode)")
+        case .notConfigured:
+            return failure("media-service-not-configured")
+        case .invalidURL:
+            return failure("media-service-invalid-url")
+        case .decodingError:
+            return failure("media-service-response-decode-failure")
+        case .requestConfigurationRequired:
+            return failure("media-service-configuration-required")
+        case .custom:
+            return failure("media-service-provider-reported-failure")
+        }
+    }
+
+    private static func failure(_ reasonCode: String) -> ControlledActionOperationError {
+        ControlledActionOperationError(reasonCode: reasonCode, disposition: .nonRetryable)
+    }
+}
+
+/// Runs a media-service mutation through the shared controlled-action coordinator and audit path.
+/// Low-risk maintenance commands are auto-confirmed; medium-risk actions must pass `confirmed: true`.
+@MainActor
+func executeControlledMediaAction(
+    _ action: MediaServiceControlledAction,
+    serviceType: ServiceType,
+    instanceId: UUID,
+    targetRef: String,
+    coordinator: ControlledActionCoordinator,
+    confirmed: Bool = false,
+    operation: @escaping @Sendable () async throws -> Void
+) async throws {
+    let audit = await coordinator.execute(
+        request: action.request(
+            serviceType: serviceType,
+            instanceId: instanceId,
+            targetRef: targetRef,
+            confirmed: action.requiresConfirmation ? confirmed : true
+        ),
+        actorRole: .admin,
+        providerCapabilities: ProviderRegistry.descriptor(for: serviceType).capabilities
+    ) {
+        do {
+            try await operation()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as ControlledActionOperationError {
+            throw error
+        } catch {
+            throw MediaServiceControlledOperationFailure.map(error)
+        }
+    }
+    guard audit.state == .succeeded else {
+        throw APIError.custom(audit.reasonCode)
+    }
 }
 
 enum PortainerControlledOperationFailure {

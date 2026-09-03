@@ -138,6 +138,115 @@ enum class QbittorrentControlledAction(
     }
 }
 
+/**
+ * Controlled-action identity for the remaining media-service mutations (Radarr, Sonarr, Lidarr,
+ * Jellyseerr, Prowlarr, Gluetun and FlareSolverr). Background maintenance commands and read-style
+ * job triggers are low risk. Adding content, approving or declining a media request, restarting the
+ * VPN tunnel and destroying a scraper session are medium risk and require explicit confirmation.
+ * Names are bounded normalized identifiers and the request never carries a payload; the provider ref
+ * carries the concrete service so identical action names stay distinct per provider.
+ */
+enum class MediaServiceControlledAction(
+    val actionName: String,
+    val risk: ActionRisk
+) {
+    COMMAND_SEARCH_MISSING("command.search-missing", ActionRisk.LOW),
+    COMMAND_RSS_SYNC("command.rss-sync", ActionRisk.LOW),
+    COMMAND_REFRESH("command.refresh", ActionRisk.LOW),
+    COMMAND_RESCAN("command.rescan", ActionRisk.LOW),
+    COMMAND_DOWNLOADED_SCAN("command.downloaded-scan", ActionRisk.LOW),
+    COMMAND_HEALTH_CHECK("command.health-check", ActionRisk.LOW),
+    LIBRARY_ADD("library.add", ActionRisk.MEDIUM),
+    REQUEST_APPROVE("request.approve", ActionRisk.MEDIUM),
+    REQUEST_DECLINE("request.decline", ActionRisk.MEDIUM),
+    REQUEST_APPROVE_OLDEST("request.approve-oldest", ActionRisk.MEDIUM),
+    REQUEST_DECLINE_OLDEST("request.decline-oldest", ActionRisk.MEDIUM),
+    JOB_RUN_RECENT("job.run-recent", ActionRisk.LOW),
+    JOB_RUN_FULL("job.run-full", ActionRisk.LOW),
+    INDEXER_TEST("indexer.test", ActionRisk.LOW),
+    APP_SYNC("app.sync", ActionRisk.LOW),
+    VPN_RESTART("vpn.restart", ActionRisk.MEDIUM),
+    SESSION_CREATE("session.create", ActionRisk.LOW),
+    SESSION_DESTROY("session.destroy", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    /** Normalized, payload-free target identity for grid-level actions that carry no specific id. */
+    fun defaultTargetRef(): String = when (this) {
+        LIBRARY_ADD -> "library/new"
+        REQUEST_APPROVE, REQUEST_DECLINE -> "request/selected"
+        REQUEST_APPROVE_OLDEST, REQUEST_DECLINE_OLDEST -> "request/oldest"
+        JOB_RUN_RECENT -> "job/recent"
+        JOB_RUN_FULL -> "job/full"
+        INDEXER_TEST -> "indexer/all"
+        APP_SYNC -> "app/all"
+        VPN_RESTART -> "vpn/openvpn"
+        SESSION_CREATE -> "session/new"
+        SESSION_DESTROY -> "session/selected"
+        COMMAND_SEARCH_MISSING, COMMAND_RSS_SYNC, COMMAND_REFRESH,
+        COMMAND_RESCAN, COMMAND_DOWNLOADED_SCAN, COMMAND_HEALTH_CHECK -> "command/all"
+    }
+
+    fun controlledRequest(
+        serviceType: ServiceType,
+        instanceId: String,
+        targetRef: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "${serviceType.name.lowercase(Locale.ROOT)}:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = targetRef.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+
+    companion object {
+        fun forMediaArrAction(action: MediaArrAction): MediaServiceControlledAction? = when (action) {
+            MediaArrAction.RADARR_SEARCH_MISSING,
+            MediaArrAction.SONARR_SEARCH_MISSING,
+            MediaArrAction.LIDARR_SEARCH_MISSING -> COMMAND_SEARCH_MISSING
+            MediaArrAction.RADARR_RSS_SYNC,
+            MediaArrAction.SONARR_RSS_SYNC,
+            MediaArrAction.LIDARR_RSS_SYNC -> COMMAND_RSS_SYNC
+            MediaArrAction.RADARR_REFRESH_INDEX,
+            MediaArrAction.SONARR_REFRESH_INDEX,
+            MediaArrAction.LIDARR_REFRESH_INDEX -> COMMAND_REFRESH
+            MediaArrAction.RADARR_RESCAN,
+            MediaArrAction.SONARR_RESCAN,
+            MediaArrAction.LIDARR_RESCAN -> COMMAND_RESCAN
+            MediaArrAction.RADARR_DOWNLOADED_SCAN,
+            MediaArrAction.SONARR_DOWNLOADED_SCAN,
+            MediaArrAction.LIDARR_DOWNLOADED_SCAN -> COMMAND_DOWNLOADED_SCAN
+            MediaArrAction.RADARR_HEALTH_CHECK,
+            MediaArrAction.SONARR_HEALTH_CHECK,
+            MediaArrAction.LIDARR_HEALTH_CHECK,
+            MediaArrAction.PROWLARR_HEALTH_CHECK -> COMMAND_HEALTH_CHECK
+            MediaArrAction.RADARR_ADD_CONTENT,
+            MediaArrAction.SONARR_ADD_CONTENT,
+            MediaArrAction.LIDARR_ADD_CONTENT,
+            MediaArrAction.JELLYSEERR_REQUEST_CONTENT -> LIBRARY_ADD
+            MediaArrAction.JELLYSEERR_APPROVE_REQUEST -> REQUEST_APPROVE
+            MediaArrAction.JELLYSEERR_DECLINE_REQUEST -> REQUEST_DECLINE
+            MediaArrAction.JELLYSEERR_APPROVE_PENDING -> REQUEST_APPROVE_OLDEST
+            MediaArrAction.JELLYSEERR_DECLINE_PENDING -> REQUEST_DECLINE_OLDEST
+            MediaArrAction.JELLYSEERR_RUN_RECENT_SCAN -> JOB_RUN_RECENT
+            MediaArrAction.JELLYSEERR_RUN_FULL_SCAN -> JOB_RUN_FULL
+            MediaArrAction.PROWLARR_TEST_INDEXERS -> INDEXER_TEST
+            MediaArrAction.PROWLARR_SYNC_APPS -> APP_SYNC
+            MediaArrAction.GLUETUN_RESTART_VPN -> VPN_RESTART
+            MediaArrAction.FLARESOLVERR_CREATE_SESSION -> SESSION_CREATE
+            MediaArrAction.FLARESOLVERR_DESTROY_SESSION -> SESSION_DESTROY
+            else -> null
+        }
+    }
+}
+
 data class MediaArrMetric(
     val label: String,
     val value: String,
@@ -2392,11 +2501,21 @@ class MediaArrRepository @Inject constructor(
         extraHeaders: Map<String, String> = emptyMap(),
         expectJson: Boolean = true
     ): RawResponse {
+        // Every media-service mutation is routed through the controlled-action coordinator and must
+        // never be replayed against the fallback URL; an indeterminate transport outcome could
+        // otherwise run a command, add content or approve a request twice. Reads keep normal fallback.
+        val headers = buildMap {
+            putAll(extraHeaders)
+            put("X-Homelab-Instance-Id", instance.id)
+            if (!method.equals("GET", ignoreCase = true)) {
+                put("X-Homelab-No-Fallback", "true")
+            }
+        }
         return requestRaw(
             baseUrl = instance.url,
             path = path,
             method = method,
-            headers = extraHeaders + mapOf("X-Homelab-Instance-Id" to instance.id),
+            headers = headers,
             body = body,
             bypass = false,
             expectJson = expectJson

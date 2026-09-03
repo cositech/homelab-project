@@ -19,6 +19,7 @@ import com.homelab.app.data.repository.PangolinControlledAction
 import com.homelab.app.data.repository.PatchmonControlledAction
 import com.homelab.app.data.repository.QbittorrentControlledAction
 import com.homelab.app.data.repository.MediaArrAction
+import com.homelab.app.data.repository.MediaServiceControlledAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
@@ -1177,5 +1178,64 @@ class ControlledActionsTest {
         assertTrue(
             ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PATCHMON)
         )
+    }
+
+    @Test
+    fun `media-service actions have stable per-provider risk identity and no payload persistence`() {
+        assertEquals(ActionRisk.LOW, MediaServiceControlledAction.COMMAND_RSS_SYNC.risk)
+        assertEquals(ActionRisk.LOW, MediaServiceControlledAction.COMMAND_HEALTH_CHECK.risk)
+        assertEquals(ActionRisk.LOW, MediaServiceControlledAction.INDEXER_TEST.risk)
+        assertEquals(ActionRisk.MEDIUM, MediaServiceControlledAction.LIBRARY_ADD.risk)
+        assertEquals(ActionRisk.MEDIUM, MediaServiceControlledAction.REQUEST_APPROVE.risk)
+        assertEquals(ActionRisk.MEDIUM, MediaServiceControlledAction.VPN_RESTART.risk)
+        assertEquals(ActionRisk.MEDIUM, MediaServiceControlledAction.SESSION_DESTROY.risk)
+        assertFalse(MediaServiceControlledAction.COMMAND_SEARCH_MISSING.requiresConfirmation)
+        assertTrue(MediaServiceControlledAction.LIBRARY_ADD.requiresConfirmation)
+        assertTrue(MediaServiceControlledAction.REQUEST_DECLINE.requiresConfirmation)
+
+        assertEquals(
+            MediaServiceControlledAction.COMMAND_SEARCH_MISSING,
+            MediaServiceControlledAction.forMediaArrAction(MediaArrAction.SONARR_SEARCH_MISSING)
+        )
+        assertEquals(
+            MediaServiceControlledAction.VPN_RESTART,
+            MediaServiceControlledAction.forMediaArrAction(MediaArrAction.GLUETUN_RESTART_VPN)
+        )
+        assertEquals(null, MediaServiceControlledAction.forMediaArrAction(MediaArrAction.QBITTORRENT_PAUSE_ALL))
+
+        val radarr = MediaServiceControlledAction.COMMAND_RSS_SYNC.controlledRequest(
+            serviceType = ServiceType.RADARR,
+            instanceId = "INSTANCE-A",
+            targetRef = " COMMAND/ALL ",
+            confirmed = false,
+            requestId = "request-media-radarr",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "media-radarr-key-01"
+        )
+        assertEquals("radarr:instance-a", radarr.providerRef)
+        assertEquals("command.rss-sync", radarr.action)
+        assertEquals("command/all", radarr.targetRef)
+        assertFalse(radarr.confirmed)
+        assertTrue(radarr.parameters.isEmpty())
+
+        val jellyseerr = MediaServiceControlledAction.REQUEST_APPROVE.controlledRequest(
+            serviceType = ServiceType.JELLYSEERR,
+            instanceId = "INSTANCE-A",
+            targetRef = "request/42",
+            confirmed = true,
+            requestId = "request-media-jellyseerr",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "media-jellyseerr-key-01"
+        )
+        assertEquals("jellyseerr:instance-a", jellyseerr.providerRef)
+        assertEquals("request.approve", jellyseerr.action)
+        assertTrue(jellyseerr.confirmed)
+
+        for (type in listOf(
+            ServiceType.RADARR, ServiceType.SONARR, ServiceType.LIDARR,
+            ServiceType.JELLYSEERR, ServiceType.PROWLARR, ServiceType.GLUETUN, ServiceType.FLARESOLVERR
+        )) {
+            assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(type))
+        }
     }
 }

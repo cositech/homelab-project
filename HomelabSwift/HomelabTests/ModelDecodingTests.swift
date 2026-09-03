@@ -2573,6 +2573,37 @@ final class ModelDecodingTests: XCTestCase {
         let providerFailure = PatchmonControlledOperationFailure.map(APIError.custom("boom"))
         XCTAssertEqual(providerFailure.reasonCode, "patchmon-provider-reported-failure")
     }
+
+    func testMediaServiceActionsHaveStablePerProviderRiskIdentityAndNoPayloadPersistence() {
+        XCTAssertEqual(MediaServiceControlledAction.commandRssSync.risk, .low)
+        XCTAssertEqual(MediaServiceControlledAction.commandHealthCheck.risk, .low)
+        XCTAssertEqual(MediaServiceControlledAction.libraryAdd.risk, .medium)
+        XCTAssertFalse(MediaServiceControlledAction.commandSearchMissing.requiresConfirmation)
+        XCTAssertTrue(MediaServiceControlledAction.libraryAdd.requiresConfirmation)
+
+        let request = MediaServiceControlledAction.commandRssSync.request(
+            serviceType: .sonarr,
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: " COMMAND/ALL ",
+            confirmed: false,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+        XCTAssertEqual(request.providerRef, "sonarr:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "command.rss-sync")
+        XCTAssertEqual(request.targetRef, "command/all")
+        XCTAssertFalse(request.confirmed)
+        XCTAssertTrue(request.parameters.isEmpty)
+
+        for type in [ServiceType.radarr, .sonarr, .lidarr] {
+            XCTAssertTrue(ProviderRegistry.descriptor(for: type).capabilities.contains(.writeActions))
+        }
+
+        let transport = MediaServiceControlledOperationFailure.map(APIError.networkError(URLError(.timedOut)))
+        XCTAssertEqual(transport.reasonCode, "media-service-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+    }
 }
 
 private actor ActionInvocationCounter {

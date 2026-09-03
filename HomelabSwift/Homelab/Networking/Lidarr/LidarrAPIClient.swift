@@ -295,7 +295,9 @@ actor LidarrAPIClient {
                 let body = try JSONSerialization.data(withJSONObject: ["name": name])
                 try await engine.requestVoid(
                     baseURL: baseURL,
-                    fallbackURL: fallbackURL,
+                    // Command triggers run through the controlled-action coordinator and never replay
+                    // against the fallback URL; reads keep normal primary/fallback behavior.
+                    fallbackURL: "",
                     path: "/api/v1/command",
                     method: "POST",
                     headers: authHeaders().merging(["Content-Type": "application/json"]) { _, new in new },
