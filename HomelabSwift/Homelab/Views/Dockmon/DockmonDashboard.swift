@@ -1,6 +1,18 @@
 import SwiftUI
 import UIKit
 
+private actor DockmonActionResponseBox {
+    private var response: DockmonActionResponse?
+    func store(_ response: DockmonActionResponse) { self.response = response }
+    func value() -> DockmonActionResponse? { response }
+}
+
+private extension DockmonControlledAction {
+    func label(using translations: Translations) -> String {
+        self == .restart ? translations.dockmonRestartContainer : translations.dockmonUpdateContainer
+    }
+}
+
 struct DockmonDashboard: View {
     let instanceId: UUID
 
@@ -17,6 +29,7 @@ struct DockmonDashboard: View {
     @State private var imageDraft = ""
     @State private var isRunningAction = false
     @State private var actionMessage: String?
+    @State private var pendingAction: DockmonControlledAction?
 
     private let dockmonColor = ServiceType.dockmon.colors.primary
 
@@ -67,6 +80,24 @@ struct DockmonDashboard: View {
             Button(localizer.t.done) { actionMessage = nil }
         } message: {
             Text(actionMessage ?? "")
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let action = pendingAction, let container = selectedContainer {
+                Button(action.label(using: localizer.translations), role: action == .update ? .destructive : nil) {
+                    pendingAction = nil
+                    Task { await runAction(action, container: container, confirmed: true) }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
     }
 
@@ -408,7 +439,7 @@ struct DockmonDashboard: View {
                     tint: dockmonColor,
                     isLoading: isRunningAction
                 ) {
-                    Task { await runRestart(container) }
+                    pendingAction = .restart
                 }
 
                 DockmonActionButton(
@@ -417,7 +448,7 @@ struct DockmonDashboard: View {
                     tint: AppTheme.warning,
                     isLoading: isRunningAction
                 ) {
-                    Task { await runUpdate(container) }
+                    pendingAction = .update
                 }
             }
 
@@ -529,30 +560,60 @@ struct DockmonDashboard: View {
         }
     }
 
-    private func runRestart(_ container: DockmonContainer) async {
-        await runAction {
-            guard let client = await servicesStore.dockmonClient(instanceId: selectedInstanceId) else {
-                throw APIError.notConfigured
-            }
-            return try await client.restartContainer(id: container.id)
-        }
-    }
+    private func runAction(_ action: DockmonControlledAction, container: DockmonContainer, confirmed: Bool) async {
+        guard !isRunningAction else { return }
+        isRunningAction = true
+        defer { isRunningAction = false }
 
-    private func runUpdate(_ container: DockmonContainer) async {
-        await runAction {
-            guard let client = await servicesStore.dockmonClient(instanceId: selectedInstanceId) else {
-                throw APIError.notConfigured
-            }
-            return try await client.updateContainer(id: container.id, image: imageDraft)
-        }
-    }
-
-    private func runAction(_ operation: () async throws -> DockmonActionResponse) async {
         do {
-            isRunningAction = true
-            let response = try await operation()
+            guard let client = await servicesStore.dockmonClient(instanceId: selectedInstanceId) else {
+                throw APIError.notConfigured
+            }
+            let responseBox = DockmonActionResponseBox()
+            let requestedImage = imageDraft
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: action.request(
+                    instanceId: selectedInstanceId,
+                    containerId: container.id,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .dockmon).capabilities
+            ) {
+                do {
+                    let response: DockmonActionResponse
+                    switch action {
+                    case .restart:
+                        response = try await client.restartContainer(id: container.id)
+                    case .update:
+                        response = try await client.updateContainer(id: container.id, image: requestedImage)
+                    }
+                    guard response.success else {
+                        throw ControlledActionOperationError(
+                            reasonCode: "dockmon-provider-reported-failure",
+                            disposition: .nonRetryable
+                        )
+                    }
+                    await responseBox.store(response)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "dockmon-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard audit.state == .succeeded else {
+                HapticManager.error()
+                actionMessage = audit.reasonCode
+                return
+            }
             HapticManager.success()
-            actionMessage = response.message ?? localizer.t.dockmonActionSuccess
+            actionMessage = await responseBox.value()?.message ?? localizer.t.dockmonActionSuccess
+            if action == .update { imageDraft = "" }
             await fetchDashboard(showLoading: false)
             if let selectedContainer {
                 await fetchLogs(for: selectedContainer)
@@ -561,7 +622,6 @@ struct DockmonDashboard: View {
             HapticManager.error()
             actionMessage = (error as? APIError)?.localizedDescription ?? error.localizedDescription
         }
-        isRunningAction = false
     }
 }
 

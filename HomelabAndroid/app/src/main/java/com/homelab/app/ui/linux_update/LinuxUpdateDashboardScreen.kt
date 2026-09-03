@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,7 +51,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -105,6 +108,11 @@ private fun linuxUpdateCardColor(isDarkTheme: Boolean, accent: Color): Color =
 private fun linuxUpdateBorderColor(isDarkTheme: Boolean, accent: Color): Color =
     accent.copy(alpha = if (isDarkTheme) 0.2f else 0.08f)
 
+private data class PendingLinuxUpdateAction(
+    val systemAction: LinuxUpdateViewModel.SystemAction? = null,
+    val packageName: String? = null
+)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun LinuxUpdateDashboardScreen(
@@ -123,11 +131,16 @@ fun LinuxUpdateDashboardScreen(
     val isRunningDashboardAction by viewModel.isRunningDashboardAction.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingAction by remember { mutableStateOf<PendingLinuxUpdateAction?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collectLatest { message ->
             snackbarHostState.showSnackbar(message)
         }
+    }
+
+    LaunchedEffect(selectedSystemId) {
+        if (selectedSystemId == null) pendingAction = null
     }
 
     val accent = ServiceType.LINUX_UPDATE.primaryColor
@@ -271,17 +284,55 @@ fun LinuxUpdateDashboardScreen(
             }
 
             if (selectedSystemId != null) {
-                ModalBottomSheet(onDismissRequest = viewModel::closeSystemDetail) {
+                ModalBottomSheet(onDismissRequest = {
+                    pendingAction = null
+                    viewModel.closeSystemDetail()
+                }) {
                     LinuxUpdateSystemDetailSheet(
                         detailState = detailState,
                         isRunningAction = isRunningAction,
                         onRefresh = { viewModel.refreshSystemDetail(forceLoading = false) },
-                        onAction = viewModel::runSystemAction,
-                        onUpgradePackage = viewModel::runPackageUpgrade
+                        onAction = { action ->
+                            if (action.requiresConfirmation) {
+                                pendingAction = PendingLinuxUpdateAction(systemAction = action)
+                            } else {
+                                viewModel.runSystemAction(action)
+                            }
+                        },
+                        onUpgradePackage = { packageName ->
+                            pendingAction = PendingLinuxUpdateAction(packageName = packageName)
+                        }
                     )
                 }
             }
         }
+    }
+
+    pendingAction?.let { pending ->
+        val actionLabel = when (pending.systemAction) {
+            LinuxUpdateViewModel.SystemAction.UPGRADE_ALL -> stringResource(R.string.linux_update_action_upgrade)
+            LinuxUpdateViewModel.SystemAction.FULL_UPGRADE -> stringResource(R.string.linux_update_action_full_upgrade)
+            LinuxUpdateViewModel.SystemAction.REBOOT -> stringResource(R.string.linux_update_action_reboot)
+            LinuxUpdateViewModel.SystemAction.CHECK -> stringResource(R.string.linux_update_action_check)
+            null -> "${stringResource(R.string.linux_update_action_upgrade_package)}: ${pending.packageName.orEmpty()}"
+        }
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.linux_update_confirm_action, actionLabel)) },
+            text = { Text(stringResource(R.string.linux_update_confirm_action_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingAction = null
+                    pending.systemAction?.let { viewModel.runSystemAction(it, confirmed = true) }
+                        ?: viewModel.runPackageUpgrade(pending.packageName.orEmpty(), confirmed = true)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 

@@ -7,9 +7,16 @@ import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.remote.dto.pterodactyl.PterodactylResources
 import com.homelab.app.data.remote.dto.pterodactyl.PterodactylServer
 import com.homelab.app.data.repository.PterodactylDashboardData
+import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
@@ -42,6 +49,7 @@ data class PterodactylServerWithResources(
 class PterodactylViewModel @Inject constructor(
     private val repository: PterodactylRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -109,29 +117,57 @@ class PterodactylViewModel @Inject constructor(
         }
     }
 
-    fun sendPowerSignal(identifier: String, signal: String) {
+    fun sendPowerSignal(
+        identifier: String,
+        action: PterodactylPowerAction,
+        confirmed: Boolean = false
+    ) {
+        if (_actionServerId.value != null) return
         viewModelScope.launch {
             _actionServerId.value = identifier
             try {
-                repository.sendPowerSignal(instanceId, identifier, signal)
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(instanceId, identifier, confirmed),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.PTERODACTYL)
+                ) {
+                    try {
+                        repository.sendPowerSignal(instanceId, identifier, action)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "pterodactyl-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state != ActionExecutionState.SUCCEEDED) {
+                    _messages.emit(audit.reasonCode)
+                    return@launch
+                }
                 _messages.emit(context.getString(com.homelab.app.R.string.pterodactyl_action_sent))
-                // Poll for state change
-                repeat(6) {
+                repeat(if (action == PterodactylPowerAction.KILL) 3 else 6) {
                     delay(1500L)
                     runCatching {
                         val updated = repository.getServerResources(instanceId, identifier)
                         val current = _uiState.value
                         if (current is UiState.Success) {
                             _uiState.value = UiState.Success(
-                                current.data.map { s ->
-                                    if (s.server.identifier == identifier) s.copy(resources = updated) else s
+                                current.data.map { server ->
+                                    if (server.server.identifier == identifier) server.copy(resources = updated) else server
                                 }
                             )
                         }
                     }
                 }
-            } catch (e: Exception) {
-                _messages.emit(ErrorHandler.getMessage(context, e))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _messages.emit(ErrorHandler.getMessage(context, error))
             } finally {
                 _actionServerId.value = null
             }

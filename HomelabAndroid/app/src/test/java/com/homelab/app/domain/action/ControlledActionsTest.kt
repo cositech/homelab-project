@@ -1,8 +1,25 @@
 package com.homelab.app.domain.action
 
+import com.homelab.app.data.remote.dto.adguard.AdGuardControlledConfigurationAction
 import com.homelab.app.data.remote.dto.adguard.AdGuardControlledProtectionAction
 import com.homelab.app.data.remote.dto.healthchecks.HealthchecksControlledCheckAction
+import com.homelab.app.data.remote.dto.pihole.PiholeControlledDomainAction
+import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.data.remote.dto.portainer.ContainerAction
+import com.homelab.app.data.remote.dto.portainer.PortainerControlledConfigurationAction
+import com.homelab.app.data.repository.CraftyCommandAction
+import com.homelab.app.data.repository.CraftyServerAction
+import com.homelab.app.data.repository.CalagopusPowerAction
+import com.homelab.app.data.repository.DockhandContainerAction
+import com.homelab.app.data.repository.DockmonControlledAction
+import com.homelab.app.data.repository.KomodoStackAction
+import com.homelab.app.data.repository.NpmProxyHostControlledAction
+import com.homelab.app.data.repository.NpmConfigurationControlledAction
+import com.homelab.app.data.repository.PangolinControlledAction
+import com.homelab.app.data.repository.LinuxUpdateControlledAction
+import com.homelab.app.data.repository.PterodactylPowerAction
+import com.homelab.app.data.repository.TechnitiumControlledAction
+import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
@@ -227,6 +244,37 @@ class ControlledActionsTest {
     }
 
     @Test
+    fun `dockhand indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val dockhandRequest = DockhandContainerAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            environmentId = "production",
+            containerId = "web-01",
+            confirmed = true,
+            requestId = "request-dockhand-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            dockhandRequest,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "dockhand-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("dockhand-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
     fun `high risk transport failure requires manual review without retry`() = runTest {
         var invocations = 0
         val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
@@ -374,6 +422,367 @@ class ControlledActionsTest {
     }
 
     @Test
+    fun `dockhand lifecycle actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, DockhandContainerAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, DockhandContainerAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, DockhandStackAction.RESTART.risk)
+        assertFalse(DockhandContainerAction.START.requiresConfirmation)
+        assertTrue(DockhandStackAction.STOP.requiresConfirmation)
+
+        val containerRequest = DockhandContainerAction.RESTART.controlledRequest(
+            instanceId = "INSTANCE-A",
+            environmentId = "Production",
+            containerId = "Web-01",
+            confirmed = true,
+            requestId = "request-dockhand-container",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-container-key-0001"
+        )
+        assertEquals("dockhand:instance-a", containerRequest.providerRef)
+        assertEquals("container.restart", containerRequest.action)
+        assertEquals("environment/production/container/web-01", containerRequest.targetRef)
+        assertTrue(containerRequest.confirmed)
+
+        val stackRequest = DockhandStackAction.START.controlledRequest(
+            instanceId = "INSTANCE-A",
+            environmentId = null,
+            stackName = "Core-Stack",
+            confirmed = false,
+            requestId = "request-dockhand-stack",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockhand-stack-key-000001"
+        )
+        assertEquals("stack.start", stackRequest.action)
+        assertEquals("environment/default/stack/core-stack", stackRequest.targetRef)
+        assertTrue(ProviderRegistry.capabilities(ServiceType.DOCKHAND).contains(ProviderCapability.WRITE_ACTIONS))
+    }
+
+    @Test
+    fun `dockmon actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.MEDIUM, DockmonControlledAction.RESTART.risk)
+        assertEquals(ActionRisk.HIGH, DockmonControlledAction.UPDATE.risk)
+        assertTrue(DockmonControlledAction.RESTART.requiresConfirmation)
+        assertTrue(DockmonControlledAction.UPDATE.requiresConfirmation)
+
+        val request = DockmonControlledAction.UPDATE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            containerId = "Web-01",
+            confirmed = true,
+            requestId = "request-dockmon-update",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockmon-update-key-0001"
+        )
+        assertEquals("dockmon:instance-a", request.providerRef)
+        assertEquals("container.update", request.action)
+        assertEquals("container/web-01", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.DOCKMON))
+    }
+
+    @Test
+    fun `dockmon indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val request = DockmonControlledAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            containerId = "web-01",
+            confirmed = true,
+            requestId = "request-dockmon-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "dockmon-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "dockmon-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("dockmon-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `game server power actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, PterodactylPowerAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, PterodactylPowerAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, PterodactylPowerAction.RESTART.risk)
+        assertEquals(ActionRisk.HIGH, PterodactylPowerAction.KILL.risk)
+        assertFalse(PterodactylPowerAction.START.requiresConfirmation)
+        assertTrue(PterodactylPowerAction.RESTART.requiresConfirmation)
+        assertEquals(ActionRisk.LOW, CalagopusPowerAction.START.risk)
+        assertEquals(ActionRisk.HIGH, CalagopusPowerAction.KILL.risk)
+
+        val pterodactylRequest = PterodactylPowerAction.KILL.controlledRequest(
+            instanceId = "INSTANCE-A",
+            identifier = "MC-Primary",
+            confirmed = true,
+            requestId = "request-pterodactyl-kill",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "pterodactyl-kill-key"
+        )
+        assertEquals("pterodactyl:instance-a", pterodactylRequest.providerRef)
+        assertEquals("server.power.kill", pterodactylRequest.action)
+        assertEquals("server/mc-primary", pterodactylRequest.targetRef)
+        assertTrue(pterodactylRequest.confirmed)
+
+        val calagopusRequest = CalagopusPowerAction.RESTART.controlledRequest(
+            instanceId = "INSTANCE-B",
+            uuidShort = "Game-02",
+            confirmed = true,
+            requestId = "request-calagopus-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "calagopus-restart-key"
+        )
+        assertEquals("calagopus:instance-b", calagopusRequest.providerRef)
+        assertEquals("server.power.restart", calagopusRequest.action)
+        assertEquals("server/game-02", calagopusRequest.targetRef)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PTERODACTYL))
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.CALAGOPUS))
+    }
+
+    @Test
+    fun `game server indeterminate mutations are non retryable`() = runTest {
+        val cases = listOf(
+            PterodactylPowerAction.RESTART.controlledRequest(
+                "instance-a", "mc-primary", true,
+                "request-pterodactyl", "1970-01-01T00:00:01Z", "pterodactyl-key-0001"
+            ) to "pterodactyl-outcome-indeterminate",
+            CalagopusPowerAction.RESTART.controlledRequest(
+                "instance-b", "game-02", true,
+                "request-calagopus", "1970-01-01T00:00:01Z", "calagopus-key-0001"
+            ) to "calagopus-outcome-indeterminate"
+        )
+
+        cases.forEach { (request, reasonCode) ->
+            var invocations = 0
+            val result = ControlledActionCoordinator(waitBeforeRetry = {}).execute(
+                request,
+                ActionRole.ADMIN,
+                setOf(ProviderCapability.WRITE_ACTIONS)
+            ) {
+                invocations += 1
+                throw ActionOperationException(reasonCode, ActionFailureDisposition.NON_RETRYABLE)
+            }
+            assertEquals(ActionExecutionState.FAILED, result.state)
+            assertEquals(1, invocations)
+            assertEquals(reasonCode, result.reasonCode)
+        }
+    }
+
+    @Test
+    fun `komodo stack actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.HIGH, KomodoStackAction.DEPLOY.risk)
+        assertEquals(ActionRisk.MEDIUM, KomodoStackAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, KomodoStackAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, KomodoStackAction.RESTART.risk)
+        assertTrue(KomodoStackAction.DEPLOY.requiresConfirmation)
+        assertTrue(KomodoStackAction.RESTART.requiresConfirmation)
+
+        val request = KomodoStackAction.DEPLOY.controlledRequest(
+            instanceId = "INSTANCE-A",
+            stackId = "Core-Stack",
+            confirmed = true,
+            requestId = "request-komodo-deploy",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "komodo-deploy-key-0001"
+        )
+        assertEquals("komodo:instance-a", request.providerRef)
+        assertEquals("stack.deploy", request.action)
+        assertEquals("stack/core-stack", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.KOMODO))
+    }
+
+    @Test
+    fun `komodo indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val request = KomodoStackAction.RESTART.controlledRequest(
+            instanceId = "instance-a",
+            stackId = "core-stack",
+            confirmed = true,
+            requestId = "request-komodo-restart",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "komodo-restart-key-0001"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "komodo-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("komodo-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `linux update actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, LinuxUpdateControlledAction.CHECK_ALL.risk)
+        assertEquals(ActionRisk.LOW, LinuxUpdateControlledAction.REFRESH_CACHE.risk)
+        assertEquals(ActionRisk.LOW, LinuxUpdateControlledAction.CHECK_SYSTEM.risk)
+        assertEquals(ActionRisk.MEDIUM, LinuxUpdateControlledAction.UPGRADE_PACKAGE.risk)
+        assertEquals(ActionRisk.HIGH, LinuxUpdateControlledAction.UPGRADE_ALL.risk)
+        assertEquals(ActionRisk.HIGH, LinuxUpdateControlledAction.FULL_UPGRADE.risk)
+        assertEquals(ActionRisk.HIGH, LinuxUpdateControlledAction.REBOOT.risk)
+        assertFalse(LinuxUpdateControlledAction.CHECK_SYSTEM.requiresConfirmation)
+        assertTrue(LinuxUpdateControlledAction.UPGRADE_PACKAGE.requiresConfirmation)
+
+        val action = LinuxUpdateControlledAction.UPGRADE_PACKAGE
+        val request = action.controlledRequest(
+            instanceId = "INSTANCE-A",
+            target = action.targetRef(systemId = 42, packageName = "OpenSSL"),
+            confirmed = true,
+            requestId = "request-linux-update-package",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "linux-update-package-key-01"
+        )
+        assertEquals("linux-update:instance-a", request.providerRef)
+        assertEquals("package.upgrade", request.action)
+        assertEquals("system/42/package/openssl", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.LINUX_UPDATE)
+        )
+    }
+
+    @Test
+    fun `linux update indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val action = LinuxUpdateControlledAction.CHECK_SYSTEM
+        val request = action.controlledRequest(
+            instanceId = "instance-a",
+            target = action.targetRef(systemId = 42),
+            confirmed = false,
+            requestId = "request-linux-update-check",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "linux-update-check-key-001"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "linux-update-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("linux-update-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `technitium actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, TechnitiumControlledAction.ENABLE_BLOCKING.risk)
+        assertEquals(ActionRisk.MEDIUM, TechnitiumControlledAction.DISABLE_BLOCKING.risk)
+        assertEquals(ActionRisk.MEDIUM, TechnitiumControlledAction.TEMPORARY_DISABLE.risk)
+        assertEquals(ActionRisk.LOW, TechnitiumControlledAction.REFRESH_BLOCK_LISTS.risk)
+        assertEquals(ActionRisk.HIGH, TechnitiumControlledAction.ADD_BLOCKED_DOMAIN.risk)
+        assertEquals(ActionRisk.MEDIUM, TechnitiumControlledAction.REMOVE_BLOCKED_DOMAIN.risk)
+        assertFalse(TechnitiumControlledAction.ENABLE_BLOCKING.requiresConfirmation)
+        assertTrue(TechnitiumControlledAction.ADD_BLOCKED_DOMAIN.requiresConfirmation)
+
+        val action = TechnitiumControlledAction.ADD_BLOCKED_DOMAIN
+        val request = action.controlledRequest(
+            instanceId = "INSTANCE-A",
+            target = action.targetRef("Example.COM"),
+            confirmed = true,
+            requestId = "request-technitium-domain",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "technitium-domain-key-01"
+        )
+        assertEquals("technitium:instance-a", request.providerRef)
+        assertEquals("blocked-domain.add", request.action)
+        assertEquals("blocked-domain/example.com", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.TECHNITIUM))
+    }
+
+    @Test
+    fun `technitium indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val action = TechnitiumControlledAction.DISABLE_BLOCKING
+        val request = action.controlledRequest(
+            instanceId = "instance-a",
+            target = action.targetRef(),
+            confirmed = true,
+            requestId = "request-technitium-disable",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "technitium-disable-key-1"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "technitium-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("technitium-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `pihole domain actions require confirmation and have stable identity`() {
+        assertEquals(ActionRisk.HIGH, PiholeControlledDomainAction.ADD.risk)
+        assertEquals(ActionRisk.MEDIUM, PiholeControlledDomainAction.REMOVE.risk)
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                PiholeControlledDomainAction.ADD.risk,
+                completedAttempts = 0
+            )
+        )
+
+        val request = PiholeControlledDomainAction.REMOVE.controlledRequest(
+            instanceId = "instance-1",
+            domain = "Example.COM",
+            listType = PiholeDomainListType.DENY,
+            confirmed = true,
+            requestId = "request-pihole",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("pi-hole:instance-1", request.providerRef)
+        assertEquals("domain.remove", request.action)
+        assertEquals("domain/deny/example.com", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.PIHOLE)
+        )
+    }
+
+    @Test
     fun `adguard protection actions have stable risk classification and identity`() {
         assertEquals(ActionRisk.LOW, AdGuardControlledProtectionAction.ENABLE.risk)
         assertEquals(ActionRisk.MEDIUM, AdGuardControlledProtectionAction.DISABLE.risk)
@@ -394,6 +803,39 @@ class ControlledActionsTest {
             ProviderCapability.WRITE_ACTIONS in
                 ProviderRegistry.capabilities(ServiceType.ADGUARD_HOME)
         )
+    }
+
+    @Test
+    fun `adguard configuration actions are high risk and have stable identity`() {
+        assertTrue(
+            AdGuardControlledConfigurationAction.entries
+                .filterNot { it == AdGuardControlledConfigurationAction.UPDATE_REWRITE_SETTINGS }
+                .all { it.risk == ActionRisk.HIGH }
+        )
+        assertEquals(
+            ActionRisk.MEDIUM,
+            AdGuardControlledConfigurationAction.UPDATE_REWRITE_SETTINGS.risk
+        )
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                AdGuardControlledConfigurationAction.CREATE_REWRITE.risk,
+                completedAttempts = 0
+            )
+        )
+
+        val request = AdGuardControlledConfigurationAction.UPDATE_FILTER.controlledRequest(
+            instanceId = "instance-1",
+            targetId = "42",
+            confirmed = true,
+            requestId = "request-adguard-config",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("adguard-home:instance-1", request.providerRef)
+        assertEquals("filter-list.update", request.action)
+        assertEquals("filter-list/42", request.targetRef)
+        assertTrue(request.confirmed)
     }
 
     @Test
@@ -446,4 +888,226 @@ class ControlledActionsTest {
         )
     }
 
+
+    @Test
+    fun `portainer configuration actions require confirmation and have stable identity`() {
+        assertEquals(
+            ActionRisk.MEDIUM,
+            PortainerControlledConfigurationAction.RENAME_CONTAINER.risk
+        )
+        assertEquals(
+            ActionRisk.HIGH,
+            PortainerControlledConfigurationAction.UPDATE_STACK.risk
+        )
+        assertTrue(
+            PortainerControlledConfigurationAction.RENAME_CONTAINER.requiresConfirmation
+        )
+        assertTrue(
+            PortainerControlledConfigurationAction.UPDATE_STACK.requiresConfirmation
+        )
+        assertFalse(
+            ActionRetryPolicy().permitsAutomaticRetry(
+                PortainerControlledConfigurationAction.UPDATE_STACK.risk,
+                completedAttempts = 0
+            )
+        )
+
+        val renameRequest =
+            PortainerControlledConfigurationAction.RENAME_CONTAINER.controlledRequest(
+                instanceId = "instance-1",
+                endpointId = 7,
+                targetId = "container-42",
+                confirmed = true,
+                requestId = "request-portainer-rename",
+                requestedAt = "1970-01-01T00:00:01Z",
+                idempotencyKey = "portainer-rename-key-01"
+            )
+        val stackRequest =
+            PortainerControlledConfigurationAction.UPDATE_STACK.controlledRequest(
+                instanceId = "instance-1",
+                endpointId = 7,
+                targetId = "23",
+                confirmed = true,
+                requestId = "request-portainer-stack",
+                requestedAt = "1970-01-01T00:00:01Z",
+                idempotencyKey = "portainer-stack-key-01"
+            )
+
+        assertEquals("portainer:instance-1", renameRequest.providerRef)
+        assertEquals("container.rename", renameRequest.action)
+        assertEquals("endpoint/7/container/container-42", renameRequest.targetRef)
+        assertEquals("portainer:instance-1", stackRequest.providerRef)
+        assertEquals("stack.update", stackRequest.action)
+        assertEquals("endpoint/7/stack/23", stackRequest.targetRef)
+        assertTrue(renameRequest.confirmed)
+        assertTrue(stackRequest.confirmed)
+        assertTrue(renameRequest.parameters.isEmpty())
+        assertTrue(stackRequest.parameters.isEmpty())
+    }
+
+    @Test
+    fun `nginx proxy manager proxy host actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.HIGH, NpmProxyHostControlledAction.CREATE.risk)
+        assertEquals(ActionRisk.HIGH, NpmProxyHostControlledAction.UPDATE.risk)
+        assertEquals(ActionRisk.LOW, NpmProxyHostControlledAction.ENABLE.risk)
+        assertEquals(ActionRisk.MEDIUM, NpmProxyHostControlledAction.DISABLE.risk)
+        assertEquals(ActionRisk.HIGH, NpmProxyHostControlledAction.DELETE.risk)
+        assertFalse(NpmProxyHostControlledAction.ENABLE.requiresConfirmation)
+        assertTrue(NpmProxyHostControlledAction.DISABLE.requiresConfirmation)
+
+        val request = NpmProxyHostControlledAction.DELETE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            hostId = 42,
+            confirmed = true,
+            requestId = "request-npm-proxy-host",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-proxy-host-key-001"
+        )
+
+        assertEquals("nginx-proxy-manager:instance-a", request.providerRef)
+        assertEquals("proxy-host.delete", request.action)
+        assertEquals("proxy-host/42", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.NGINX_PROXY_MANAGER)
+        )
+    }
+
+    @Test
+    fun `nginx proxy manager configuration actions have stable risk and identity`() {
+        NpmConfigurationControlledAction.values()
+            .filterNot { it == NpmConfigurationControlledAction.RENEW_CERTIFICATE }
+            .forEach {
+                assertEquals(ActionRisk.HIGH, it.risk)
+                assertTrue(it.requiresConfirmation)
+            }
+        assertEquals(ActionRisk.MEDIUM, NpmConfigurationControlledAction.RENEW_CERTIFICATE.risk)
+        assertTrue(NpmConfigurationControlledAction.RENEW_CERTIFICATE.requiresConfirmation)
+
+        val request = NpmConfigurationControlledAction.DELETE_ACCESS_LIST.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetId = 17,
+            confirmed = true,
+            requestId = "request-npm-access-list",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-access-list-key-01"
+        )
+        val createRequest = NpmConfigurationControlledAction.CREATE_REDIRECTION_HOST.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetId = null,
+            confirmed = true,
+            requestId = "request-npm-redirection",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-redirection-key-01"
+        )
+
+        assertEquals("nginx-proxy-manager:instance-a", request.providerRef)
+        assertEquals("access-list.delete", request.action)
+        assertEquals("access-list/17", request.targetRef)
+        assertEquals("redirection-host/new", createRequest.targetRef)
+        assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `nginx proxy manager indeterminate mutation is non retryable`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val request = NpmProxyHostControlledAction.ENABLE.controlledRequest(
+            instanceId = "instance-a",
+            hostId = 42,
+            confirmed = false,
+            requestId = "request-npm-enable",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "npm-proxy-enable-key-01"
+        )
+
+        val result = coordinator.execute(
+            request,
+            ActionRole.ADMIN,
+            setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {
+            invocations += 1
+            throw ActionOperationException(
+                "nginx-proxy-manager-outcome-indeterminate",
+                ActionFailureDisposition.NON_RETRYABLE
+            )
+        }
+
+        assertEquals(ActionExecutionState.FAILED, result.state)
+        assertEquals(1, invocations)
+        assertEquals("nginx-proxy-manager-outcome-indeterminate", result.reasonCode)
+    }
+
+    @Test
+    fun `crafty actions have stable risk identity and no persisted command payload`() {
+        assertEquals(ActionRisk.LOW, CraftyServerAction.START.risk)
+        assertEquals(ActionRisk.MEDIUM, CraftyServerAction.STOP.risk)
+        assertEquals(ActionRisk.MEDIUM, CraftyServerAction.RESTART.risk)
+        assertEquals(ActionRisk.MEDIUM, CraftyServerAction.BACKUP.risk)
+        assertEquals(ActionRisk.HIGH, CraftyServerAction.UPDATE.risk)
+        assertEquals(ActionRisk.HIGH, CraftyServerAction.KILL.risk)
+        assertFalse(CraftyServerAction.START.requiresConfirmation)
+        assertTrue(CraftyServerAction.STOP.requiresConfirmation)
+        assertTrue(CraftyCommandAction.SEND.requiresConfirmation)
+
+        val lifecycleRequest = CraftyServerAction.UPDATE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            serverId = " SERVER-42 ",
+            confirmed = true,
+            requestId = "request-crafty-update",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "crafty-update-key-001"
+        )
+        val commandRequest = CraftyCommandAction.SEND.controlledRequest(
+            instanceId = "INSTANCE-A",
+            serverId = " SERVER-42 ",
+            confirmed = true,
+            requestId = "request-crafty-command",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "crafty-command-key-01"
+        )
+
+        assertEquals("crafty-controller:instance-a", lifecycleRequest.providerRef)
+        assertEquals("server.executable.update", lifecycleRequest.action)
+        assertEquals("server/server-42", lifecycleRequest.targetRef)
+        assertEquals(ActionRisk.HIGH, commandRequest.risk)
+        assertEquals("server.command.send", commandRequest.action)
+        assertEquals("server/server-42", commandRequest.targetRef)
+        assertTrue(lifecycleRequest.confirmed)
+        assertTrue(commandRequest.confirmed)
+        assertTrue(lifecycleRequest.parameters.isEmpty())
+        assertTrue(commandRequest.parameters.isEmpty())
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.CRAFTY_CONTROLLER)
+        )
+    }
+    @Test
+    fun `pangolin actions have stable risk identity and no payload persistence`() {
+        assertEquals(ActionRisk.HIGH, PangolinControlledAction.PUBLIC_RESOURCE_CREATE.risk)
+        assertEquals(ActionRisk.HIGH, PangolinControlledAction.PRIVATE_RESOURCE_UPDATE.risk)
+        assertEquals(ActionRisk.LOW, PangolinControlledAction.PUBLIC_RESOURCE_ENABLE.risk)
+        assertEquals(ActionRisk.MEDIUM, PangolinControlledAction.PUBLIC_RESOURCE_DISABLE.risk)
+        assertFalse(PangolinControlledAction.PUBLIC_RESOURCE_ENABLE.requiresConfirmation)
+        assertTrue(PangolinControlledAction.PUBLIC_RESOURCE_DISABLE.requiresConfirmation)
+
+        val request = PangolinControlledAction.PUBLIC_RESOURCE_UPDATE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetRef = " PUBLIC-RESOURCE/42 ",
+            confirmed = true,
+            requestId = "request-pangolin-update",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "pangolin-update-key-01"
+        )
+
+        assertEquals("pangolin:instance-a", request.providerRef)
+        assertEquals("public-resource.update", request.action)
+        assertEquals("public-resource/42", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(request.parameters.isEmpty())
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PANGOLIN)
+        )
+    }
 }

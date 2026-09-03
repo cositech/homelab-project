@@ -36,6 +36,7 @@ interface CraftyApi {
     @POST("api/v2/servers/{serverId}/action/{action}")
     suspend fun sendAction(
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Path("serverId") serverId: String,
         @Path("action") action: String
     ): CraftyActionResponse
@@ -44,6 +45,7 @@ interface CraftyApi {
     @POST("api/v2/servers/{serverId}/stdin")
     suspend fun sendCommand(
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Path("serverId") serverId: String,
         @Body command: RequestBody
     ): CraftyActionResponse
