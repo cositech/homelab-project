@@ -16,6 +16,8 @@ import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.NpmProxyHostControlledAction
 import com.homelab.app.data.repository.NpmConfigurationControlledAction
 import com.homelab.app.data.repository.PangolinControlledAction
+import com.homelab.app.data.repository.QbittorrentControlledAction
+import com.homelab.app.data.repository.MediaArrAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
 import com.homelab.app.data.repository.PterodactylPowerAction
 import com.homelab.app.data.repository.TechnitiumControlledAction
@@ -1108,6 +1110,47 @@ class ControlledActionsTest {
         assertTrue(request.parameters.isEmpty())
         assertTrue(
             ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PANGOLIN)
+        )
+    }
+
+    @Test
+    fun `qbittorrent actions have stable risk identity and no payload persistence`() {
+        assertEquals(ActionRisk.LOW, QbittorrentControlledAction.TORRENT_RESUME.risk)
+        assertEquals(ActionRisk.MEDIUM, QbittorrentControlledAction.TORRENT_PAUSE.risk)
+        assertEquals(ActionRisk.MEDIUM, QbittorrentControlledAction.TRANSFER_TOGGLE_ALT_SPEED.risk)
+        assertEquals(ActionRisk.HIGH, QbittorrentControlledAction.TORRENT_DELETE.risk)
+        assertEquals(ActionRisk.HIGH, QbittorrentControlledAction.TORRENT_DELETE_WITH_DATA.risk)
+        assertFalse(QbittorrentControlledAction.TORRENT_RESUME.requiresConfirmation)
+        assertFalse(QbittorrentControlledAction.TRANSFER_REANNOUNCE_ALL.requiresConfirmation)
+        assertTrue(QbittorrentControlledAction.TORRENT_PAUSE.requiresConfirmation)
+        assertTrue(QbittorrentControlledAction.TORRENT_DELETE_WITH_DATA.requiresConfirmation)
+
+        assertEquals(
+            QbittorrentControlledAction.TORRENT_DELETE_WITH_DATA,
+            QbittorrentControlledAction.forMediaArrAction(MediaArrAction.QBITTORRENT_DELETE_TORRENT_WITH_DATA)
+        )
+        assertEquals(
+            QbittorrentControlledAction.TRANSFER_PAUSE_ALL,
+            QbittorrentControlledAction.forMediaArrAction(MediaArrAction.QBITTORRENT_PAUSE_ALL)
+        )
+        assertEquals(null, QbittorrentControlledAction.forMediaArrAction(MediaArrAction.RADARR_RSS_SYNC))
+
+        val request = QbittorrentControlledAction.TORRENT_DELETE_WITH_DATA.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetRef = " TORRENT/ABCDEF ",
+            confirmed = true,
+            requestId = "request-qbittorrent-delete",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "qbittorrent-delete-key-01"
+        )
+
+        assertEquals("qbittorrent:instance-a", request.providerRef)
+        assertEquals("torrent.delete-with-data", request.action)
+        assertEquals("torrent/abcdef", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(request.parameters.isEmpty())
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.QBITTORRENT)
         )
     }
 }
