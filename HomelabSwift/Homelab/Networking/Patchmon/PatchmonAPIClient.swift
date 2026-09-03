@@ -286,6 +286,8 @@ actor PatchmonAPIClient {
                     body: body
                 )
             }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw mapError(error, exhaustedRateLimit: isRateLimitError(error))
         }
@@ -306,6 +308,8 @@ actor PatchmonAPIClient {
                     headers: headers
                 )
             }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw mapError(error, exhaustedRateLimit: isRateLimitError(error))
         }
