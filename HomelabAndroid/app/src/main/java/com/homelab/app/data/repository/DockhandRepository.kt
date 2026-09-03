@@ -3,7 +3,12 @@ package com.homelab.app.data.repository
 import android.net.Uri
 import com.homelab.app.data.remote.api.DockhandApi
 import com.homelab.app.data.remote.TlsClientSelector
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.util.ServiceType
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -37,17 +42,62 @@ enum class DockhandContainerFilter {
     ISSUES
 }
 
-enum class DockhandContainerAction {
-    START,
-    STOP,
-    RESTART
+enum class DockhandContainerAction(val actionName: String, val risk: ActionRisk) {
+    START("container.start", ActionRisk.LOW),
+    STOP("container.stop", ActionRisk.MEDIUM),
+    RESTART("container.restart", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        environmentId: String?,
+        containerId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "dockhand:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = "environment/${environmentId.stableDockhandIdentity()}/container/${containerId.stableDockhandIdentity()}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
 
-enum class DockhandStackAction {
-    START,
-    STOP,
-    RESTART
+enum class DockhandStackAction(val actionName: String, val risk: ActionRisk) {
+    START("stack.start", ActionRisk.LOW),
+    STOP("stack.stop", ActionRisk.MEDIUM),
+    RESTART("stack.restart", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        environmentId: String?,
+        stackName: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "dockhand:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = "environment/${environmentId.stableDockhandIdentity()}/stack/${stackName.stableDockhandIdentity()}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
+
+private fun String?.stableDockhandIdentity(): String =
+    this?.trim()?.takeIf(String::isNotEmpty)?.lowercase(Locale.ROOT) ?: "default"
 
 data class DockhandEnvironment(
     val id: String,

@@ -284,7 +284,12 @@ struct AdGuardHomeFiltersView: View {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.setFilter(updated, enabled: enabled, whitelist: isWhitelist)
+            try await executeControlledAction(
+                .updateFilter,
+                targetId: String(filter.id)
+            ) {
+                try await client.setFilter(updated, enabled: enabled, whitelist: isWhitelist)
+            }
         } catch {
             self.error = error
             await fetchStatus()
@@ -294,13 +299,19 @@ struct AdGuardHomeFiltersView: View {
 
     private func removePendingFilter() async {
         guard let filter = pendingRemoval else { return }
+        let whitelist = pendingRemovalWhitelist
         pendingRemoval = nil
         updatingIds.insert(filter.id)
         do {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.removeFilter(url: filter.url, whitelist: pendingRemovalWhitelist)
+            try await executeControlledAction(
+                .deleteFilter,
+                targetId: String(filter.id)
+            ) {
+                try await client.removeFilter(url: filter.url, whitelist: whitelist)
+            }
             await fetchStatus()
         } catch {
             self.error = error
@@ -312,12 +323,15 @@ struct AdGuardHomeFiltersView: View {
         let name = newFilterName.trimmingCharacters(in: .whitespacesAndNewlines)
         let url = newFilterURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !url.isEmpty else { return }
+        let whitelist = newFilterKind == .allowlist
         isSubmitting = true
         do {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.addFilter(name: name, url: url, whitelist: newFilterKind == .allowlist)
+            try await executeControlledAction(.createFilter, targetId: "new") {
+                try await client.addFilter(name: name, url: url, whitelist: whitelist)
+            }
             isPresentingAdd = false
             await fetchStatus()
         } catch {
@@ -340,6 +354,8 @@ struct AdGuardHomeFiltersView: View {
         let newName = editFilterName.trimmingCharacters(in: .whitespacesAndNewlines)
         let newURL = editFilterURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !newName.isEmpty, !newURL.isEmpty else { return }
+        let enabled = editFilterEnabled
+        let whitelist = editingWhitelist
         isSubmitting = true
         do {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
@@ -350,14 +366,24 @@ struct AdGuardHomeFiltersView: View {
                     id: original.id,
                     name: newName,
                     url: original.url,
-                    enabled: editFilterEnabled,
+                    enabled: enabled,
                     rulesCount: original.rulesCount,
                     lastUpdated: original.lastUpdated
                 )
-                try await client.setFilter(updated, enabled: editFilterEnabled, whitelist: editingWhitelist)
+                try await executeControlledAction(
+                    .updateFilter,
+                    targetId: String(original.id)
+                ) {
+                    try await client.setFilter(updated, enabled: enabled, whitelist: whitelist)
+                }
             } else {
-                try await client.removeFilter(url: original.url, whitelist: editingWhitelist)
-                try await client.addFilter(name: newName, url: newURL, whitelist: editingWhitelist, enabled: editFilterEnabled)
+                try await executeControlledAction(
+                    .updateFilter,
+                    targetId: String(original.id)
+                ) {
+                    try await client.removeFilter(url: original.url, whitelist: whitelist)
+                    try await client.addFilter(name: newName, url: newURL, whitelist: whitelist, enabled: enabled)
+                }
             }
             isPresentingEdit = false
             await fetchStatus()
@@ -365,6 +391,38 @@ struct AdGuardHomeFiltersView: View {
             self.error = error
         }
         isSubmitting = false
+    }
+
+    private func executeControlledAction(
+        _ action: AdGuardControlledConfigurationAction,
+        targetId: String,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                targetId: targetId,
+                confirmed: true
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .adguardHome).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "adguard-home-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
+        }
     }
 
     private var addFilterSheet: some View {

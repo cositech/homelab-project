@@ -102,6 +102,7 @@ struct PangolinDashboard: View {
     @State private var actionErrorMessage: String?
     @State private var isFetchingSnapshot = false
     @State private var queuedSnapshotRefresh = false
+    @State private var pendingDisablePublicResource: PangolinResource?
 
     private let accent = ServiceType.pangolin.colors.primary
 
@@ -170,6 +171,26 @@ struct PangolinDashboard: View {
                     try await createPrivateResource(input)
                 }
             )
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingDisablePublicResource != nil },
+                set: { if !$0 { pendingDisablePublicResource = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let resource = pendingDisablePublicResource {
+                Button(localizer.t.confirm, role: .destructive) {
+                    pendingDisablePublicResource = nil
+                    Task { await togglePublicResource(resource, confirmed: true) }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) {
+                pendingDisablePublicResource = nil
+            }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
         .alert(localizer.t.error, isPresented: Binding(
             get: { actionErrorMessage != nil },
@@ -586,7 +607,11 @@ struct PangolinDashboard: View {
                 details: detailItems,
                 tint: tint,
                 onToggle: {
-                    Task { await togglePublicResource(resource) }
+                    if resource.enabled {
+                        pendingDisablePublicResource = resource
+                    } else {
+                        Task { await togglePublicResource(resource) }
+                    }
                 },
                 toggleLabel: resource.enabled ? strings.disableAction : strings.enableAction,
                 toggleTint: resource.enabled ? AppTheme.danger : tint,
@@ -925,11 +950,46 @@ struct PangolinDashboard: View {
         )
     }
 
+    private func executeControlledAction(
+        _ action: PangolinControlledAction,
+        targetRef: String,
+        confirmed: Bool,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: selectedInstanceId,
+                targetRef: targetRef,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .pangolin).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw PangolinControlledOperationFailure.map(error)
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
+        }
+    }
+
     private func savePublicResource(_ input: PangolinPublicResourceUpdateInput) async throws {
         guard let client = await servicesStore.pangolinClient(instanceId: selectedInstanceId) else {
             throw APIError.notConfigured
         }
 
+        try await executeControlledAction(
+            .publicResourceUpdate,
+            targetRef: "public-resource/\(input.resourceId)",
+            confirmed: true
+        ) {
         _ = try await client.updateResource(
             resourceId: input.resourceId,
             name: input.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -950,6 +1010,7 @@ struct PangolinDashboard: View {
                 enabled: input.targetEnabled
             )
         }
+        }
 
         await fetchSnapshot(forceLoading: false)
     }
@@ -964,6 +1025,11 @@ struct PangolinDashboard: View {
             throw APIError.custom(strings.noOrganizations)
         }
 
+        try await executeControlledAction(
+            .publicResourceCreate,
+            targetRef: "org/\(orgId)/public-resource/new",
+            confirmed: true
+        ) {
         let resource = try await client.createResource(
             orgId: orgId,
             name: input.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -984,8 +1050,12 @@ struct PangolinDashboard: View {
                 method: input.targetMethod
             )
         } catch {
-            try? await client.deleteResource(resourceId: resource.resourceId)
+            let failure = PangolinControlledOperationFailure.map(error)
+            if failure.reasonCode != "pangolin-outcome-indeterminate" {
+                try? await client.deleteResource(resourceId: resource.resourceId)
+            }
             throw error
+        }
         }
 
         await fetchSnapshot(forceLoading: false)
@@ -996,6 +1066,11 @@ struct PangolinDashboard: View {
             throw APIError.notConfigured
         }
 
+        try await executeControlledAction(
+            .privateResourceUpdate,
+            targetRef: "private-resource/\(input.siteResourceId)",
+            confirmed: true
+        ) {
         let bindings = try await client.getSiteResourceBindings(siteResourceId: input.siteResourceId)
         _ = try await client.updateSiteResource(
             siteResourceId: input.siteResourceId,
@@ -1012,6 +1087,7 @@ struct PangolinDashboard: View {
             authDaemonPort: Int(input.authDaemonPort.trimmingCharacters(in: .whitespacesAndNewlines)),
             authDaemonMode: input.authDaemonMode
         )
+        }
 
         await fetchSnapshot(forceLoading: false)
     }
@@ -1026,6 +1102,11 @@ struct PangolinDashboard: View {
             throw APIError.custom(strings.noOrganizations)
         }
 
+        try await executeControlledAction(
+            .privateResourceCreate,
+            targetRef: "org/\(orgId)/private-resource/new",
+            confirmed: true
+        ) {
         _ = try await client.createSiteResource(
             orgId: orgId,
             name: input.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1040,12 +1121,13 @@ struct PangolinDashboard: View {
             authDaemonPort: Int(input.authDaemonPort.trimmingCharacters(in: .whitespacesAndNewlines)),
             authDaemonMode: input.authDaemonMode
         )
+        }
 
         await fetchSnapshot(forceLoading: false)
     }
 
     @MainActor
-    private func togglePublicResource(_ resource: PangolinResource) async {
+    private func togglePublicResource(_ resource: PangolinResource, confirmed: Bool = false) async {
         let actionKey = toggleKey(for: resource)
         guard !togglingResourceIds.contains(actionKey) else { return }
         togglingResourceIds.insert(actionKey)
@@ -1056,6 +1138,12 @@ struct PangolinDashboard: View {
                 throw APIError.notConfigured
             }
 
+            let action: PangolinControlledAction = resource.enabled ? .publicResourceDisable : .publicResourceEnable
+            try await executeControlledAction(
+                action,
+                targetRef: "public-resource/\(resource.resourceId)",
+                confirmed: confirmed
+            ) {
             _ = try await client.updateResource(
                 resourceId: resource.resourceId,
                 name: resource.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1063,6 +1151,7 @@ struct PangolinDashboard: View {
                 sso: resource.sso,
                 ssl: resource.ssl
             )
+            }
 
             HapticManager.success()
             await fetchSnapshot(forceLoading: false)

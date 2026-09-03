@@ -103,8 +103,38 @@ struct PterodactylResourceUsage: Codable, Hashable {
     }
 }
 
-enum PterodactylPowerSignal: String {
+enum PterodactylPowerSignal: String, CaseIterable, Equatable, Sendable {
     case start, stop, restart, kill
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .start: return .low
+        case .stop, .restart: return .medium
+        case .kill: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        identifier: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "pterodactyl:\(instanceId.uuidString.lowercased())",
+            action: "server.power.\(rawValue)",
+            targetRef: "server/\(identifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
 }
 
 // MARK: - API Client
@@ -207,7 +237,7 @@ actor PterodactylAPIClient {
         let body = try JSONEncoder().encode(PowerBody(signal: signal.rawValue))
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/api/client/servers/\(identifier)/power",
             method: "POST",
             headers: authHeaders(),

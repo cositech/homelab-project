@@ -1,5 +1,11 @@
 package com.homelab.app.data.remote.dto.pihole
 
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
+
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -13,6 +19,36 @@ import kotlin.math.abs
 enum class PiholeDomainListType(val value: String) {
     ALLOW("allow"),
     DENY("deny")
+}
+
+enum class PiholeControlledDomainAction(val wireName: String) {
+    ADD("domain.add"),
+    REMOVE("domain.remove");
+
+    val risk: ActionRisk
+        get() = when (this) {
+            ADD -> ActionRisk.HIGH
+            REMOVE -> ActionRisk.MEDIUM
+        }
+
+    fun controlledRequest(
+        instanceId: String,
+        domain: String,
+        listType: PiholeDomainListType,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "pi-hole:" + instanceId,
+        action = wireName,
+        targetRef = "domain/" + listType.value + "/" + domain.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
 
 @Serializable

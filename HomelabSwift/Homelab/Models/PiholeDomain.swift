@@ -5,6 +5,34 @@ public enum PiholeDomainListType: String, Codable, Sendable {
     case deny
 }
 
+enum PiholeControlledDomainAction: String, CaseIterable, Equatable, Sendable {
+    case add, remove
+
+    var actionName: String { "domain." + rawValue }
+    var risk: ControlledActionRisk { self == .add ? .high : .medium }
+
+    func request(
+        instanceId: UUID,
+        domain: String,
+        listType: PiholeDomainListType,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "pi-hole:" + instanceId.uuidString.lowercased(),
+            action: actionName,
+            targetRef: "domain/" + listType.rawValue + "/" + domain.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 public struct PiholeDomain: Codable, Identifiable, Sendable {
     public let id: Int
     public let domain: String

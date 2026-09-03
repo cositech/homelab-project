@@ -98,7 +98,12 @@ struct AdGuardHomeRewritesView: View {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.addRewrite(domain: domain, answer: answer)
+            try await executeControlledAction(
+                .createRewrite,
+                targetId: domain.lowercased()
+            ) {
+                try await client.addRewrite(domain: domain, answer: answer)
+            }
             rewrites = try await client.getRewrites()
             isPresentingEditor = false
         } catch {
@@ -112,7 +117,12 @@ struct AdGuardHomeRewritesView: View {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.deleteRewrite(domain: entry.domain, answer: entry.answer)
+            try await executeControlledAction(
+                .deleteRewrite,
+                targetId: entry.domain.lowercased()
+            ) {
+                try await client.deleteRewrite(domain: entry.domain, answer: entry.answer)
+            }
             rewrites = try await client.getRewrites()
         } catch {
             self.error = error
@@ -129,13 +139,50 @@ struct AdGuardHomeRewritesView: View {
                 throw APIError.notConfigured
             }
             let updated = AdGuardRewriteEntry(domain: domain, answer: answer, enabled: entry.enabled)
-            try await client.updateRewrite(target: entry, update: updated)
+            try await executeControlledAction(
+                .updateRewrite,
+                targetId: entry.domain.lowercased()
+            ) {
+                try await client.updateRewrite(target: entry, update: updated)
+            }
             rewrites = try await client.getRewrites()
             isPresentingEditor = false
         } catch {
             self.error = error
         }
         isSubmitting = false
+    }
+
+    private func executeControlledAction(
+        _ action: AdGuardControlledConfigurationAction,
+        targetId: String,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: instanceId,
+                targetId: targetId,
+                confirmed: true
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .adguardHome).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "adguard-home-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
+        }
     }
 
     private func beginAdd() {

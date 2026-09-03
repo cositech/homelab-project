@@ -78,6 +78,11 @@ actor PiHoleAPIClient {
         }
     }
 
+    static func shouldUseLegacyDomainMutation(_ error: Error) -> Bool {
+        guard case APIError.httpError(let statusCode, _) = error else { return false }
+        return [404, 405, 501].contains(statusCode)
+    }
+
     private func authHeaders() -> [String: String] {
         var headers = ["Content-Type": "application/json"]
         if authMode != .legacy, !sid.isEmpty {
@@ -247,19 +252,20 @@ actor PiHoleAPIClient {
                 let path = authorizedPath("/api/domains/\(list.rawValue)/exact")
                 try await engine.requestVoid(
                     baseURL: baseURL,
-                    fallbackURL: fallbackURL,
+                    fallbackURL: "",
                     path: path,
                     method: "POST",
                     headers: authHeaders(),
                     body: body
                 )
             } catch {
-                // Legacy fallback (Pi-hole v5)
+                guard Self.shouldUseLegacyDomainMutation(error) else { throw error }
+                // Legacy fallback is safe only after a definitive unsupported-endpoint response.
                 let encodedDomain = domain.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? domain
                 let encodedSid = encodeSIDForQuery()
                 let listParam = list == .allow ? "white" : "black"
                 let path = "/admin/api.php?list=\(listParam)&add=\(encodedDomain)&auth=\(encodedSid)"
-                _ = try await engine.requestData(baseURL: baseURL, fallbackURL: fallbackURL, path: path, headers: authHeaders())
+                _ = try await engine.requestData(baseURL: baseURL, fallbackURL: "", path: path, headers: authHeaders())
             }
         }
     }
@@ -272,18 +278,19 @@ actor PiHoleAPIClient {
                 let path = authorizedPath("/api/domains/\(list.rawValue)/exact/\(encodedDomain)")
                 try await engine.requestVoid(
                     baseURL: baseURL,
-                    fallbackURL: fallbackURL,
+                    fallbackURL: "",
                     path: path,
                     method: "DELETE",
                     headers: authHeaders()
                 )
             } catch {
-                // Legacy fallback (Pi-hole v5)
+                guard Self.shouldUseLegacyDomainMutation(error) else { throw error }
+                // Legacy fallback is safe only after a definitive unsupported-endpoint response.
                 let queryDomain = domain.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? domain
                 let encodedSid = encodeSIDForQuery()
                 let listParam = list == .allow ? "white" : "black"
                 let path = "/admin/api.php?list=\(listParam)&sub=\(queryDomain)&auth=\(encodedSid)"
-                _ = try await engine.requestData(baseURL: baseURL, fallbackURL: fallbackURL, path: path, headers: authHeaders())
+                _ = try await engine.requestData(baseURL: baseURL, fallbackURL: "", path: path, headers: authHeaders())
             }
         }
     }

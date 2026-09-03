@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TurnedInNot
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -102,6 +103,7 @@ fun CraftyDashboardScreen(
     val currentInstance = instances.find { it.id == viewModel.instanceId }
     val title = currentInstance?.label?.takeIf { it.isNotBlank() } ?: ServiceType.CRAFTY_CONTROLLER.displayName
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingAction by remember { mutableStateOf<PendingCraftyAction?>(null) }
     val data = (state as? UiState.Success)?.data
     val logsServerName = remember(data, logsServerId) {
         data?.servers
@@ -195,7 +197,13 @@ fun CraftyDashboardScreen(
                             viewModel.setPreferredInstance(it.id)
                             onNavigateToInstance(it.id)
                         },
-                        onAction = viewModel::performAction,
+                        onAction = { serverId, action ->
+                            if (action.requiresConfirmation) {
+                                pendingAction = PendingCraftyAction(serverId, action)
+                            } else {
+                                viewModel.performAction(serverId, action)
+                            }
+                        },
                         onOpenLogs = viewModel::openLogs,
                         onOpenCommand = viewModel::openCommand
                     )
@@ -224,7 +232,33 @@ fun CraftyDashboardScreen(
             onSend = viewModel::sendCommand
         )
     }
+
+    pendingAction?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.confirm)) },
+            text = { Text(stringResource(R.string.game_server_confirm_action_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingAction = null
+                    viewModel.performAction(pending.serverId, pending.action, confirmed = true)
+                }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 }
+
+private data class PendingCraftyAction(
+    val serverId: String,
+    val action: CraftyServerAction
+)
 
 @Composable
 private fun CraftyContent(
@@ -674,9 +708,10 @@ private fun CraftyCommandSheet(
     isSending: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onSend: (String) -> Unit
+    onSend: (String, Boolean) -> Unit
 ) {
     var command by rememberSaveable(serverId) { mutableStateOf("") }
+    var pendingCommand by rememberSaveable(serverId) { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -730,7 +765,7 @@ private fun CraftyCommandSheet(
                     Text(stringResource(R.string.cancel))
                 }
                 Button(
-                    onClick = { onSend(command) },
+                    onClick = { pendingCommand = command.trim() },
                     enabled = !isSending && command.trim().isNotEmpty()
                 ) {
                     if (isSending) {
@@ -745,6 +780,27 @@ private fun CraftyCommandSheet(
                 }
             }
         }
+    }
+
+    pendingCommand?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingCommand = null },
+            title = { Text(stringResource(R.string.confirm)) },
+            text = { Text(stringResource(R.string.game_server_confirm_action_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingCommand = null
+                    onSend(pending, true)
+                }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingCommand = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 
