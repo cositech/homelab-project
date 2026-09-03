@@ -179,6 +179,9 @@ class MediaServiceDashboardViewModel @Inject constructor(
         // The add-content flow throws to request quality/root-folder selection before it mutates;
         // that is UI flow control, not a provider failure, so re-surface it to the caller intact.
         var configurationRequired: MediaArrRequestConfigurationRequiredException? = null
+        // The coordinator records only a bounded reason code; keep the original provider exception
+        // so the dashboard still shows the real, translated failure message.
+        var operationError: Exception? = null
         val audit = controlledActionCoordinator.execute(
             request = request,
             actorRole = ActionRole.ADMIN,
@@ -192,14 +195,16 @@ class MediaServiceDashboardViewModel @Inject constructor(
                 configurationRequired = error
                 throw error
             } catch (error: ActionOperationException) {
+                operationError = error
                 throw error
             } catch (error: Exception) {
+                operationError = error
                 throw controlledFailure(error)
             }
         }
         configurationRequired?.let { throw it }
         if (audit.state != ActionExecutionState.SUCCEEDED) {
-            throw IllegalStateException(audit.reasonCode)
+            throw operationError ?: IllegalStateException(audit.reasonCode)
         }
         return result ?: throw IllegalStateException("$reasonPrefix-provider-error")
     }
