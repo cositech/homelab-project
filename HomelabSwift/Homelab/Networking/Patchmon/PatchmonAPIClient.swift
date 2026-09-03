@@ -1,5 +1,76 @@
 import Foundation
 
+/// Controlled-action identity for PatchMon mutations. Removing a monitored host is high risk because
+/// it drops the host and its patch history from the server. The name is a bounded normalized
+/// identifier and the request never carries a payload.
+enum PatchmonControlledAction: String, CaseIterable, Equatable, Sendable {
+    case hostDelete = "host.delete"
+
+    var risk: ControlledActionRisk { .high }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "patchmon:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum PatchmonControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return failure("patchmon-outcome-indeterminate")
+        }
+        guard let apiError = error as? APIError else {
+            return failure("patchmon-provider-error")
+        }
+
+        switch apiError {
+        case .networkError, .bothURLsFailed:
+            return failure("patchmon-outcome-indeterminate")
+        case .unauthorized:
+            return failure("patchmon-invalid-credentials")
+        case .httpError(let statusCode, _):
+            return failure("patchmon-http-\(statusCode)")
+        case .notConfigured:
+            return failure("patchmon-not-configured")
+        case .invalidURL:
+            return failure("patchmon-invalid-url")
+        case .decodingError:
+            return failure("patchmon-response-decode-failure")
+        case .requestConfigurationRequired:
+            return failure("patchmon-configuration-required")
+        case .custom:
+            return failure("patchmon-provider-reported-failure")
+        }
+    }
+
+    private static func failure(_ reasonCode: String) -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: reasonCode,
+            disposition: .nonRetryable
+        )
+    }
+}
+
 actor PatchmonAPIClient {
     private struct HostsCacheEntry {
         let response: PatchmonHostsResponse
@@ -206,7 +277,9 @@ actor PatchmonAPIClient {
             return try await requestWithRateLimitRetry { [self] in
                 try await self.engine.request(
                     baseURL: self.baseURL,
-                    fallbackURL: self.fallbackURL,
+                    // Mutations run through the controlled-action coordinator and must never replay
+                    // against the fallback URL; reads keep normal primary/fallback behavior.
+                    fallbackURL: method == "GET" ? self.fallbackURL : "",
                     path: path,
                     method: method,
                     headers: self.authHeaders(tokenKey: self.tokenKey, tokenSecret: self.tokenSecret),

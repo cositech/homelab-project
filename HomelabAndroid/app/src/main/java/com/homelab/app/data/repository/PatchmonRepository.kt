@@ -2,6 +2,8 @@ package com.homelab.app.data.repository
 
 import com.homelab.app.data.remote.api.PatchmonApi
 import com.homelab.app.data.remote.TlsClientSelector
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.data.remote.dto.patchmon.PatchmonAgentQueueResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonDeleteResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonHostInfo
@@ -14,7 +16,10 @@ import com.homelab.app.data.remote.dto.patchmon.PatchmonNotesResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonPackagesResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonReportsResponse
 import java.io.IOException
+import java.time.Instant
 import java.util.Base64
+import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -42,6 +47,38 @@ class PatchmonApiException(
         SERVER_ERROR,
         CONNECTION_ERROR
     }
+}
+
+/**
+ * Controlled-action identity for PatchMon mutations. Removing a monitored host is high risk because
+ * it drops the host and its patch history from the server. The name is a bounded normalized
+ * identifier and the request never carries a payload.
+ */
+enum class PatchmonControlledAction(
+    val actionName: String,
+    val risk: ActionRisk
+) {
+    HOST_DELETE("host.delete", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        targetRef: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "patchmon:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = targetRef.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
 
 @Singleton

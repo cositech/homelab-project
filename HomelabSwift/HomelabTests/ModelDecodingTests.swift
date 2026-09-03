@@ -2543,6 +2543,36 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(unauthorized.reasonCode, "qbittorrent-invalid-credentials")
         XCTAssertEqual(unauthorized.disposition, .nonRetryable)
     }
+
+    func testPatchmonHostDeleteHasStableHighRiskIdentityAndNoPayloadPersistence() {
+        XCTAssertEqual(PatchmonControlledAction.hostDelete.risk, .high)
+        XCTAssertTrue(PatchmonControlledAction.hostDelete.requiresConfirmation)
+
+        let request = PatchmonControlledAction.hostDelete.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            targetRef: " HOST/9F2C ",
+            confirmed: true,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "patchmon:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "host.delete")
+        XCTAssertEqual(request.targetRef, "host/9f2c")
+        XCTAssertTrue(request.confirmed)
+        XCTAssertTrue(request.parameters.isEmpty)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .patchmon).capabilities.contains(.writeActions)
+        )
+
+        let transport = PatchmonControlledOperationFailure.map(APIError.networkError(URLError(.timedOut)))
+        XCTAssertEqual(transport.reasonCode, "patchmon-outcome-indeterminate")
+        XCTAssertEqual(transport.disposition, .nonRetryable)
+
+        let providerFailure = PatchmonControlledOperationFailure.map(APIError.custom("boom"))
+        XCTAssertEqual(providerFailure.reasonCode, "patchmon-provider-reported-failure")
+    }
 }
 
 private actor ActionInvocationCounter {

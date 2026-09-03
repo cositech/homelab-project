@@ -891,7 +891,29 @@ struct PatchmonHostDetailView: View {
             guard let client = await servicesStore.patchmonClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            _ = try await client.deleteHost(hostId: host.id)
+            // The toolbar/card action already presented an explicit destructive confirmation.
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: PatchmonControlledAction.hostDelete.request(
+                    instanceId: instanceId,
+                    targetRef: "host/\(host.id)",
+                    confirmed: true
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .patchmon).capabilities
+            ) {
+                do {
+                    _ = try await client.deleteHost(hostId: host.id)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw PatchmonControlledOperationFailure.map(error)
+                }
+            }
+            guard audit.state == .succeeded else {
+                throw APIError.custom(audit.reasonCode)
+            }
             HapticManager.success()
             onHostDeleted?(host.id)
             dismiss()

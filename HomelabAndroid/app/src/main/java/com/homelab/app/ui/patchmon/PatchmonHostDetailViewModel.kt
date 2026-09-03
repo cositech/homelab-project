@@ -13,15 +13,25 @@ import com.homelab.app.data.remote.dto.patchmon.PatchmonIntegrationsResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonNotesResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonPackagesResponse
 import com.homelab.app.data.remote.dto.patchmon.PatchmonReportsResponse
+import com.homelab.app.data.repository.PatchmonApiException
+import com.homelab.app.data.repository.PatchmonControlledAction
 import com.homelab.app.data.repository.PatchmonRepository
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.IOException
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +43,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class PatchmonHostDetailViewModel @Inject constructor(
     private val patchmonRepository: PatchmonRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     private val servicesRepository: ServicesRepository,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
@@ -148,7 +159,29 @@ class PatchmonHostDetailViewModel @Inject constructor(
             _deleteError.value = null
             _isDeleting.value = true
             try {
-                patchmonRepository.deleteHost(instanceId = instanceId, hostId = hostId)
+                // The detail screen already presents an explicit destructive confirmation dialog.
+                val audit = controlledActionCoordinator.execute(
+                    request = PatchmonControlledAction.HOST_DELETE.controlledRequest(
+                        instanceId = instanceId,
+                        targetRef = "host/$hostId",
+                        confirmed = true
+                    ),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.PATCHMON)
+                ) {
+                    try {
+                        patchmonRepository.deleteHost(instanceId = instanceId, hostId = hostId)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw controlledFailure(error)
+                    }
+                }
+                if (audit.state != ActionExecutionState.SUCCEEDED) {
+                    throw IllegalStateException(audit.reasonCode)
+                }
                 _isDeleted.value = true
             } catch (error: Exception) {
                 _deleteError.value = ErrorHandler.getMessage(context, error)
@@ -156,6 +189,25 @@ class PatchmonHostDetailViewModel @Inject constructor(
                 _isDeleting.value = false
             }
         }
+    }
+
+    private fun controlledFailure(error: Exception): ActionOperationException {
+        val reasonCode = when (error) {
+            is IOException -> "patchmon-outcome-indeterminate"
+            is PatchmonApiException -> when (error.kind) {
+                PatchmonApiException.Kind.CONNECTION_ERROR -> "patchmon-outcome-indeterminate"
+                PatchmonApiException.Kind.INVALID_CREDENTIALS -> "patchmon-invalid-credentials"
+                PatchmonApiException.Kind.RATE_LIMITED -> "patchmon-rate-limited"
+                PatchmonApiException.Kind.SERVER_ERROR -> "patchmon-server-error"
+                else -> "patchmon-${error.kind.name.lowercase(java.util.Locale.ROOT).replace('_', '-')}"
+            }
+            else -> "patchmon-provider-error"
+        }
+        return ActionOperationException(
+            reasonCode = reasonCode,
+            disposition = ActionFailureDisposition.NON_RETRYABLE,
+            cause = error
+        )
     }
 
     fun clearDeleteError() {
