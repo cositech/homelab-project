@@ -685,26 +685,33 @@ struct LidarrDashboard: View {
         defer { isRunningCommand = false }
 
         do {
+            let controlled: MediaServiceControlledAction
+            let message: String
             switch action {
-            case .searchMissing:
-                try await client.triggerAlbumSearch()
-                commandMessage = arr.albumSearchQueued
-            case .refreshIndex:
-                try await client.refreshArtistIndex()
-                commandMessage = arr.artistRefreshQueued
-            case .rssSync:
-                try await client.triggerRSSSync()
-                commandMessage = arr.rssSyncQueued
-            case .rescanFolders:
-                try await client.rescanFolders()
-                commandMessage = arr.rescanQueued
-            case .downloadedScan:
-                try await client.triggerDownloadedAlbumsScan()
-                commandMessage = arr.downloadedScanQueued
-            case .healthCheck:
-                try await client.triggerHealthCheck()
-                commandMessage = arr.healthCheckQueued
+            case .searchMissing: controlled = .commandSearchMissing; message = arr.albumSearchQueued
+            case .refreshIndex: controlled = .commandRefresh; message = arr.artistRefreshQueued
+            case .rssSync: controlled = .commandRssSync; message = arr.rssSyncQueued
+            case .rescanFolders: controlled = .commandRescan; message = arr.rescanQueued
+            case .downloadedScan: controlled = .commandDownloadedScan; message = arr.downloadedScanQueued
+            case .healthCheck: controlled = .commandHealthCheck; message = arr.healthCheckQueued
             }
+            try await executeControlledMediaAction(
+                controlled,
+                serviceType: .lidarr,
+                instanceId: instanceId,
+                targetRef: "command/all",
+                coordinator: servicesStore.controlledActionCoordinator
+            ) {
+                switch action {
+                case .searchMissing: try await client.triggerAlbumSearch()
+                case .refreshIndex: try await client.refreshArtistIndex()
+                case .rssSync: try await client.triggerRSSSync()
+                case .rescanFolders: try await client.rescanFolders()
+                case .downloadedScan: try await client.triggerDownloadedAlbumsScan()
+                case .healthCheck: try await client.triggerHealthCheck()
+                }
+            }
+            commandMessage = message
             HapticManager.success()
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 commandMessage = nil

@@ -11,6 +11,7 @@ import com.homelab.app.data.repository.MediaArrRequestSelection
 import com.homelab.app.data.repository.MediaArrRepository
 import com.homelab.app.data.repository.MediaArrSearchResultItem
 import com.homelab.app.data.repository.MediaArrSnapshot
+import com.homelab.app.data.repository.MediaServiceControlledAction
 import com.homelab.app.data.repository.QbittorrentControlledAction
 import com.homelab.app.data.repository.ServiceInstancesRepository
 import com.homelab.app.domain.action.ActionExecutionState
@@ -18,6 +19,7 @@ import com.homelab.app.domain.action.ActionFailureDisposition
 import com.homelab.app.domain.action.ActionOperationException
 import com.homelab.app.domain.action.ActionRole
 import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
@@ -95,9 +97,10 @@ class MediaServiceDashboardViewModel @Inject constructor(
         }
     }
 
-    /** Medium- and high-risk qBittorrent mutations require explicit confirmation before execution. */
-    fun qbittorrentActionRequiresConfirmation(action: MediaArrAction): Boolean =
-        QbittorrentControlledAction.forMediaArrAction(action)?.requiresConfirmation == true
+    /** Medium- and high-risk media-service mutations require explicit confirmation before execution. */
+    fun actionRequiresConfirmation(action: MediaArrAction): Boolean =
+        QbittorrentControlledAction.forMediaArrAction(action)?.requiresConfirmation == true ||
+            MediaServiceControlledAction.forMediaArrAction(action)?.requiresConfirmation == true
 
     fun runAction(action: MediaArrAction, confirmed: Boolean = false) {
         if (_isLoading.value) return
@@ -106,15 +109,16 @@ class MediaServiceDashboardViewModel @Inject constructor(
             _error.value = null
             _lastActionMessage.value = null
             try {
-                val controlled = QbittorrentControlledAction.forMediaArrAction(action)
-                _lastActionMessage.value = if (controlled != null) {
-                    executeControlledAction(
-                        controlled = controlled,
-                        targetRef = "transfer/all",
-                        confirmed = confirmed
+                val qbAction = QbittorrentControlledAction.forMediaArrAction(action)
+                val mediaAction = MediaServiceControlledAction.forMediaArrAction(action)
+                _lastActionMessage.value = when {
+                    qbAction != null -> executeControlled(
+                        qbAction.controlledRequest(instanceId, "transfer/all", confirmed)
                     ) { mediaArrRepository.runAction(instanceId, action) }
-                } else {
-                    mediaArrRepository.runAction(instanceId, action)
+                    mediaAction != null -> executeControlled(
+                        mediaAction.controlledRequest(serviceType, instanceId, mediaAction.defaultTargetRef(), confirmed)
+                    ) { mediaArrRepository.runAction(instanceId, action) }
+                    else -> mediaArrRepository.runAction(instanceId, action)
                 }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
             } catch (error: Exception) {
@@ -140,10 +144,8 @@ class MediaServiceDashboardViewModel @Inject constructor(
                 val controlled = QbittorrentControlledAction.forMediaArrAction(action)
                 val safeHash = hash.trim()
                 _lastActionMessage.value = if (controlled != null) {
-                    executeControlledAction(
-                        controlled = controlled,
-                        targetRef = "torrent/$safeHash",
-                        confirmed = confirmed
+                    executeControlled(
+                        controlled.controlledRequest(instanceId, "torrent/$safeHash", confirmed)
                     ) {
                         mediaArrRepository.runQbittorrentTorrentAction(
                             instanceId = instanceId,
@@ -169,43 +171,56 @@ class MediaServiceDashboardViewModel @Inject constructor(
         }
     }
 
-    private suspend fun executeControlledAction(
-        controlled: QbittorrentControlledAction,
-        targetRef: String,
-        confirmed: Boolean,
+    private suspend fun executeControlled(
+        request: ControlledActionRequest,
         operation: suspend () -> MediaArrActionResult
     ): MediaArrActionResult {
         var result: MediaArrActionResult? = null
+        // The add-content flow throws to request quality/root-folder selection before it mutates;
+        // that is UI flow control, not a provider failure, so re-surface it to the caller intact.
+        var configurationRequired: MediaArrRequestConfigurationRequiredException? = null
+        // The coordinator records only a bounded reason code; keep the original provider exception
+        // so the dashboard still shows the real, translated failure message.
+        var operationError: Exception? = null
         val audit = controlledActionCoordinator.execute(
-            request = controlled.controlledRequest(instanceId, targetRef, confirmed),
+            request = request,
             actorRole = ActionRole.ADMIN,
-            providerCapabilities = ProviderRegistry.capabilities(ServiceType.QBITTORRENT)
+            providerCapabilities = ProviderRegistry.capabilities(serviceType)
         ) {
             try {
                 result = operation()
             } catch (error: CancellationException) {
                 throw error
+            } catch (error: MediaArrRequestConfigurationRequiredException) {
+                configurationRequired = error
+                throw error
             } catch (error: ActionOperationException) {
+                operationError = error
                 throw error
             } catch (error: Exception) {
+                operationError = error
                 throw controlledFailure(error)
             }
         }
+        configurationRequired?.let { throw it }
         if (audit.state != ActionExecutionState.SUCCEEDED) {
-            throw IllegalStateException(audit.reasonCode)
+            throw operationError ?: IllegalStateException(audit.reasonCode)
         }
-        return result ?: throw IllegalStateException("qbittorrent-provider-error")
+        return result ?: throw IllegalStateException("$reasonPrefix-provider-error")
     }
+
+    private val reasonPrefix: String
+        get() = serviceType.name.lowercase(java.util.Locale.ROOT).replace('_', '-')
 
     private fun controlledFailure(error: Exception): ActionOperationException {
         // requestRaw() reports HTTP failures as IllegalStateException("<code>: <message>").
         val httpCode = Regex("^(\\d{3}):").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
         val reasonCode = when {
-            error is IOException -> "qbittorrent-outcome-indeterminate"
-            httpCode == 401 || httpCode == 403 -> "qbittorrent-invalid-credentials"
-            httpCode != null -> "qbittorrent-http-$httpCode"
-            error is IllegalStateException -> "qbittorrent-provider-reported-failure"
-            else -> "qbittorrent-provider-error"
+            error is IOException -> "$reasonPrefix-outcome-indeterminate"
+            httpCode == 401 || httpCode == 403 -> "$reasonPrefix-invalid-credentials"
+            httpCode != null -> "$reasonPrefix-http-$httpCode"
+            error is IllegalStateException -> "$reasonPrefix-provider-reported-failure"
+            else -> "$reasonPrefix-provider-error"
         }
         return ActionOperationException(
             reasonCode = reasonCode,
@@ -214,10 +229,19 @@ class MediaServiceDashboardViewModel @Inject constructor(
         )
     }
 
+    /** Approving or declining a specific media request is medium risk and needs explicit confirmation. */
+    val jellyseerrRequestActionRequiresConfirmation: Boolean
+        get() = MediaServiceControlledAction.REQUEST_APPROVE.requiresConfirmation
+
+    /** Destroying a scraper session is medium risk and needs explicit confirmation. */
+    val flaresolverrDestroyRequiresConfirmation: Boolean
+        get() = MediaServiceControlledAction.SESSION_DESTROY.requiresConfirmation
+
     fun runJellyseerrRequestAction(
         requestId: Int,
         title: String?,
-        approve: Boolean
+        approve: Boolean,
+        confirmed: Boolean = false
     ) {
         if (_isLoading.value) return
         viewModelScope.launch {
@@ -225,12 +249,21 @@ class MediaServiceDashboardViewModel @Inject constructor(
             _error.value = null
             _lastActionMessage.value = null
             try {
-                _lastActionMessage.value = mediaArrRepository.runJellyseerrRequestAction(
-                    instanceId = instanceId,
-                    requestId = requestId,
-                    title = title,
-                    approve = approve
-                )
+                val controlled = if (approve) {
+                    MediaServiceControlledAction.REQUEST_APPROVE
+                } else {
+                    MediaServiceControlledAction.REQUEST_DECLINE
+                }
+                _lastActionMessage.value = executeControlled(
+                    controlled.controlledRequest(serviceType, instanceId, "request/$requestId", confirmed)
+                ) {
+                    mediaArrRepository.runJellyseerrRequestAction(
+                        instanceId = instanceId,
+                        requestId = requestId,
+                        title = title,
+                        approve = approve
+                    )
+                }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
             } catch (error: Exception) {
                 _error.value = error.message ?: "Action failed"
@@ -240,14 +273,21 @@ class MediaServiceDashboardViewModel @Inject constructor(
         }
     }
 
-    fun destroyFlaresolverrSession(sessionId: String) {
+    fun destroyFlaresolverrSession(sessionId: String, confirmed: Boolean = false) {
         if (_isLoading.value) return
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             _lastActionMessage.value = null
             try {
-                _lastActionMessage.value = mediaArrRepository.destroyFlaresolverrSession(instanceId, sessionId)
+                val safeSession = sessionId.trim()
+                _lastActionMessage.value = executeControlled(
+                    MediaServiceControlledAction.SESSION_DESTROY.controlledRequest(
+                        serviceType, instanceId, "session/$safeSession", confirmed
+                    )
+                ) {
+                    mediaArrRepository.destroyFlaresolverrSession(instanceId, sessionId)
+                }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
             } catch (error: Exception) {
                 _error.value = error.message ?: "Action failed"
@@ -304,7 +344,15 @@ class MediaServiceDashboardViewModel @Inject constructor(
             _error.value = null
             _lastActionMessage.value = null
             try {
-                _lastActionMessage.value = mediaArrRepository.requestSearchResult(instanceId, item)
+                // Selecting a specific search result to add is the explicit user action; the quality
+                // and root-folder dialog (when shown) is its confirmation, so mark it confirmed here.
+                _lastActionMessage.value = executeControlled(
+                    MediaServiceControlledAction.LIBRARY_ADD.controlledRequest(
+                        serviceType, instanceId, "library/${item.requestId.orEmpty().ifBlank { "new" }}", confirmed = true
+                    )
+                ) {
+                    mediaArrRepository.requestSearchResult(instanceId, item)
+                }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
                 _pendingRequestConfiguration.value = null
             } catch (error: MediaArrRequestConfigurationRequiredException) {
@@ -328,11 +376,18 @@ class MediaServiceDashboardViewModel @Inject constructor(
             _error.value = null
             _lastActionMessage.value = null
             try {
-                _lastActionMessage.value = mediaArrRepository.requestSearchResult(
-                    instanceId = instanceId,
-                    item = pending.item,
-                    selection = selection
-                )
+                _lastActionMessage.value = executeControlled(
+                    MediaServiceControlledAction.LIBRARY_ADD.controlledRequest(
+                        serviceType, instanceId,
+                        "library/${pending.item.requestId.orEmpty().ifBlank { "new" }}", confirmed = true
+                    )
+                ) {
+                    mediaArrRepository.requestSearchResult(
+                        instanceId = instanceId,
+                        item = pending.item,
+                        selection = selection
+                    )
+                }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
                 _pendingRequestConfiguration.value = null
             } catch (error: MediaArrRequestConfigurationRequiredException) {

@@ -58,6 +58,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] Pangolin public/private resource and target configuration actions
   - [x] qBittorrent torrent and transfer lifecycle actions
   - [x] PatchMon monitored-host removal
+  - [x] Radarr, Sonarr, Lidarr, Jellyseerr, Prowlarr, Gluetun and FlareSolverr media-service actions
   - [ ] Remaining container, DNS, monitoring, update and configuration providers
 
 Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.

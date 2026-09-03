@@ -1087,7 +1087,7 @@ fun MediaServiceDashboardScreen(
     val searchError by viewModel.searchError.collectAsStateWithLifecycle()
     val lastSearchQuery by viewModel.lastSearchQuery.collectAsStateWithLifecycle()
     val pendingRequestConfiguration by viewModel.pendingRequestConfiguration.collectAsStateWithLifecycle()
-    var pendingQbConfirmation by remember { mutableStateOf<PendingQbConfirmation?>(null) }
+    var pendingActionConfirmation by remember { mutableStateOf<PendingActionConfirmation?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val actionMessageText = actionMessage?.let { actionResultLabel(it) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1200,19 +1200,23 @@ fun MediaServiceDashboardScreen(
                     snapshot = current,
                     instance = instance,
                     error = error,
-                    onAction = {
+                    onAction = { action ->
                         if (!isLoading) {
-                            if (viewModel.qbittorrentActionRequiresConfirmation(it)) {
-                                pendingQbConfirmation = PendingQbConfirmation(action = it)
+                            if (viewModel.actionRequiresConfirmation(action)) {
+                                pendingActionConfirmation = PendingActionConfirmation(action) {
+                                    viewModel.runAction(action, confirmed = true)
+                                }
                             } else {
-                                viewModel.runAction(it)
+                                viewModel.runAction(action)
                             }
                         }
                     },
                     onQbTorrentAction = { hash, name, action ->
                         if (!isLoading) {
-                            if (viewModel.qbittorrentActionRequiresConfirmation(action)) {
-                                pendingQbConfirmation = PendingQbConfirmation(action = action, hash = hash, name = name)
+                            if (viewModel.actionRequiresConfirmation(action)) {
+                                pendingActionConfirmation = PendingActionConfirmation(action, detail = name) {
+                                    viewModel.runQbTorrentAction(hash = hash, name = name, action = action, confirmed = true)
+                                }
                             } else {
                                 viewModel.runQbTorrentAction(hash = hash, name = name, action = action)
                             }
@@ -1220,12 +1224,32 @@ fun MediaServiceDashboardScreen(
                     },
                     onJellyseerrRequestAction = { requestId, title, approve ->
                         if (!isLoading) {
-                            viewModel.runJellyseerrRequestAction(requestId = requestId, title = title, approve = approve)
+                            if (viewModel.jellyseerrRequestActionRequiresConfirmation) {
+                                val labelAction = if (approve) {
+                                    MediaArrAction.JELLYSEERR_APPROVE_REQUEST
+                                } else {
+                                    MediaArrAction.JELLYSEERR_DECLINE_REQUEST
+                                }
+                                pendingActionConfirmation = PendingActionConfirmation(labelAction, detail = title) {
+                                    viewModel.runJellyseerrRequestAction(
+                                        requestId = requestId, title = title, approve = approve, confirmed = true
+                                    )
+                                }
+                            } else {
+                                viewModel.runJellyseerrRequestAction(requestId = requestId, title = title, approve = approve)
+                            }
                         }
                     },
                     onFlaresolverrDestroySession = { sessionId ->
                         if (!isLoading) {
-                            viewModel.destroyFlaresolverrSession(sessionId)
+                            if (viewModel.flaresolverrDestroyRequiresConfirmation) {
+                                pendingActionConfirmation = PendingActionConfirmation(
+                                    MediaArrAction.FLARESOLVERR_DESTROY_SESSION,
+                                    detail = sessionId
+                                ) { viewModel.destroyFlaresolverrSession(sessionId, confirmed = true) }
+                            } else {
+                                viewModel.destroyFlaresolverrSession(sessionId)
+                            }
                         }
                     },
                     onRetry = { if (!isLoading) viewModel.load() },
@@ -1248,41 +1272,32 @@ fun MediaServiceDashboardScreen(
                 )
             }
 
-            pendingQbConfirmation?.let { pending ->
-                val torrentName = pending.name?.takeIf { it.isNotBlank() }
+            pendingActionConfirmation?.let { pending ->
+                val detail = pending.detail?.takeIf { it.isNotBlank() }
+                val isQbBulk = pending.action in setOf(
+                    MediaArrAction.QBITTORRENT_PAUSE_ALL,
+                    MediaArrAction.QBITTORRENT_RESUME_ALL,
+                    MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED,
+                    MediaArrAction.QBITTORRENT_FORCE_RECHECK,
+                    MediaArrAction.QBITTORRENT_REANNOUNCE
+                )
+                val body: String? = detail
+                    ?: if (isQbBulk) stringResource(R.string.media_action_qb_confirm_all) else null
                 AlertDialog(
-                    onDismissRequest = { pendingQbConfirmation = null },
+                    onDismissRequest = { pendingActionConfirmation = null },
                     title = { Text(actionLabel(pending.action)) },
-                    text = {
-                        val details = torrentName
-                            ?: if (pending.action == MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED) {
-                                actionLabel(pending.action)
-                            } else {
-                                stringResource(R.string.media_action_qb_confirm_all)
-                            }
-                        Text(details)
-                    },
+                    text = body?.let { { Text(it) } },
                     confirmButton = {
                         TextButton(onClick = {
                             val confirmed = pending
-                            pendingQbConfirmation = null
-                            val hash = confirmed.hash
-                            if (hash != null) {
-                                viewModel.runQbTorrentAction(
-                                    hash = hash,
-                                    name = confirmed.name,
-                                    action = confirmed.action,
-                                    confirmed = true
-                                )
-                            } else {
-                                viewModel.runAction(confirmed.action, confirmed = true)
-                            }
+                            pendingActionConfirmation = null
+                            confirmed.onConfirm()
                         }) {
                             Text(stringResource(R.string.confirm))
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { pendingQbConfirmation = null }) {
+                        TextButton(onClick = { pendingActionConfirmation = null }) {
                             Text(stringResource(R.string.cancel))
                         }
                     }
@@ -1292,10 +1307,10 @@ fun MediaServiceDashboardScreen(
     }
 }
 
-private data class PendingQbConfirmation(
+private data class PendingActionConfirmation(
     val action: MediaArrAction,
-    val hash: String? = null,
-    val name: String? = null
+    val detail: String? = null,
+    val onConfirm: () -> Unit
 )
 
 @Composable

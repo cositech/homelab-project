@@ -524,8 +524,9 @@ for required_file in "$android_qbittorrent_repo" "$android_qbittorrent_view_mode
   test -s "$required_file"
 done
 for pattern in 'enum class QbittorrentControlledAction' 'torrent.delete-with-data' 'transfer.pause-all' 'controlledRequest' 'X-Homelab-No-Fallback'; do grep -Fq "$pattern" "$android_qbittorrent_repo"; done
-for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.QBITTORRENT)' 'confirmed: Boolean' 'qbittorrent-outcome-indeterminate'; do grep -Fq "$pattern" "$android_qbittorrent_view_model"; done
-for pattern in 'pendingQbConfirmation' 'confirmed = true'; do grep -Fq "$pattern" "$android_qbittorrent_ui"; done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(serviceType)' 'confirmed: Boolean' 'QbittorrentControlledAction.forMediaArrAction'; do grep -Fq "$pattern" "$android_qbittorrent_view_model"; done
+grep -Fq 'ProviderRegistry.capabilities(ServiceType.QBITTORRENT)' "$android_tests"
+for pattern in 'pendingActionConfirmation' 'confirmed = true'; do grep -Fq "$pattern" "$android_qbittorrent_ui"; done
 for pattern in 'enum QbittorrentControlledAction' 'torrent.delete-with-data' 'transfer.pause-all' 'QbittorrentControlledOperationFailure' 'ControlledActionRisk'; do grep -Fq "$pattern" "$swift_qbittorrent_api"; done
 test "$(grep -Fc 'fallbackURL: ""' "$swift_qbittorrent_api")" -eq 8
 for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .qbittorrent).capabilities' 'pendingConfirmation' 'confirmed: action.requiresConfirmation'; do grep -Fq "$pattern" "$swift_qbittorrent_ui"; done
@@ -548,6 +549,28 @@ for pattern in 'enum PatchmonControlledAction' 'host.delete' 'PatchmonControlled
 for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .patchmon).capabilities' 'PatchmonControlledAction.hostDelete' 'confirmed: true'; do grep -Fq "$pattern" "$swift_patchmon_ui"; done
 grep -Fq 'patchmon host delete has stable high-risk identity and no payload persistence' "$android_tests"
 grep -Fq 'testPatchmonHostDeleteHasStableHighRiskIdentityAndNoPayloadPersistence' "$swift_tests"
+
+android_media_repo="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/MediaArrRepository.kt"
+android_media_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/media/MediaServiceDashboardViewModel.kt"
+android_media_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/media/MediaArrScreen.kt"
+swift_media_core="HomelabSwift/Homelab/Models/ServiceType.swift"
+swift_radarr_ui="HomelabSwift/Homelab/Views/Radarr/RadarrDashboard.swift"
+swift_sonarr_ui="HomelabSwift/Homelab/Views/Sonarr/SonarrDashboard.swift"
+swift_lidarr_ui="HomelabSwift/Homelab/Views/Lidarr/LidarrDashboard.swift"
+
+for required_file in "$android_media_repo" "$android_media_view_model" "$android_media_ui" "$swift_media_core" "$swift_radarr_ui" "$swift_sonarr_ui" "$swift_lidarr_ui"; do
+  test -s "$required_file"
+done
+for pattern in 'enum class MediaServiceControlledAction' 'library.add' 'request.approve-oldest' 'vpn.restart' 'session.destroy' 'controlledRequest'; do grep -Fq "$pattern" "$android_media_repo"; done
+grep -Fq 'X-Homelab-No-Fallback' "$android_media_repo"
+for pattern in 'executeControlled(' 'ProviderRegistry.capabilities(serviceType)' 'MediaServiceControlledAction' 'reasonPrefix' 'confirmed = true'; do grep -Fq "$pattern" "$android_media_view_model"; done
+for pattern in 'pendingActionConfirmation' 'actionRequiresConfirmation' 'confirmed = true'; do grep -Fq "$pattern" "$android_media_ui"; done
+for pattern in 'enum MediaServiceControlledAction' 'library.add' 'MediaServiceControlledOperationFailure' 'func executeControlledMediaAction'; do grep -Fq "$pattern" "$swift_media_core"; done
+for ui in "$swift_radarr_ui" "$swift_sonarr_ui" "$swift_lidarr_ui"; do grep -Fq 'executeControlledMediaAction(' "$ui"; done
+grep -Fq 'noFallback' "$android_media_repo"
+grep -Fq 'ControlledActionErrorBox' "$swift_media_core"
+grep -Fq 'media-service actions have stable per-provider risk identity and no payload persistence' "$android_tests"
+grep -Fq 'testMediaServiceActionsHaveStablePerProviderRiskIdentityAndNoPayloadPersistence' "$swift_tests"
 
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2

@@ -664,26 +664,33 @@ struct RadarrDashboard: View {
         defer { isRunningCommand = false }
 
         do {
+            let controlled: MediaServiceControlledAction
+            let message: String
             switch action {
-            case .searchMissing:
-                try await client.triggerMoviesSearch()
-                commandMessage = arr.movieSearchQueued
-            case .refreshIndex:
-                try await client.refreshMovieIndex()
-                commandMessage = arr.movieRefreshQueued
-            case .rssSync:
-                try await client.triggerRSSSync()
-                commandMessage = arr.rssSyncQueued
-            case .rescanFolders:
-                try await client.rescanMovieFolders()
-                commandMessage = arr.rescanQueued
-            case .downloadedScan:
-                try await client.triggerDownloadedMoviesScan()
-                commandMessage = arr.downloadedScanQueued
-            case .healthCheck:
-                try await client.triggerHealthCheck()
-                commandMessage = arr.healthCheckQueued
+            case .searchMissing: controlled = .commandSearchMissing; message = arr.movieSearchQueued
+            case .refreshIndex: controlled = .commandRefresh; message = arr.movieRefreshQueued
+            case .rssSync: controlled = .commandRssSync; message = arr.rssSyncQueued
+            case .rescanFolders: controlled = .commandRescan; message = arr.rescanQueued
+            case .downloadedScan: controlled = .commandDownloadedScan; message = arr.downloadedScanQueued
+            case .healthCheck: controlled = .commandHealthCheck; message = arr.healthCheckQueued
             }
+            try await executeControlledMediaAction(
+                controlled,
+                serviceType: .radarr,
+                instanceId: instanceId,
+                targetRef: "command/all",
+                coordinator: servicesStore.controlledActionCoordinator
+            ) {
+                switch action {
+                case .searchMissing: try await client.triggerMoviesSearch()
+                case .refreshIndex: try await client.refreshMovieIndex()
+                case .rssSync: try await client.triggerRSSSync()
+                case .rescanFolders: try await client.rescanMovieFolders()
+                case .downloadedScan: try await client.triggerDownloadedMoviesScan()
+                case .healthCheck: try await client.triggerHealthCheck()
+                }
+            }
+            commandMessage = message
             HapticManager.success()
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 commandMessage = nil
