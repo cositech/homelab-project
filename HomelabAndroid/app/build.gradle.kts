@@ -68,10 +68,10 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.6")
 
     // Splash, Biometric, Lifecycle, AppCompat
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
-    implementation("androidx.fragment:fragment-ktx:1.8.6")
+    implementation("androidx.fragment:fragment-ktx:1.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("androidx.core:core-ktx:1.15.0")
@@ -114,10 +114,10 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("io.mockk:mockk:1.13.10")
+    testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 
     // Debug Tools
