@@ -1098,6 +1098,7 @@
     <string name="media_action_qb_reannounce_torrent">Réannoncer le torrent</string>
     <string name="media_action_qb_delete_torrent">Supprimer le torrent</string>
     <string name="media_action_qb_delete_torrent_with_data">Supprimer torrent + données</string>
+    <string name="media_action_qb_confirm_all">Appliquer à tous les torrents</string>
     <string name="media_action_radarr_search_missing">Rechercher films manquants</string>
     <string name="media_action_radarr_rss">Lancer sync RSS</string>
     <string name="media_action_radarr_refresh">Rafraîchir index films</string>
