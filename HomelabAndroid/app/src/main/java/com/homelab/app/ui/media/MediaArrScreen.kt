@@ -1255,9 +1255,13 @@ fun MediaServiceDashboardScreen(
                     title = { Text(actionLabel(pending.action)) },
                     text = {
                         val details = torrentName
-                            ?: if (pending.action == MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED) actionLabel(pending.action) else stringResource(R.string.media_action_qb_confirm_all)
+                            ?: if (pending.action == MediaArrAction.QBITTORRENT_TOGGLE_ALT_SPEED) {
+                                actionLabel(pending.action)
+                            } else {
+                                stringResource(R.string.media_action_qb_confirm_all)
+                            }
                         Text(details)
-                    }
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             val confirmed = pending
