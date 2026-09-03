@@ -28,6 +28,11 @@ private enum CraftySheetRoute: Identifiable {
     }
 }
 
+private struct PendingCraftyAction {
+    let serverId: String
+    let action: CraftyAction
+}
+
 struct CraftyDashboard: View {
     let instanceId: UUID
 
@@ -40,6 +45,7 @@ struct CraftyDashboard: View {
     @State private var actionServerId: String?
     @State private var activeSheet: CraftySheetRoute?
     @State private var actionErrorMessage: String?
+    @State private var pendingAction: PendingCraftyAction?
 
     private let craftyColor = ServiceType.craftyController.colors.primary
     private let actionGrid = [GridItem(.adaptive(minimum: 132), spacing: 8)]
@@ -86,6 +92,33 @@ struct CraftyDashboard: View {
             case .command(let server):
                 CraftyCommandSheet(instanceId: selectedInstanceId, server: server)
             }
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pending = pendingAction {
+                Button(
+                    localizer.t.confirm,
+                    role: pending.action == .kill ? .destructive : nil
+                ) {
+                    pendingAction = nil
+                    Task {
+                        await performAction(
+                            pending.action,
+                            serverId: pending.serverId,
+                            confirmed: true
+                        )
+                    }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
         .alert(localizer.t.error, isPresented: actionErrorPresented) {
             Button(localizer.t.close, role: .cancel) {
@@ -215,19 +248,19 @@ struct CraftyDashboard: View {
 
             LazyVGrid(columns: actionGrid, spacing: 8) {
                 actionButton(title: localizer.t.actionStart, icon: "play.fill", enabled: actionsEnabled && stats?.running != true, primary: true) {
-                    await performAction(.start, serverId: row.server.serverID)
+                    await requestAction(.start, serverId: row.server.serverID)
                 }
                 actionButton(title: localizer.t.actionStop, icon: "stop.fill", enabled: actionsEnabled && stats?.running == true) {
-                    await performAction(.stop, serverId: row.server.serverID)
+                    await requestAction(.stop, serverId: row.server.serverID)
                 }
                 actionButton(title: localizer.t.actionRestart, icon: "arrow.clockwise", enabled: actionsEnabled && stats?.running == true) {
-                    await performAction(.restart, serverId: row.server.serverID)
+                    await requestAction(.restart, serverId: row.server.serverID)
                 }
                 actionButton(title: localizer.t.actionBackup, icon: "externaldrive.badge.timemachine", enabled: actionsEnabled) {
-                    await performAction(.backup, serverId: row.server.serverID)
+                    await requestAction(.backup, serverId: row.server.serverID)
                 }
                 actionButton(title: localizer.t.craftyUpdateExecutable, icon: "arrow.down.circle", enabled: actionsEnabled) {
-                    await performAction(.updateExecutable, serverId: row.server.serverID)
+                    await requestAction(.updateExecutable, serverId: row.server.serverID)
                 }
                 actionButton(title: localizer.t.detailLogs, icon: "doc.text.magnifyingglass", enabled: true) {
                     activeSheet = .logs(row.server)
@@ -236,7 +269,7 @@ struct CraftyDashboard: View {
                     activeSheet = .command(row.server)
                 }
                 actionButton(title: localizer.t.actionKill, icon: "exclamationmark.octagon.fill", enabled: actionsEnabled && stats?.running == true, destructive: true) {
-                    await performAction(.kill, serverId: row.server.serverID)
+                    await requestAction(.kill, serverId: row.server.serverID)
                 }
             }
         }
@@ -355,12 +388,37 @@ struct CraftyDashboard: View {
         }
     }
 
-    private func performAction(_ action: CraftyAction, serverId: String) async {
+
+    private func requestAction(_ action: CraftyAction, serverId: String) async {
+        if action.requiresConfirmation {
+            pendingAction = PendingCraftyAction(serverId: serverId, action: action)
+        } else {
+            await performAction(action, serverId: serverId, confirmed: false)
+        }
+    }
+    private func performAction(_ action: CraftyAction, serverId: String, confirmed: Bool) async {
         do {
             actionServerId = serverId
             actionErrorMessage = nil
             guard let client = await servicesStore.craftyClient(instanceId: selectedInstanceId) else { return }
-            try await client.sendAction(serverId: serverId, action: action)
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: action.request(instanceId: selectedInstanceId, serverId: serverId, confirmed: confirmed),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .craftyController).capabilities
+            ) {
+                do {
+                    try await client.sendAction(serverId: serverId, action: action)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw CraftyControlledOperationFailure.map(error)
+                }
+            }
+            guard audit.state == .succeeded else {
+                throw APIError.custom(audit.reasonCode)
+            }
             HapticManager.success()
             await syncServerAfterAction(serverId: serverId, action: action)
         } catch {
@@ -512,6 +570,7 @@ private struct CraftyCommandSheet: View {
     @State private var commandText = ""
     @State private var isSending = false
     @State private var errorMessage: String?
+    @State private var pendingCommand: String?
 
     var body: some View {
         NavigationStack {
@@ -543,7 +602,7 @@ private struct CraftyCommandSheet: View {
                 }
 
                 Button {
-                    Task { await sendCommand() }
+                    pendingCommand = commandText.trimmingCharacters(in: .whitespacesAndNewlines)
                 } label: {
                     HStack {
                         Spacer()
@@ -577,14 +636,32 @@ private struct CraftyCommandSheet: View {
                 }
             }
         }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingCommand != nil },
+                set: { if !$0 { pendingCommand = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pendingCommand {
+                Button(localizer.t.confirm, role: .destructive) {
+                    self.pendingCommand = nil
+                    Task { await sendCommand(pendingCommand, confirmed: true) }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingCommand = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
+        }
     }
 
     private var craftyCommandButtonColor: Color {
         commandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppTheme.textMuted : AppTheme.primary
     }
 
-    private func sendCommand() async {
-        let trimmed = commandText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func sendCommand(_ command: String, confirmed: Bool) async {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         do {
@@ -595,7 +672,28 @@ private struct CraftyCommandSheet: View {
                 isSending = false
                 return
             }
-            try await client.sendCommand(serverId: server.serverID, command: trimmed)
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: CraftyCommandAction.send.request(
+                    instanceId: instanceId,
+                    serverId: server.serverID,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .craftyController).capabilities
+            ) {
+                do {
+                    try await client.sendCommand(serverId: server.serverID, command: trimmed)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw CraftyControlledOperationFailure.map(error)
+                }
+            }
+            guard audit.state == .succeeded else {
+                throw APIError.custom(audit.reasonCode)
+            }
             HapticManager.success()
             // Show brief success feedback before dismissing.
             commandText = ""

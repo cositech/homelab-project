@@ -5,16 +5,25 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.repository.ServicesRepository
+import com.homelab.app.data.repository.TechnitiumActionResult
+import com.homelab.app.data.repository.TechnitiumControlledAction
 import com.homelab.app.data.repository.TechnitiumDashboardData
 import com.homelab.app.data.repository.TechnitiumRepository
 import com.homelab.app.data.repository.TechnitiumStatsRange
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,6 +38,7 @@ import kotlinx.coroutines.launch
 class TechnitiumViewModel @Inject constructor(
     private val repository: TechnitiumRepository,
     private val servicesRepository: ServicesRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -96,79 +106,103 @@ class TechnitiumViewModel @Inject constructor(
         _selectedPanel.value = panel
     }
 
-    fun setBlocking(enabled: Boolean) {
-        if (_isRunningAction.value) return
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = repository.setBlockingEnabled(instanceId = instanceId, enabled = enabled)
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
-            }
+    fun setBlocking(enabled: Boolean, confirmed: Boolean = false) {
+        val action = if (enabled) {
+            TechnitiumControlledAction.ENABLE_BLOCKING
+        } else {
+            TechnitiumControlledAction.DISABLE_BLOCKING
+        }
+        executeAction(action, confirmed = confirmed) {
+            repository.setBlockingEnabled(instanceId = instanceId, enabled = enabled)
         }
     }
 
-    fun temporaryDisable(minutes: Int) {
-        if (_isRunningAction.value) return
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = repository.temporaryDisableBlocking(instanceId = instanceId, minutes = minutes)
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
-            }
+    fun temporaryDisable(minutes: Int, confirmed: Boolean = false) {
+        executeAction(TechnitiumControlledAction.TEMPORARY_DISABLE, confirmed = confirmed) {
+            repository.temporaryDisableBlocking(instanceId = instanceId, minutes = minutes)
         }
     }
 
     fun forceUpdateBlockLists() {
-        if (_isRunningAction.value) return
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = repository.forceUpdateBlockLists(instanceId = instanceId)
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
-            }
+        executeAction(TechnitiumControlledAction.REFRESH_BLOCK_LISTS, confirmed = false) {
+            repository.forceUpdateBlockLists(instanceId = instanceId)
         }
     }
 
-    fun addBlockedDomain(domain: String) {
-        if (_isRunningAction.value) return
-        viewModelScope.launch {
-            _isRunningAction.value = true
-            try {
-                val result = repository.addBlockedDomain(instanceId = instanceId, domain = domain)
-                _messages.tryEmit(result.message)
-                _selectedPanel.value = SummaryPanel.BLOCKED
-                fetchDashboard(forceLoading = false)
-            } catch (error: Exception) {
-                _messages.tryEmit(ErrorHandler.getMessage(context, error))
-            } finally {
-                _isRunningAction.value = false
-            }
+    fun addBlockedDomain(domain: String, confirmed: Boolean = false) {
+        val normalizedDomain = domain.trim()
+        executeAction(
+            TechnitiumControlledAction.ADD_BLOCKED_DOMAIN,
+            domain = normalizedDomain,
+            confirmed = confirmed,
+            onSucceeded = { _selectedPanel.value = SummaryPanel.BLOCKED }
+        ) {
+            repository.addBlockedDomain(instanceId = instanceId, domain = normalizedDomain)
         }
     }
 
-    fun removeBlockedDomain(domain: String) {
+    fun removeBlockedDomain(domain: String, confirmed: Boolean = false) {
+        val normalizedDomain = domain.trim()
+        executeAction(
+            TechnitiumControlledAction.REMOVE_BLOCKED_DOMAIN,
+            domain = normalizedDomain,
+            confirmed = confirmed
+        ) {
+            repository.removeBlockedDomain(instanceId = instanceId, domain = normalizedDomain)
+        }
+    }
+
+    private fun executeAction(
+        action: TechnitiumControlledAction,
+        domain: String? = null,
+        confirmed: Boolean,
+        onSucceeded: () -> Unit = {},
+        mutation: suspend () -> TechnitiumActionResult
+    ) {
         if (_isRunningAction.value) return
         viewModelScope.launch {
             _isRunningAction.value = true
             try {
-                val result = repository.removeBlockedDomain(instanceId = instanceId, domain = domain)
-                _messages.tryEmit(result.message)
-                fetchDashboard(forceLoading = false)
+                var providerMessage: String? = null
+                val audit = controlledActionCoordinator.execute(
+                    request = action.controlledRequest(
+                        instanceId = instanceId,
+                        target = action.targetRef(domain),
+                        confirmed = confirmed
+                    ),
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = ProviderRegistry.capabilities(ServiceType.TECHNITIUM)
+                ) {
+                    try {
+                        val result = mutation()
+                        if (!result.success) {
+                            throw ActionOperationException(
+                                "technitium-provider-reported-failure",
+                                ActionFailureDisposition.NON_RETRYABLE
+                            )
+                        }
+                        providerMessage = result.message
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        throw ActionOperationException(
+                            "technitium-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (audit.state == ActionExecutionState.SUCCEEDED) {
+                    _messages.tryEmit(providerMessage.orEmpty().ifBlank { "Technitium action completed" })
+                    onSucceeded()
+                    fetchDashboard(forceLoading = false)
+                } else {
+                    _messages.tryEmit(audit.reasonCode)
+                }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _messages.tryEmit(ErrorHandler.getMessage(context, error))
             } finally {

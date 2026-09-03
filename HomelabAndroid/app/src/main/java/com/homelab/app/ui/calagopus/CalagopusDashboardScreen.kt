@@ -24,8 +24,10 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,7 +45,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homelab.app.R
+import com.homelab.app.data.repository.CalagopusPowerAction
 import com.homelab.app.ui.common.ErrorScreen
 import com.homelab.app.ui.components.ServiceInstancePicker
 import com.homelab.app.util.ServiceType
@@ -76,6 +81,7 @@ fun CalagopusDashboardScreen(
     val title = currentInstance?.label?.takeIf { it.isNotBlank() } ?: ServiceType.CALAGOPUS.displayName
 
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingAction by remember { mutableStateOf<PendingPowerAction?>(null) }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -150,8 +156,12 @@ fun CalagopusDashboardScreen(
                                     CalagopusServerCard(
                                         item = item,
                                         isActionPending = actionServerId == item.server.uuidShort,
-                                        onPowerSignal = { signal ->
-                                            viewModel.sendPowerSignal(item.server.uuidShort, signal)
+                                        onPowerSignal = { action ->
+                                            if (action.requiresConfirmation) {
+                                                pendingAction = PendingPowerAction(item.server.uuidShort, action)
+                                            } else {
+                                                viewModel.sendPowerSignal(item.server.uuidShort, action)
+                                            }
                                         }
                                     )
                                 }
@@ -163,14 +173,48 @@ fun CalagopusDashboardScreen(
             }
         }
     }
+
+    pendingAction?.let { pending ->
+        val actionLabel = stringResource(
+            when (pending.action) {
+                CalagopusPowerAction.START -> R.string.calagopus_action_start
+                CalagopusPowerAction.STOP -> R.string.calagopus_action_stop
+                CalagopusPowerAction.RESTART -> R.string.calagopus_action_restart
+                CalagopusPowerAction.KILL -> R.string.calagopus_action_kill
+            }
+        )
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(stringResource(R.string.game_server_confirm_action, actionLabel)) },
+            text = { Text(stringResource(R.string.game_server_confirm_action_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingAction = null
+                    viewModel.sendPowerSignal(pending.serverId, pending.action, confirmed = true)
+                }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 }
+
+private data class PendingPowerAction(
+    val serverId: String,
+    val action: CalagopusPowerAction
+)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CalagopusServerCard(
     item: CalagopusServerWithResources,
     isActionPending: Boolean,
-    onPowerSignal: (String) -> Unit
+    onPowerSignal: (CalagopusPowerAction) -> Unit
 ) {
     val server = item.server
     val res = item.resources
@@ -260,7 +304,7 @@ private fun CalagopusServerCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!isRunning && !isStarting) {
                         OutlinedButton(
-                            onClick = { onPowerSignal("start") },
+                            onClick = { onPowerSignal(CalagopusPowerAction.START) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.calagopus_action_start))
@@ -268,13 +312,13 @@ private fun CalagopusServerCard(
                     }
                     if (isRunning || isStarting) {
                         OutlinedButton(
-                            onClick = { onPowerSignal("restart") },
+                            onClick = { onPowerSignal(CalagopusPowerAction.RESTART) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.calagopus_action_restart))
                         }
                         OutlinedButton(
-                            onClick = { onPowerSignal("stop") },
+                            onClick = { onPowerSignal(CalagopusPowerAction.STOP) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.calagopus_action_stop))
@@ -282,7 +326,7 @@ private fun CalagopusServerCard(
                     }
                     if (isRunning) {
                         OutlinedButton(
-                            onClick = { onPowerSignal("kill") },
+                            onClick = { onPowerSignal(CalagopusPowerAction.KILL) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.calagopus_action_kill))

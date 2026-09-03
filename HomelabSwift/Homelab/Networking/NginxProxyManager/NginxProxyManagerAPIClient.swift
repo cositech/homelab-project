@@ -165,11 +165,16 @@ actor NginxProxyManagerAPIClient {
         }
     }
 
-    private func authenticatedRequest<T: Decodable>(path: String, method: String = "GET", body: Data? = nil) async throws -> T {
+    private func authenticatedRequest<T: Decodable>(
+        path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        allowFallback: Bool = true
+    ) async throws -> T {
         return try await withAuthRetry {
             try await engine.request(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: authHeaders(),
@@ -178,11 +183,16 @@ actor NginxProxyManagerAPIClient {
         }
     }
 
-    private func authenticatedVoidRequest(path: String, method: String = "POST", body: Data? = nil) async throws {
+    private func authenticatedVoidRequest(
+        path: String,
+        method: String = "POST",
+        body: Data? = nil,
+        allowFallback: Bool = true
+    ) async throws {
         try await withAuthRetry {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                fallbackURL: allowFallback ? fallbackURL : "",
                 path: path,
                 method: method,
                 headers: authHeaders(),
@@ -207,7 +217,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/proxy-hosts",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -215,20 +226,21 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/proxy-hosts/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteProxyHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)", method: "DELETE", allowFallback: false)
     }
 
     func enableProxyHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/enable", method: "POST")
+        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/enable", method: "POST", allowFallback: false)
     }
 
     func disableProxyHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/disable", method: "POST")
+        try await authenticatedVoidRequest(path: "/api/nginx/proxy-hosts/\(id)/disable", method: "POST", allowFallback: false)
     }
 
     // MARK: - Redirection Hosts
@@ -241,7 +253,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/redirection-hosts",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -249,12 +262,13 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/redirection-hosts/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteRedirectionHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/redirection-hosts/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/redirection-hosts/\(id)", method: "DELETE", allowFallback: false)
     }
 
     // MARK: - Streams
@@ -267,7 +281,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/streams",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -275,12 +290,13 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/streams/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteStream(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/streams/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/streams/\(id)", method: "DELETE", allowFallback: false)
     }
 
     // MARK: - Dead Hosts
@@ -293,7 +309,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/dead-hosts",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -301,12 +318,13 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/dead-hosts/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteDeadHost(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/dead-hosts/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/dead-hosts/\(id)", method: "DELETE", allowFallback: false)
     }
 
     // MARK: - Certificates
@@ -319,16 +337,17 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/certificates",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteCertificate(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/certificates/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/certificates/\(id)", method: "DELETE", allowFallback: false)
     }
 
     func renewCertificate(id: Int) async throws -> NpmCertificate {
-        return try await authenticatedRequest(path: "/api/nginx/certificates/\(id)/renew", method: "POST")
+        return try await authenticatedRequest(path: "/api/nginx/certificates/\(id)/renew", method: "POST", allowFallback: false)
     }
 
     // MARK: - Access Lists
@@ -341,7 +360,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/access-lists",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -349,12 +369,13 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/nginx/access-lists/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteAccessList(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/nginx/access-lists/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/nginx/access-lists/\(id)", method: "DELETE", allowFallback: false)
     }
 
     // MARK: - Users / Audit Logs / Settings
@@ -367,7 +388,8 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/users",
             method: "POST",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
@@ -375,12 +397,13 @@ actor NginxProxyManagerAPIClient {
         return try await authenticatedRequest(
             path: "/api/users/\(id)",
             method: "PUT",
-            body: try request.toJSONData()
+            body: try request.toJSONData(),
+            allowFallback: false
         )
     }
 
     func deleteUser(id: Int) async throws {
-        try await authenticatedVoidRequest(path: "/api/users/\(id)", method: "DELETE")
+        try await authenticatedVoidRequest(path: "/api/users/\(id)", method: "DELETE", allowFallback: false)
     }
 
     func getAuditLogs() async throws -> [NpmAuditLog] {

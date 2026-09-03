@@ -13,6 +13,7 @@ struct PiholeDomainListView: View {
 
     @State private var showingAddAlert = false
     @State private var newDomainText = ""
+    @State private var pendingRemoval: PiholeDomain?
 
     var filteredDomains: [PiholeDomain] {
         domains.filter { $0.type == selectedTab }
@@ -72,9 +73,9 @@ struct PiholeDomainListView: View {
                                     Text(domain.domain)
                                         .font(.body)
                                 }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
-                                        Task { await removeDomain(domain) }
+                                        pendingRemoval = domain
                                     } label: {
                                         Label(localizer.t.delete, systemImage: "trash")
                                     }
@@ -115,6 +116,23 @@ struct PiholeDomainListView: View {
         } message: {
             Text(String(format: localizer.t.piholeAddDomainDesc, selectedTab == .allow ? localizer.t.piholeAllowed : localizer.t.piholeBlocked))
         }
+        .confirmationDialog(
+            localizer.t.delete,
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { value in if !value { pendingRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(localizer.t.delete, role: .destructive) {
+                guard let item = pendingRemoval else { return }
+                pendingRemoval = nil
+                Task { await removeDomain(item, confirmed: true) }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingRemoval = nil }
+        } message: {
+            Text(pendingRemoval?.domain ?? "")
+        }
     }
 
     private func fetchDomains() async {
@@ -133,25 +151,55 @@ struct PiholeDomainListView: View {
 
     private func addDomain() async {
         guard !newDomainText.isEmpty else { return }
-        let url = newDomainText.trimmingCharacters(in: .whitespaces)
+        let normalizedDomain = newDomainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedList = selectedTab
         do {
             guard let client = await servicesStore.piholeClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.addDomain(domain: url, to: selectedTab)
+            let result = await servicesStore.controlledActionCoordinator.execute(
+                request: PiholeControlledDomainAction.add.request(
+                    instanceId: instanceId,
+                    domain: normalizedDomain,
+                    listType: selectedList,
+                    confirmed: true
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .pihole).capabilities
+            ) {
+                try await client.addDomain(domain: normalizedDomain, to: selectedList)
+            }
+            guard result.state == .succeeded else {
+                throw APIError.custom(String(format: localizer.t.errorActionFailed, result.reasonCode))
+            }
             await fetchDomains()
         } catch {
             self.error = error
         }
     }
 
-    private func removeDomain(_ item: PiholeDomain) async {
+    private func removeDomain(_ item: PiholeDomain, confirmed: Bool) async {
         guard let type = item.type else { return }
+        let normalizedDomain = item.domain.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             guard let client = await servicesStore.piholeClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.removeDomain(domain: item.domain, from: type)
+            let result = await servicesStore.controlledActionCoordinator.execute(
+                request: PiholeControlledDomainAction.remove.request(
+                    instanceId: instanceId,
+                    domain: normalizedDomain,
+                    listType: type,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .pihole).capabilities
+            ) {
+                try await client.removeDomain(domain: normalizedDomain, from: type)
+            }
+            guard result.state == .succeeded else {
+                throw APIError.custom(String(format: localizer.t.errorActionFailed, result.reasonCode))
+            }
             if let index = domains.firstIndex(where: { $0.id == item.id }) {
                 domains.remove(at: index)
             }

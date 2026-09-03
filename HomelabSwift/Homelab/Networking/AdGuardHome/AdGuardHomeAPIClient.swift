@@ -89,7 +89,7 @@ actor AdGuardHomeAPIClient {
         let data = try JSONSerialization.data(withJSONObject: body)
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/protection",
             method: "POST",
             headers: authHeaders(),
@@ -136,7 +136,7 @@ actor AdGuardHomeAPIClient {
         let data = try JSONSerialization.data(withJSONObject: body)
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/filtering/set_rules",
             method: "POST",
             headers: authHeaders(),
@@ -154,7 +154,7 @@ actor AdGuardHomeAPIClient {
         let data = try JSONSerialization.data(withJSONObject: body)
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/filtering/add_url",
             method: "POST",
             headers: authHeaders(),
@@ -177,7 +177,7 @@ actor AdGuardHomeAPIClient {
         let data = try JSONSerialization.data(withJSONObject: body)
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/filtering/set_url",
             method: "POST",
             headers: authHeaders(),
@@ -193,7 +193,7 @@ actor AdGuardHomeAPIClient {
         let data = try JSONSerialization.data(withJSONObject: body)
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/filtering/remove_url",
             method: "POST",
             headers: authHeaders(),
@@ -244,7 +244,7 @@ actor AdGuardHomeAPIClient {
         let data = try JSONSerialization.data(withJSONObject: body)
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/blocked_services/update",
             method: "PUT",
             headers: authHeaders(),
@@ -270,7 +270,7 @@ actor AdGuardHomeAPIClient {
         ])
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/rewrite/add",
             method: "POST",
             headers: authHeaders(),
@@ -285,7 +285,7 @@ actor AdGuardHomeAPIClient {
         ])
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/rewrite/delete",
             method: "POST",
             headers: authHeaders(),
@@ -300,7 +300,7 @@ actor AdGuardHomeAPIClient {
         ])
         try await engine.requestVoid(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: "",
             path: "/rewrite/update",
             method: "POST",
             headers: authHeaders(),
