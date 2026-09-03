@@ -79,7 +79,7 @@ struct QbittorrentDashboard: View {
             titleVisibility: .visible,
             presenting: pendingConfirmation
         ) { confirmation in
-            Button(confirmation.title, role: .destructive) {
+            Button(localizer.t.confirm, role: .destructive) {
                 let perform = confirmation.perform
                 pendingConfirmation = nil
                 perform()
