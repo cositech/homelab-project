@@ -658,6 +658,11 @@
     <string name="npm_delete">Eliminar</string>
     <string name="npm_delete_confirm">¿Estás seguro de que quieres eliminar esto?</string>
     <string name="npm_delete_confirm_title">Confirmar eliminación</string>
+    <string name="npm_disable">Desactivar</string>
+    <string name="npm_disable_confirm_title">¿Desactivar el host proxy?</string>
+    <string name="npm_disable_confirm">Las solicitudes a este host proxy se detendrán hasta que vuelva a activarse.</string>
+    <string name="npm_renew_confirm_title">¿Renovar el certificado?</string>
+    <string name="npm_renew_confirm">Nginx Proxy Manager solicitará y activará un certificado de sustitución para esta entrada.</string>
     <string name="npm_no_redirections">No hay redirecciones configuradas.</string>
     <string name="npm_no_streams">No hay streams configurados.</string>
     <string name="npm_no_dead_hosts">No hay hosts 404 configurados.</string>

@@ -5,12 +5,18 @@ import com.homelab.app.data.remote.api.PterodactylApi
 import com.homelab.app.data.remote.dto.pterodactyl.PterodactylPowerRequest
 import com.homelab.app.data.remote.dto.pterodactyl.PterodactylResources
 import com.homelab.app.data.remote.dto.pterodactyl.PterodactylServer
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import kotlinx.serialization.json.Json
 import okhttp3.Request
 import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -20,6 +26,33 @@ data class PterodactylDashboardData(
 ) {
     val totalServers: Int get() = servers.size
     val runningServers: Int get() = servers.count { it.status == null && !it.isSuspended && !it.isInstalling }
+}
+
+enum class PterodactylPowerAction(val signal: String, val risk: ActionRisk) {
+    START("start", ActionRisk.LOW),
+    STOP("stop", ActionRisk.MEDIUM),
+    RESTART("restart", ActionRisk.MEDIUM),
+    KILL("kill", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        identifier: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "pterodactyl:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = "server.power.$signal",
+        targetRef = "server/${identifier.trim().lowercase(Locale.ROOT)}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
 }
 
 class PterodactylApiException(
@@ -82,9 +115,11 @@ class PterodactylRepository @Inject constructor(
         }
     }
 
-    suspend fun sendPowerSignal(instanceId: String, identifier: String, signal: String) {
+    suspend fun sendPowerSignal(instanceId: String, identifier: String, action: PterodactylPowerAction) {
         try {
-            api.sendPowerSignal(instanceId, identifier, PterodactylPowerRequest(signal))
+            api.sendPowerSignal(instanceId, identifier, PterodactylPowerRequest(action.signal))
+        } catch (error: CancellationException) {
+            throw error
         } catch (e: Exception) {
             throw handleException(e)
         }

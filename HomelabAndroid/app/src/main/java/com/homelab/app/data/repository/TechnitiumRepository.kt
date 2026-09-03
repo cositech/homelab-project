@@ -2,6 +2,11 @@ package com.homelab.app.data.repository
 
 import com.homelab.app.data.remote.api.TechnitiumApi
 import com.homelab.app.data.remote.TlsClientSelector
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +33,42 @@ enum class TechnitiumStatsRange(val apiValue: String) {
     LAST_DAY("LastDay"),
     LAST_WEEK("LastWeek"),
     LAST_MONTH("LastMonth")
+}
+
+enum class TechnitiumControlledAction(val wireName: String, val risk: ActionRisk) {
+    ENABLE_BLOCKING("blocking.enable", ActionRisk.LOW),
+    DISABLE_BLOCKING("blocking.disable", ActionRisk.MEDIUM),
+    TEMPORARY_DISABLE("blocking.disable-temporary", ActionRisk.MEDIUM),
+    REFRESH_BLOCK_LISTS("blocklist.refresh", ActionRisk.LOW),
+    ADD_BLOCKED_DOMAIN("blocked-domain.add", ActionRisk.HIGH),
+    REMOVE_BLOCKED_DOMAIN("blocked-domain.remove", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        target: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "technitium:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = wireName,
+        targetRef = target.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+
+    fun targetRef(domain: String? = null): String = when (this) {
+        ENABLE_BLOCKING, DISABLE_BLOCKING, TEMPORARY_DISABLE -> "protection/global"
+        REFRESH_BLOCK_LISTS -> "blocklist/global"
+        ADD_BLOCKED_DOMAIN, REMOVE_BLOCKED_DOMAIN ->
+            "blocked-domain/${domain.orEmpty().trim().lowercase(Locale.ROOT)}"
+    }
 }
 
 data class TechnitiumTopClient(

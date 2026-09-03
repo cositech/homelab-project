@@ -70,6 +70,7 @@ interface PiholeApi {
     @POST("api/domains/{list}/exact")
     suspend fun addDomain(
         @Path("list") list: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Pihole",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("auth") auth: String? = null,
@@ -78,6 +79,7 @@ interface PiholeApi {
 
     @GET("admin/api.php")
     suspend fun addDomainLegacy(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Pihole",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("list") list: String,
@@ -89,6 +91,7 @@ interface PiholeApi {
     suspend fun removeDomain(
         @Path("list") list: String,
         @Path("domain") domain: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Pihole",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("auth") auth: String? = null
@@ -96,6 +99,7 @@ interface PiholeApi {
 
     @GET("admin/api.php")
     suspend fun removeDomainLegacy(
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "Pihole",
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Query("list") list: String,

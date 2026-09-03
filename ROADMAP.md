@@ -41,8 +41,21 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
 - [x] Durable queue recovery and retry policy
 - [ ] Remaining provider actions migrated by risk class
   - [x] Portainer container lifecycle and removal
+  - [x] Portainer container rename and stack Compose updates
   - [x] Healthchecks check lifecycle, creation, editing and integration channels
   - [x] AdGuard Home protection enable, disable and timed pause
+  - [x] AdGuard Home filter lists, user rules, blocked services and DNS rewrites
+  - [x] Pi-hole allow and deny domain list mutations
+  - [x] Technitium DNS blocking, blocklist refresh and blocked-domain mutations
+  - [x] Linux Update checks, cache refresh, package/system upgrades and reboot actions
+  - [x] Dockhand container and stack lifecycle actions
+  - [x] DockMon container restart and image update actions
+  - [x] Komodo stack deploy, start, stop and restart actions
+  - [x] Pterodactyl and Calagopus game-server power actions
+  - [x] Nginx Proxy Manager proxy-host lifecycle actions
+  - [x] Nginx Proxy Manager redirection, stream, dead-host, certificate, access-list and user actions
+  - [x] Crafty Controller lifecycle, executable update, backup and console-command actions
+  - [x] Pangolin public/private resource and target configuration actions
   - [ ] Remaining container, DNS, monitoring, update and configuration providers
 
 Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.

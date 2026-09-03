@@ -974,6 +974,11 @@
     <string name="npm_delete_confirm">Are you sure you want to delete this?</string>
     <string name="npm_delete_confirm_title">Confirm Delete</string>
     <string name="npm_no_redirections">No redirection hosts configured.</string>
+    <string name="npm_disable">Disable</string>
+    <string name="npm_disable_confirm_title">Disable proxy host?</string>
+    <string name="npm_disable_confirm">Requests to this proxy host will stop until it is enabled again.</string>
+    <string name="npm_renew_confirm_title">Renew certificate?</string>
+    <string name="npm_renew_confirm">Nginx Proxy Manager will request and activate a replacement certificate for this entry.</string>
     <string name="npm_no_streams">No streams configured.</string>
     <string name="npm_no_dead_hosts">No 404 hosts configured.</string>
     <string name="npm_no_certificates">No SSL certificates.</string>
@@ -1601,6 +1606,10 @@
     <string name="proxmox_task_log">View Task Log</string>
     <string name="proxmox_delete_snapshot">Delete Snapshot</string>
     <string name="portainer_confirm_action">Confirm %1$s?</string>
+    <string name="dockmon_confirm_action">Confirm %1$s?</string>
+    <string name="dockmon_confirm_action_message">This action changes the DockMon container state and will be recorded in the local audit trail.</string>
+    <string name="dockhand_confirm_action">Confirm %1$s?</string>
+    <string name="dockhand_confirm_action_message">This action changes the Dockhand workload state and will be recorded in the local audit trail.</string>
     <string name="portainer_confirm_action_message">This action changes the container state and will be recorded in the local audit trail.</string>
     <string name="proxmox_confirm_action">Confirm %1$s?</string>
     <string name="proxmox_confirm_action_message">This action changes the guest state and will be recorded in the local audit trail.</string>
@@ -1789,6 +1798,8 @@
     <string name="komodo_restart">Restart</string>
     <string name="komodo_update_available">Update</string>
     <string name="komodo_action_completed">Action queued</string>
+    <string name="komodo_confirm_action">Confirm %1$s?</string>
+    <string name="komodo_confirm_action_message">This action changes the Komodo stack state and will be recorded in the local audit trail.</string>
     <string name="service_maltrail">Maltrail</string>
     <string name="service_maltrail_desc">Malicious traffic detection with IOC feeds</string>
     <string name="login_hint_maltrail">Use your Maltrail base URL. If the server has USERS enabled, add username and password: Homelab signs in via /login, stores the session cookie, then reads /counts and /events?date=YYYY-MM-DD.</string>
@@ -1913,4 +1924,10 @@
     <string name="healthchecks_resume_check">Resume check</string>
     <string name="healthchecks_confirm_action">Confirm %1$s?</string>
     <string name="healthchecks_confirm_action_message">This action changes the check state and will be recorded in the local audit trail.</string>
+    <string name="technitium_confirm_domain_removal">Unblock %1$s?</string>
+    <string name="technitium_controlled_action_confirmation">This action changes Technitium DNS protection and will be recorded in the local audit trail.</string>
+    <string name="linux_update_confirm_action">Confirm %1$s?</string>
+    <string name="linux_update_confirm_action_message">This action changes packages or the system state and will be recorded in the local audit trail.</string>
+    <string name="game_server_confirm_action">Confirm %1$s?</string>
+    <string name="game_server_confirm_action_message">This action changes the game server state and will be recorded in the local audit trail.</string>
 </resources>

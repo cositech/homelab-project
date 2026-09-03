@@ -68,6 +68,7 @@ interface KomodoApi {
     suspend fun deployStack(
         @Body body: JsonObject,
         @Header("X-Homelab-Service") service: String = "Komodo",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Instance-Id") instanceId: String
     ): JsonElement
 
@@ -75,6 +76,7 @@ interface KomodoApi {
     suspend fun startStack(
         @Body body: JsonObject,
         @Header("X-Homelab-Service") service: String = "Komodo",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Instance-Id") instanceId: String
     ): JsonElement
 
@@ -82,6 +84,7 @@ interface KomodoApi {
     suspend fun stopStack(
         @Body body: JsonObject,
         @Header("X-Homelab-Service") service: String = "Komodo",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Instance-Id") instanceId: String
     ): JsonElement
 
@@ -89,6 +92,7 @@ interface KomodoApi {
     suspend fun restartStack(
         @Body body: JsonObject,
         @Header("X-Homelab-Service") service: String = "Komodo",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Instance-Id") instanceId: String
     ): JsonElement
 }

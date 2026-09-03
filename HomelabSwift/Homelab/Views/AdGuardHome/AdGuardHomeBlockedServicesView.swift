@@ -122,7 +122,33 @@ struct AdGuardHomeBlockedServicesView: View {
             guard let client = await servicesStore.adguardClient(instanceId: instanceId) else {
                 throw APIError.notConfigured
             }
-            try await client.updateBlockedServices(ids: Array(blockedIds), schedule: schedule)
+            let ids = Array(blockedIds)
+            let currentSchedule = schedule
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: AdGuardControlledConfigurationAction.updateBlockedServices.request(
+                    instanceId: instanceId,
+                    targetId: "global",
+                    confirmed: true
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .adguardHome).capabilities
+            ) {
+                do {
+                    try await client.updateBlockedServices(ids: ids, schedule: currentSchedule)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "adguard-home-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard audit.state == .succeeded else {
+                throw APIError.custom(audit.reasonCode)
+            }
         } catch {
             self.error = error
         }

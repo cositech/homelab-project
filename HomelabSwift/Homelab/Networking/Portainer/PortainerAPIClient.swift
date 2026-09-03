@@ -177,9 +177,23 @@ actor PortainerAPIClient {
     private func handleForbidden(error: Error) throws {
         if case APIError.httpError(let code, let body) = error, code == 403 {
             let desc = body.isEmpty ? "Forbidden (403). Your account may have a read-only role or lacks permission to perform this action." : body
-            throw APIError.custom(desc)
+            throw APIError.httpError(statusCode: code, body: desc)
         }
         throw error
+    }
+
+    private func reachableMutationBaseURL() async throws -> String {
+        guard !baseURL.isEmpty else { throw APIError.notConfigured }
+        let headers = authHeaders()
+        if await engine.pingURL("\(baseURL)/api/status", extraHeaders: headers) {
+            return baseURL
+        }
+        if !fallbackURL.isEmpty,
+           fallbackURL != baseURL,
+           await engine.pingURL("\(fallbackURL)/api/status", extraHeaders: headers) {
+            return fallbackURL
+        }
+        throw APIError.networkError(URLError(.cannotConnectToHost))
     }
 
     func containerAction(endpointId: Int, containerId: String, action: ContainerAction) async throws {
@@ -211,8 +225,9 @@ actor PortainerAPIClient {
     func renameContainer(endpointId: Int, containerId: String, newName: String) async throws {
         let encodedName = newName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? newName
         do {
+            let mutationBaseURL = try await reachableMutationBaseURL()
             try await engine.requestVoid(
-                baseURL: baseURL, fallbackURL: fallbackURL,
+                baseURL: mutationBaseURL, fallbackURL: "",
                 path: "/api/endpoints/\(endpointId)/docker/containers/\(containerId)/rename?name=\(encodedName)",
                 method: "POST",
                 headers: authHeaders()
@@ -250,8 +265,9 @@ actor PortainerAPIClient {
         }
         let body = try UpdateBody(stackFileContent: stackFileContent, env: [], prune: false).toJSONData()
         do {
+            let mutationBaseURL = try await reachableMutationBaseURL()
             try await engine.requestVoid(
-                baseURL: baseURL, fallbackURL: fallbackURL,
+                baseURL: mutationBaseURL, fallbackURL: "",
                 path: "/api/stacks/\(stackId)?endpointId=\(endpointId)",
                 method: "PUT",
                 headers: authHeaders(),

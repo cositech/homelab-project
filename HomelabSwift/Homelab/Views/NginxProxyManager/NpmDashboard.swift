@@ -75,6 +75,10 @@ struct NpmDashboard: View {
     // Delete confirmation
     @State private var showingDeleteConfirm = false
     @State private var pendingDeleteAction: (() async -> Void)?
+    @State private var showingDisableConfirm = false
+    @State private var pendingDisableProxyHostId: Int?
+    @State private var showingRenewConfirm = false
+    @State private var pendingRenewCertificateId: Int?
 
     // Toast
     @State private var actionMessage: String?
@@ -220,6 +224,35 @@ struct NpmDashboard: View {
             }
         } message: {
             Text(localizer.t.npmDeleteConfirm)
+        }
+
+        .alert(localizer.t.npmDisableConfirmTitle, isPresented: $showingDisableConfirm) {
+            Button(localizer.t.npmDisable, role: .destructive) {
+                guard let hostId = pendingDisableProxyHostId else { return }
+                Task {
+                    await setProxyHostEnabled(id: hostId, enabled: false, confirmed: true)
+                    pendingDisableProxyHostId = nil
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) {
+                pendingDisableProxyHostId = nil
+            }
+        } message: {
+            Text(localizer.t.npmDisableConfirm)
+        }
+        .alert(localizer.t.npmRenewConfirmTitle, isPresented: $showingRenewConfirm) {
+            Button(localizer.t.npmRenew) {
+                guard let certificateId = pendingRenewCertificateId else { return }
+                Task {
+                    await renewCertificate(id: certificateId, confirmed: true)
+                    pendingRenewCertificateId = nil
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) {
+                pendingRenewCertificateId = nil
+            }
+        } message: {
+            Text(localizer.t.npmRenewConfirm)
         }
         .overlay(alignment: .bottom) { toastOverlay }
     }
@@ -528,7 +561,12 @@ struct NpmDashboard: View {
                         Label(localizer.t.npmDelete, systemImage: "trash")
                     }
                     Button {
-                        Task { await setProxyHostEnabled(id: host.id, enabled: !host.isEnabled) }
+                        if host.isEnabled {
+                            pendingDisableProxyHostId = host.id
+                            showingDisableConfirm = true
+                        } else {
+                            Task { await setProxyHostEnabled(id: host.id, enabled: true, confirmed: false) }
+                        }
                     } label: {
                         Label(
                             host.isEnabled ? localizer.t.npmDisabled : localizer.t.npmEnabled,
@@ -646,7 +684,10 @@ struct NpmDashboard: View {
                     npmColor: npmColor,
                     t: localizer.translations,
                     inUse: inUse,
-                    onRenew: { Task { await renewCertificate(id: cert.id) } },
+                    onRenew: {
+                        pendingRenewCertificateId = cert.id
+                        showingRenewConfirm = true
+                    },
                     onDelete: { confirmDelete { await deleteCertificate(id: cert.id) } }
                 )
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -1042,15 +1083,23 @@ struct NpmDashboard: View {
     // MARK: - CRUD: Proxy Hosts
 
     private func createProxyHost(_ request: NpmProxyHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createProxyHost(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else {
+            throw APIError.notConfigured
+        }
+        try await executeProxyHostAction(.create, hostId: nil, confirmed: true) {
+            _ = try await client.createProxyHost(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateProxyHost(id: Int, _ request: NpmProxyHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateProxyHost(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else {
+            throw APIError.notConfigured
+        }
+        try await executeProxyHostAction(.update, hostId: id, confirmed: true) {
+            _ = try await client.updateProxyHost(id: id, request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
@@ -1058,164 +1107,209 @@ struct NpmDashboard: View {
     private func deleteProxyHost(id: Int) async {
         guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
         do {
-            try await client.deleteProxyHost(id: id)
+            try await executeProxyHostAction(.delete, hostId: id, confirmed: true) {
+                try await client.deleteProxyHost(id: id)
+            }
             await refreshAfterMutation()
             HapticManager.success()
             showToast(localizer.t.npmDeleteSuccess)
         } catch {
             HapticManager.error()
+            showToast(error.localizedDescription)
         }
     }
 
-    private func setProxyHostEnabled(id: Int, enabled: Bool) async {
+    private func setProxyHostEnabled(id: Int, enabled: Bool, confirmed: Bool) async {
         guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
         do {
-            if enabled {
-                try await client.enableProxyHost(id: id)
-            } else {
-                try await client.disableProxyHost(id: id)
+            let action: NpmProxyHostControlledAction = enabled ? .enable : .disable
+            try await executeProxyHostAction(action, hostId: id, confirmed: confirmed) {
+                if enabled {
+                    try await client.enableProxyHost(id: id)
+                } else {
+                    try await client.disableProxyHost(id: id)
+                }
             }
             await refreshAfterMutation()
             HapticManager.success()
             showToast(localizer.t.npmSaveSuccess)
         } catch {
             HapticManager.error()
+            showToast(error.localizedDescription)
         }
     }
 
-    // MARK: - CRUD: Redirection Hosts
+    private func executeProxyHostAction(
+        _ action: NpmProxyHostControlledAction,
+        hostId: Int?,
+        confirmed: Bool,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: selectedInstanceId,
+                hostId: hostId,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "nginx-proxy-manager-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
+        }
+    }
+
+    // MARK: - CRUD: Remaining NPM configuration
 
     private func createRedirectionHost(_ request: NpmRedirectionHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createRedirectionHost(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.createRedirectionHost, targetId: nil, confirmed: true) {
+            _ = try await client.createRedirectionHost(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateRedirectionHost(id: Int, _ request: NpmRedirectionHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateRedirectionHost(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.updateRedirectionHost, targetId: id, confirmed: true) {
+            _ = try await client.updateRedirectionHost(id: id, request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func deleteRedirectionHost(id: Int) async {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        do {
+        await performConfigurationMutation(.deleteRedirectionHost, targetId: id, success: localizer.t.npmDeleteSuccess) { client in
             try await client.deleteRedirectionHost(id: id)
-            await refreshAfterMutation()
-            HapticManager.success()
-            showToast(localizer.t.npmDeleteSuccess)
-        } catch {
-            HapticManager.error()
         }
     }
 
-    // MARK: - CRUD: Streams
-
     private func createStream(_ request: NpmStreamRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createStream(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.createStream, targetId: nil, confirmed: true) {
+            _ = try await client.createStream(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateStream(id: Int, _ request: NpmStreamRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateStream(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.updateStream, targetId: id, confirmed: true) {
+            _ = try await client.updateStream(id: id, request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func deleteStream(id: Int) async {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        do {
+        await performConfigurationMutation(.deleteStream, targetId: id, success: localizer.t.npmDeleteSuccess) { client in
             try await client.deleteStream(id: id)
-            await refreshAfterMutation()
-            HapticManager.success()
-            showToast(localizer.t.npmDeleteSuccess)
-        } catch {
-            HapticManager.error()
         }
     }
 
-    // MARK: - CRUD: Dead Hosts
-
     private func createDeadHost(_ request: NpmDeadHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createDeadHost(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.createDeadHost, targetId: nil, confirmed: true) {
+            _ = try await client.createDeadHost(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateDeadHost(id: Int, _ request: NpmDeadHostRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateDeadHost(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.updateDeadHost, targetId: id, confirmed: true) {
+            _ = try await client.updateDeadHost(id: id, request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func deleteDeadHost(id: Int) async {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        do {
+        await performConfigurationMutation(.deleteDeadHost, targetId: id, success: localizer.t.npmDeleteSuccess) { client in
             try await client.deleteDeadHost(id: id)
-            await refreshAfterMutation()
-            HapticManager.success()
-            showToast(localizer.t.npmDeleteSuccess)
-        } catch {
-            HapticManager.error()
         }
     }
 
-    // MARK: - CRUD: Certificates
-
     private func createCertificate(_ request: NpmCertificateRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createCertificate(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.createCertificate, targetId: nil, confirmed: true) {
+            _ = try await client.createCertificate(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
-    // MARK: - CRUD: Access Lists
+    private func renewCertificate(id: Int, confirmed: Bool) async {
+        await performConfigurationMutation(
+            .renewCertificate,
+            targetId: id,
+            confirmed: confirmed,
+            success: localizer.t.npmRenewSuccess
+        ) { client in
+            _ = try await client.renewCertificate(id: id)
+        }
+    }
+
+    private func deleteCertificate(id: Int) async {
+        await performConfigurationMutation(.deleteCertificate, targetId: id, success: localizer.t.npmDeleteSuccess) { client in
+            try await client.deleteCertificate(id: id)
+        }
+    }
 
     private func createAccessList(_ request: NpmAccessListRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createAccessList(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.createAccessList, targetId: nil, confirmed: true) {
+            _ = try await client.createAccessList(request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateAccessList(id: Int, _ request: NpmAccessListRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateAccessList(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.updateAccessList, targetId: id, confirmed: true) {
+            _ = try await client.updateAccessList(id: id, request)
+        }
         await refreshAfterMutation()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func deleteAccessList(id: Int) async {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        do {
+        await performConfigurationMutation(.deleteAccessList, targetId: id, success: localizer.t.npmDeleteSuccess) { client in
             try await client.deleteAccessList(id: id)
-            await refreshAfterMutation()
-            HapticManager.success()
-            showToast(localizer.t.npmDeleteSuccess)
-        } catch {
-            HapticManager.error()
         }
     }
 
-    // MARK: - CRUD: Users
-
     private func createUser(_ request: NpmUserRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.createUser(request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.createUser, targetId: nil, confirmed: true) {
+            _ = try await client.createUser(request)
+        }
         await refreshUsers()
         showToast(localizer.t.npmSaveSuccess)
     }
 
     private func updateUser(id: Int, _ request: NpmUserRequest) async throws {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        _ = try await client.updateUser(id: id, request)
+        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { throw APIError.notConfigured }
+        try await executeConfigurationAction(.updateUser, targetId: id, confirmed: true) {
+            _ = try await client.updateUser(id: id, request)
+        }
         await refreshUsers()
         showToast(localizer.t.npmSaveSuccess)
     }
@@ -1223,36 +1317,69 @@ struct NpmDashboard: View {
     private func deleteUser(id: Int) async {
         guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
         do {
-            try await client.deleteUser(id: id)
+            try await executeConfigurationAction(.deleteUser, targetId: id, confirmed: true) {
+                try await client.deleteUser(id: id)
+            }
             await refreshUsers()
             HapticManager.success()
             showToast(localizer.t.npmDeleteSuccess)
         } catch {
             HapticManager.error()
+            showToast(error.localizedDescription)
         }
     }
 
-    private func renewCertificate(id: Int) async {
+    private func performConfigurationMutation(
+        _ action: NpmConfigurationControlledAction,
+        targetId: Int,
+        confirmed: Bool = true,
+        success: String,
+        operation: @escaping @Sendable (NginxProxyManagerAPIClient) async throws -> Void
+    ) async {
         guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
         do {
-            _ = try await client.renewCertificate(id: id)
+            try await executeConfigurationAction(action, targetId: targetId, confirmed: confirmed) {
+                try await operation(client)
+            }
             await refreshAfterMutation()
             HapticManager.success()
-            showToast(localizer.t.npmRenewSuccess)
+            showToast(success)
         } catch {
             HapticManager.error()
+            showToast(error.localizedDescription)
         }
     }
 
-    private func deleteCertificate(id: Int) async {
-        guard let client = await servicesStore.npmClient(instanceId: selectedInstanceId) else { return }
-        do {
-            try await client.deleteCertificate(id: id)
-            await refreshAfterMutation()
-            HapticManager.success()
-            showToast(localizer.t.npmDeleteSuccess)
-        } catch {
-            HapticManager.error()
+    private func executeConfigurationAction(
+        _ action: NpmConfigurationControlledAction,
+        targetId: Int?,
+        confirmed: Bool,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: selectedInstanceId,
+                targetId: targetId,
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .nginxProxyManager).capabilities
+        ) {
+            do {
+                try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "nginx-proxy-manager-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard audit.state == .succeeded else {
+            throw APIError.custom(audit.reasonCode)
         }
     }
 
