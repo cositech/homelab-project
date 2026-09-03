@@ -619,6 +619,8 @@ enum ProviderRegistry {
                 capabilities = [.health, .writeActions]
             case .qbittorrent:
                 capabilities = [.health, .writeActions]
+            case .patchmon:
+                capabilities = [.health, .writeActions]
             case .pterodactyl, .calagopus, .craftyController:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:

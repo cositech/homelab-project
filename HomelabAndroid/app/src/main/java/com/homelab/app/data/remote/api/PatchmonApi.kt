@@ -97,6 +97,7 @@ interface PatchmonApi {
     suspend fun deleteHost(
         @Header("X-Homelab-Service") service: String = "PatchMon",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: Boolean = true,
         @Path("id") hostId: String
     ): PatchmonDeleteResponse
 }

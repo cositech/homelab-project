@@ -16,6 +16,7 @@ import com.homelab.app.data.repository.KomodoStackAction
 import com.homelab.app.data.repository.NpmProxyHostControlledAction
 import com.homelab.app.data.repository.NpmConfigurationControlledAction
 import com.homelab.app.data.repository.PangolinControlledAction
+import com.homelab.app.data.repository.PatchmonControlledAction
 import com.homelab.app.data.repository.QbittorrentControlledAction
 import com.homelab.app.data.repository.MediaArrAction
 import com.homelab.app.data.repository.LinuxUpdateControlledAction
@@ -1151,6 +1152,30 @@ class ControlledActionsTest {
         assertTrue(request.parameters.isEmpty())
         assertTrue(
             ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.QBITTORRENT)
+        )
+    }
+
+    @Test
+    fun `patchmon host delete has stable high-risk identity and no payload persistence`() {
+        assertEquals(ActionRisk.HIGH, PatchmonControlledAction.HOST_DELETE.risk)
+        assertTrue(PatchmonControlledAction.HOST_DELETE.requiresConfirmation)
+
+        val request = PatchmonControlledAction.HOST_DELETE.controlledRequest(
+            instanceId = "INSTANCE-A",
+            targetRef = " HOST/9F2C ",
+            confirmed = true,
+            requestId = "request-patchmon-delete",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "patchmon-delete-key-01"
+        )
+
+        assertEquals("patchmon:instance-a", request.providerRef)
+        assertEquals("host.delete", request.action)
+        assertEquals("host/9f2c", request.targetRef)
+        assertTrue(request.confirmed)
+        assertTrue(request.parameters.isEmpty())
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(ServiceType.PATCHMON)
         )
     }
 }

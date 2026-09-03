@@ -532,6 +532,23 @@ for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descripto
 grep -Fq 'qbittorrent actions have stable risk identity and no payload persistence' "$android_tests"
 grep -Fq 'testQbittorrentActionsHaveStableRiskIdentityAndNoPayloadPersistence' "$swift_tests"
 
+android_patchmon_api="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/api/PatchmonApi.kt"
+android_patchmon_repo="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/PatchmonRepository.kt"
+android_patchmon_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/patchmon/PatchmonHostDetailViewModel.kt"
+swift_patchmon_api="HomelabSwift/Homelab/Networking/Patchmon/PatchmonAPIClient.swift"
+swift_patchmon_ui="HomelabSwift/Homelab/Views/Patchmon/PatchmonHostDetailView.swift"
+
+for required_file in "$android_patchmon_api" "$android_patchmon_repo" "$android_patchmon_view_model" "$swift_patchmon_api" "$swift_patchmon_ui"; do
+  test -s "$required_file"
+done
+grep -A5 -F 'suspend fun deleteHost(' "$android_patchmon_api" | grep -Fq '@Header("X-Homelab-No-Fallback")'
+for pattern in 'enum class PatchmonControlledAction' 'host.delete' 'ActionRisk.HIGH' 'controlledRequest'; do grep -Fq "$pattern" "$android_patchmon_repo"; done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.PATCHMON)' 'PatchmonControlledAction.HOST_DELETE' 'confirmed = true' 'patchmon-outcome-indeterminate'; do grep -Fq "$pattern" "$android_patchmon_view_model"; done
+for pattern in 'enum PatchmonControlledAction' 'host.delete' 'PatchmonControlledOperationFailure' 'method == "GET" ? self.fallbackURL : ""'; do grep -Fq "$pattern" "$swift_patchmon_api"; done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .patchmon).capabilities' 'PatchmonControlledAction.hostDelete' 'confirmed: true'; do grep -Fq "$pattern" "$swift_patchmon_ui"; done
+grep -Fq 'patchmon host delete has stable high-risk identity and no payload persistence' "$android_tests"
+grep -Fq 'testPatchmonHostDeleteHasStableHighRiskIdentityAndNoPayloadPersistence' "$swift_tests"
+
 if grep -A20 -F 'data class ActionAuditRecord' "$android_core" | grep -Eq 'parameters|credential|password|token|header|responseBody'; then
   echo "Android audit record contains forbidden sensitive payload fields" >&2
   exit 1
