@@ -1,6 +1,69 @@
 import SwiftUI
 import Charts
 
+private actor TechnitiumActionOutcomeBox {
+    private var outcome: TechnitiumActionOutcome?
+    func store(_ outcome: TechnitiumActionOutcome) { self.outcome = outcome }
+    func value() -> TechnitiumActionOutcome? { outcome }
+}
+
+private enum PendingTechnitiumAction {
+    case disableBlocking
+    case temporaryDisable(minutes: Int)
+    case addBlockedDomain(domain: String)
+    case removeBlockedDomain(domain: String)
+
+    var controlledAction: TechnitiumControlledAction {
+        switch self {
+        case .disableBlocking: return .disableBlocking
+        case .temporaryDisable: return .temporaryDisable
+        case .addBlockedDomain: return .addBlockedDomain
+        case .removeBlockedDomain: return .removeBlockedDomain
+        }
+    }
+
+    var targetRef: String {
+        switch self {
+        case .disableBlocking, .temporaryDisable:
+            return "protection/global"
+        case .addBlockedDomain(let domain), .removeBlockedDomain(let domain):
+            return "blocked-domain/\(domain.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+        }
+    }
+
+    var minutes: Int? {
+        if case .temporaryDisable(let minutes) = self { return minutes }
+        return nil
+    }
+
+    var domain: String? {
+        switch self {
+        case .addBlockedDomain(let domain), .removeBlockedDomain(let domain): return domain
+        default: return nil
+        }
+    }
+
+    var isDestructive: Bool {
+        switch self {
+        case .disableBlocking, .temporaryDisable, .addBlockedDomain: return true
+        case .removeBlockedDomain: return false
+        }
+    }
+
+    func label(using translations: Translations) -> String {
+        switch self {
+        case .disableBlocking:
+            return translations.technitiumDisableUntilManual
+        case .temporaryDisable(let minutes):
+            return "\(translations.technitiumDisableBlocking) (\(minutes) \(translations.technitiumMinutes))"
+        case .addBlockedDomain(let domain):
+            return "\(translations.technitiumBlockDomain): \(domain)"
+        case .removeBlockedDomain(let domain):
+            return "\(translations.delete): \(domain)"
+        }
+    }
+}
+
 private enum TechnitiumPanel: String, CaseIterable, Identifiable {
     case clients
     case domains
@@ -46,6 +109,7 @@ struct TechnitiumDashboard: View {
     @State private var customDisableMinutes = "15"
     @State private var showAddDomainPrompt = false
     @State private var domainToBlock = ""
+    @State private var pendingAction: PendingTechnitiumAction?
 
     private let technitiumColor = ServiceType.technitium.colors.primary
 
@@ -108,18 +172,40 @@ struct TechnitiumDashboard: View {
         }
         .confirmationDialog(localizer.t.technitiumDisableBlocking, isPresented: $showDisableOptions, titleVisibility: .visible) {
             Button(localizer.t.technitiumDisableFor5Minutes) {
-                Task { await runTemporaryDisable(minutes: 5) }
+                pendingAction = .temporaryDisable(minutes: 5)
             }
             Button(localizer.t.technitiumDisableFor30Minutes) {
-                Task { await runTemporaryDisable(minutes: 30) }
+                pendingAction = .temporaryDisable(minutes: 30)
             }
             Button(localizer.t.piholeDisableCustom) {
                 showCustomDisablePrompt = true
             }
             Button(localizer.t.technitiumDisableUntilManual, role: .destructive) {
-                Task { await runSetBlocking(enabled: false) }
+                pendingAction = .disableBlocking
             }
             Button(localizer.t.cancel, role: .cancel) { }
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pendingAction {
+                Button(
+                    pendingAction.label(using: localizer.translations),
+                    role: pendingAction.isDestructive ? .destructive : nil
+                ) {
+                    let action = pendingAction
+                    self.pendingAction = nil
+                    Task { await runPendingAction(action) }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
         .alert(localizer.t.technitiumCustomDisableTimer, isPresented: $showCustomDisablePrompt) {
             TextField(localizer.t.technitiumMinutes, text: $customDisableMinutes)
@@ -127,7 +213,7 @@ struct TechnitiumDashboard: View {
             Button(localizer.t.cancel, role: .cancel) { }
             Button(localizer.t.confirm) {
                 if let minutes = Int(customDisableMinutes.trimmingCharacters(in: .whitespacesAndNewlines)), minutes > 0 {
-                    Task { await runTemporaryDisable(minutes: minutes) }
+                    pendingAction = .temporaryDisable(minutes: minutes)
                 }
             }
         } message: {
@@ -142,7 +228,7 @@ struct TechnitiumDashboard: View {
                 let trimmed = domainToBlock.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 domainToBlock = ""
-                Task { await runAddBlockedDomain(trimmed) }
+                pendingAction = .addBlockedDomain(domain: trimmed)
             }
         } message: {
             Text(localizer.t.technitiumBlockDomainDescription)
@@ -566,7 +652,7 @@ struct TechnitiumDashboard: View {
                             Spacer()
 
                             Button(role: .destructive) {
-                                Task { await runRemoveBlockedDomain(domain) }
+                                pendingAction = .removeBlockedDomain(domain: domain)
                             } label: {
                                 Text(localizer.t.delete)
                                     .font(.caption.bold())
@@ -765,103 +851,103 @@ struct TechnitiumDashboard: View {
     }
 
     private func runSetBlocking(enabled: Bool) async {
-        guard let client = await servicesStore.technitiumClient(instanceId: selectedInstanceId) else {
-            actionMessage = APIError.notConfigured.localizedDescription
-            return
-        }
-
-        isRunningAction = true
-        defer { isRunningAction = false }
-
-        do {
-            let result = try await client.setBlockingEnabled(enabled)
-            actionMessage = result.message
-            await fetchDashboard(forceLoading: false)
-            HapticManager.success()
-        } catch {
-            actionMessage = error.localizedDescription
-            HapticManager.error()
-        }
-    }
-
-    private func runTemporaryDisable(minutes: Int) async {
-        guard let client = await servicesStore.technitiumClient(instanceId: selectedInstanceId) else {
-            actionMessage = APIError.notConfigured.localizedDescription
-            return
-        }
-
-        isRunningAction = true
-        defer { isRunningAction = false }
-
-        do {
-            let result = try await client.temporaryDisableBlocking(minutes: minutes)
-            actionMessage = result.message
-            await fetchDashboard(forceLoading: false)
-            HapticManager.success()
-        } catch {
-            actionMessage = error.localizedDescription
-            HapticManager.error()
-        }
+        await runControlledAction(
+            enabled ? .enableBlocking : .disableBlocking,
+            targetRef: "protection/global",
+            confirmed: false
+        )
     }
 
     private func runForceUpdate() async {
-        guard let client = await servicesStore.technitiumClient(instanceId: selectedInstanceId) else {
-            actionMessage = APIError.notConfigured.localizedDescription
-            return
-        }
+        await runControlledAction(
+            .refreshBlockLists,
+            targetRef: "blocklist/global",
+            confirmed: false
+        )
+    }
 
+    private func runPendingAction(_ pending: PendingTechnitiumAction) async {
+        await runControlledAction(
+            pending.controlledAction,
+            targetRef: pending.targetRef,
+            confirmed: true,
+            minutes: pending.minutes,
+            domain: pending.domain
+        )
+    }
+
+    private func runControlledAction(
+        _ action: TechnitiumControlledAction,
+        targetRef: String,
+        confirmed: Bool,
+        minutes: Int? = nil,
+        domain: String? = nil
+    ) async {
+        guard !isRunningAction else { return }
         isRunningAction = true
         defer { isRunningAction = false }
 
         do {
-            let result = try await client.forceUpdateBlockLists()
-            actionMessage = result.message
-            await fetchDashboard(forceLoading: false)
+            guard let client = await servicesStore.technitiumClient(instanceId: selectedInstanceId) else {
+                throw APIError.notConfigured
+            }
+            let outcomeBox = TechnitiumActionOutcomeBox()
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: action.request(
+                    instanceId: selectedInstanceId,
+                    targetRef: targetRef,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .technitium).capabilities
+            ) {
+                do {
+                    let outcome: TechnitiumActionOutcome
+                    switch action {
+                    case .enableBlocking:
+                        outcome = try await client.setBlockingEnabled(true)
+                    case .disableBlocking:
+                        outcome = try await client.setBlockingEnabled(false)
+                    case .temporaryDisable:
+                        outcome = try await client.temporaryDisableBlocking(minutes: minutes ?? 1)
+                    case .refreshBlockLists:
+                        outcome = try await client.forceUpdateBlockLists()
+                    case .addBlockedDomain:
+                        outcome = try await client.addBlockedDomain(domain ?? "")
+                    case .removeBlockedDomain:
+                        outcome = try await client.removeBlockedDomain(domain ?? "")
+                    }
+                    guard outcome.success else {
+                        throw ControlledActionOperationError(
+                            reasonCode: "technitium-provider-reported-failure",
+                            disposition: .nonRetryable
+                        )
+                    }
+                    await outcomeBox.store(outcome)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "technitium-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard audit.state == .succeeded else {
+                HapticManager.error()
+                actionMessage = audit.reasonCode
+                return
+            }
             HapticManager.success()
+            actionMessage = await outcomeBox.value()?.message ?? ServiceType.technitium.displayName
+            if action == .addBlockedDomain { selectedPanel = .blocked }
+            await fetchDashboard(forceLoading: false)
         } catch {
-            actionMessage = error.localizedDescription
             HapticManager.error()
+            actionMessage = (error as? APIError)?.localizedDescription ?? error.localizedDescription
         }
     }
 
-    private func runAddBlockedDomain(_ domain: String) async {
-        guard let client = await servicesStore.technitiumClient(instanceId: selectedInstanceId) else {
-            actionMessage = APIError.notConfigured.localizedDescription
-            return
-        }
-
-        isRunningAction = true
-        defer { isRunningAction = false }
-
-        do {
-            let result = try await client.addBlockedDomain(domain)
-            actionMessage = result.message
-            selectedPanel = .blocked
-            await fetchDashboard(forceLoading: false)
-            HapticManager.success()
-        } catch {
-            actionMessage = error.localizedDescription
-            HapticManager.error()
-        }
-    }
-
-    private func runRemoveBlockedDomain(_ domain: String) async {
-        guard let client = await servicesStore.technitiumClient(instanceId: selectedInstanceId) else {
-            actionMessage = APIError.notConfigured.localizedDescription
-            return
-        }
-
-        isRunningAction = true
-        defer { isRunningAction = false }
-
-        do {
-            let result = try await client.removeBlockedDomain(domain)
-            actionMessage = result.message
-            await fetchDashboard(forceLoading: false)
-            HapticManager.success()
-        } catch {
-            actionMessage = error.localizedDescription
-            HapticManager.error()
-        }
-    }
 }

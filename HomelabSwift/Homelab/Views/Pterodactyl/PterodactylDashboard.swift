@@ -18,6 +18,11 @@ private struct PterodactylDashboardData: Equatable {
     var runningCount: Int { rows.filter(\.isRunning).count }
 }
 
+private struct PendingPterodactylPowerAction {
+    let serverId: String
+    let signal: PterodactylPowerSignal
+}
+
 struct PterodactylDashboard: View {
     let instanceId: UUID
 
@@ -29,6 +34,7 @@ struct PterodactylDashboard: View {
     @State private var state: LoadableState<Void> = .idle
     @State private var actionServerId: String?
     @State private var actionErrorMessage: String?
+    @State private var pendingPowerAction: PendingPterodactylPowerAction?
 
     private let pteroColor = ServiceType.pterodactyl.colors.primary
     private let twoColumnGrid = [GridItem(.flexible()), GridItem(.flexible())]
@@ -68,6 +74,44 @@ struct PterodactylDashboard: View {
         .navigationTitle(ServiceType.pterodactyl.displayName)
         .task(id: selectedInstanceId) {
             await fetchDashboard()
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingPowerAction != nil },
+                set: { if !$0 { pendingPowerAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pending = pendingPowerAction {
+                Button(
+                    powerActionLabel(pending.signal),
+                    role: pending.signal == .kill ? .destructive : nil
+                ) {
+                    pendingPowerAction = nil
+                    Task {
+                        await performPower(
+                            pending.signal,
+                            identifier: pending.serverId,
+                            confirmed: true
+                        )
+                    }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingPowerAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
+        }
+        .alert(
+            localizer.t.error,
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button(localizer.t.confirm, role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? localizer.t.error)
         }
     }
 
@@ -218,21 +262,21 @@ struct PterodactylDashboard: View {
                     enabled: actionsEnabled && !row.isRunning,
                     primary: true
                 ) {
-                    await performPower(.start, identifier: row.server.identifier)
+                    await requestPower(.start, identifier: row.server.identifier)
                 }
                 actionButton(
                     title: localizer.t.actionStop,
                     icon: "stop.fill",
                     enabled: actionsEnabled && row.isRunning
                 ) {
-                    await performPower(.stop, identifier: row.server.identifier)
+                    await requestPower(.stop, identifier: row.server.identifier)
                 }
                 actionButton(
                     title: localizer.t.actionRestart,
                     icon: "arrow.clockwise",
                     enabled: actionsEnabled && row.isRunning
                 ) {
-                    await performPower(.restart, identifier: row.server.identifier)
+                    await requestPower(.restart, identifier: row.server.identifier)
                 }
                 actionButton(
                     title: localizer.t.actionKill,
@@ -240,7 +284,7 @@ struct PterodactylDashboard: View {
                     enabled: actionsEnabled && row.isRunning,
                     destructive: true
                 ) {
-                    await performPower(.kill, identifier: row.server.identifier)
+                    await requestPower(.kill, identifier: row.server.identifier)
                 }
             }
         }
@@ -393,19 +437,68 @@ struct PterodactylDashboard: View {
 
     // MARK: - Power actions
 
-    private func performPower(_ signal: PterodactylPowerSignal, identifier: String) async {
+    private func requestPower(_ signal: PterodactylPowerSignal, identifier: String) async {
+        if signal.requiresConfirmation {
+            pendingPowerAction = PendingPterodactylPowerAction(serverId: identifier, signal: signal)
+        } else {
+            await performPower(signal, identifier: identifier, confirmed: false)
+        }
+    }
+
+    private func performPower(
+        _ signal: PterodactylPowerSignal,
+        identifier: String,
+        confirmed: Bool
+    ) async {
+        guard actionServerId == nil else { return }
+        actionServerId = identifier
+        actionErrorMessage = nil
+        defer { actionServerId = nil }
+
         do {
-            actionServerId = identifier
-            actionErrorMessage = nil
-            guard let client = await servicesStore.pterodactylClient(instanceId: selectedInstanceId) else { return }
-            try await client.sendPowerSignal(identifier: identifier, signal: signal)
+            guard let client = await servicesStore.pterodactylClient(instanceId: selectedInstanceId) else {
+                throw APIError.notConfigured
+            }
+            let audit = await servicesStore.controlledActionCoordinator.execute(
+                request: signal.request(
+                    instanceId: selectedInstanceId,
+                    identifier: identifier,
+                    confirmed: confirmed
+                ),
+                actorRole: .admin,
+                providerCapabilities: ProviderRegistry.descriptor(for: .pterodactyl).capabilities
+            ) {
+                do {
+                    try await client.sendPowerSignal(identifier: identifier, signal: signal)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    throw ControlledActionOperationError(
+                        reasonCode: "pterodactyl-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard audit.state == .succeeded else {
+                throw APIError.custom(audit.reasonCode)
+            }
             HapticManager.success()
             await syncServerAfterAction(identifier: identifier, signal: signal)
         } catch {
             HapticManager.error()
             actionErrorMessage = error.localizedDescription
         }
-        actionServerId = nil
+    }
+
+    private func powerActionLabel(_ signal: PterodactylPowerSignal) -> String {
+        switch signal {
+        case .start: return localizer.t.actionStart
+        case .stop: return localizer.t.actionStop
+        case .restart: return localizer.t.actionRestart
+        case .kill: return localizer.t.actionKill
+        }
     }
 
     private func syncServerAfterAction(identifier: String, signal: PterodactylPowerSignal) async {

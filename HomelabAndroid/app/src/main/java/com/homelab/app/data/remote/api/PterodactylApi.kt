@@ -26,6 +26,7 @@ interface PterodactylApi {
     suspend fun sendPowerSignal(
         @Header("X-Homelab-Instance-Id") instanceId: String,
         @Path("identifier") identifier: String,
-        @Body body: PterodactylPowerRequest
+        @Body body: PterodactylPowerRequest,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true"
     )
 }

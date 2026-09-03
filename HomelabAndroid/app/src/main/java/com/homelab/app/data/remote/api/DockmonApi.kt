@@ -37,6 +37,7 @@ interface DockmonApi {
     suspend fun restartContainer(
         @Path("id", encoded = true) containerId: String,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "DockMon",
         @Header("X-Homelab-Instance-Id") instanceId: String
     ): Response<JsonElement>
@@ -46,6 +47,7 @@ interface DockmonApi {
         @Path("id", encoded = true) containerId: String,
         @Body body: Map<String, String>,
         @Header("Accept") accept: String = "application/json",
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Header("X-Homelab-Service") service: String = "DockMon",
         @Header("X-Homelab-Instance-Id") instanceId: String
     ): Response<JsonElement>

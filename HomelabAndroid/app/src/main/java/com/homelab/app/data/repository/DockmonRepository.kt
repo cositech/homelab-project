@@ -3,6 +3,11 @@ package com.homelab.app.data.repository
 import android.net.Uri
 import com.homelab.app.data.remote.TlsClientSelector
 import com.homelab.app.data.remote.api.DockmonApi
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +24,31 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
+
+enum class DockmonControlledAction(val wireName: String, val risk: ActionRisk) {
+    RESTART("container.restart", ActionRisk.MEDIUM),
+    UPDATE("container.update", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = true
+
+    fun controlledRequest(
+        instanceId: String,
+        containerId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "dockmon:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = wireName,
+        targetRef = "container/${containerId.trim().lowercase(Locale.ROOT)}",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
 
 data class DockmonHost(
     val id: String,

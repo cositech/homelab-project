@@ -225,7 +225,31 @@ struct AdGuardHomeQueryLogView: View {
             let status = try await client.getFilteringStatus()
             let rule = "@@||\(clean)^"
             if !status.userRules.contains(rule) {
-                try await client.setUserRules(status.userRules + [rule])
+                let audit = await servicesStore.controlledActionCoordinator.execute(
+                    request: AdGuardControlledConfigurationAction.updateUserRules.request(
+                        instanceId: instanceId,
+                        targetId: "global",
+                        confirmed: true
+                    ),
+                    actorRole: .admin,
+                    providerCapabilities: ProviderRegistry.descriptor(for: .adguardHome).capabilities
+                ) {
+                    do {
+                        try await client.setUserRules(status.userRules + [rule])
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch let error as ControlledActionOperationError {
+                        throw error
+                    } catch {
+                        throw ControlledActionOperationError(
+                            reasonCode: "adguard-home-outcome-indeterminate",
+                            disposition: .nonRetryable
+                        )
+                    }
+                }
+                guard audit.state == .succeeded else {
+                    throw APIError.custom(audit.reasonCode)
+                }
             }
             await loadLog(showLoading: false)
         } catch {
