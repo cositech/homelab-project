@@ -11,11 +11,20 @@ import com.homelab.app.data.repository.MediaArrRequestSelection
 import com.homelab.app.data.repository.MediaArrRepository
 import com.homelab.app.data.repository.MediaArrSearchResultItem
 import com.homelab.app.data.repository.MediaArrSnapshot
+import com.homelab.app.data.repository.QbittorrentControlledAction
 import com.homelab.app.data.repository.ServiceInstancesRepository
+import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
+import com.homelab.app.domain.action.ActionRole
+import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.IOException
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -24,6 +33,7 @@ import kotlinx.coroutines.launch
 class MediaServiceDashboardViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val mediaArrRepository: MediaArrRepository,
+    private val controlledActionCoordinator: ControlledActionCoordinator,
     private val serviceInstancesRepository: ServiceInstancesRepository
 ) : ViewModel() {
 
@@ -85,14 +95,27 @@ class MediaServiceDashboardViewModel @Inject constructor(
         }
     }
 
-    fun runAction(action: MediaArrAction) {
+    /** Medium- and high-risk qBittorrent mutations require explicit confirmation before execution. */
+    fun qbittorrentActionRequiresConfirmation(action: MediaArrAction): Boolean =
+        QbittorrentControlledAction.forMediaArrAction(action)?.requiresConfirmation == true
+
+    fun runAction(action: MediaArrAction, confirmed: Boolean = false) {
         if (_isLoading.value) return
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             _lastActionMessage.value = null
             try {
-                _lastActionMessage.value = mediaArrRepository.runAction(instanceId, action)
+                val controlled = QbittorrentControlledAction.forMediaArrAction(action)
+                _lastActionMessage.value = if (controlled != null) {
+                    executeControlledAction(
+                        controlled = controlled,
+                        targetRef = "transfer/all",
+                        confirmed = confirmed
+                    ) { mediaArrRepository.runAction(instanceId, action) }
+                } else {
+                    mediaArrRepository.runAction(instanceId, action)
+                }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
             } catch (error: Exception) {
                 _error.value = error.message ?: "Action failed"
@@ -105,7 +128,8 @@ class MediaServiceDashboardViewModel @Inject constructor(
     fun runQbTorrentAction(
         hash: String,
         name: String?,
-        action: MediaArrAction
+        action: MediaArrAction,
+        confirmed: Boolean = false
     ) {
         if (_isLoading.value) return
         viewModelScope.launch {
@@ -113,12 +137,29 @@ class MediaServiceDashboardViewModel @Inject constructor(
             _error.value = null
             _lastActionMessage.value = null
             try {
-                _lastActionMessage.value = mediaArrRepository.runQbittorrentTorrentAction(
-                    instanceId = instanceId,
-                    torrentHash = hash,
-                    torrentName = name,
-                    action = action
-                )
+                val controlled = QbittorrentControlledAction.forMediaArrAction(action)
+                val safeHash = hash.trim()
+                _lastActionMessage.value = if (controlled != null) {
+                    executeControlledAction(
+                        controlled = controlled,
+                        targetRef = "torrent/$safeHash",
+                        confirmed = confirmed
+                    ) {
+                        mediaArrRepository.runQbittorrentTorrentAction(
+                            instanceId = instanceId,
+                            torrentHash = hash,
+                            torrentName = name,
+                            action = action
+                        )
+                    }
+                } else {
+                    mediaArrRepository.runQbittorrentTorrentAction(
+                        instanceId = instanceId,
+                        torrentHash = hash,
+                        torrentName = name,
+                        action = action
+                    )
+                }
                 _snapshot.value = mediaArrRepository.loadSnapshot(instanceId)
             } catch (error: Exception) {
                 _error.value = error.message ?: "Action failed"
@@ -126,6 +167,51 @@ class MediaServiceDashboardViewModel @Inject constructor(
                 _isLoading.value = false
             }
         }
+    }
+
+    private suspend fun executeControlledAction(
+        controlled: QbittorrentControlledAction,
+        targetRef: String,
+        confirmed: Boolean,
+        operation: suspend () -> MediaArrActionResult
+    ): MediaArrActionResult {
+        var result: MediaArrActionResult? = null
+        val audit = controlledActionCoordinator.execute(
+            request = controlled.controlledRequest(instanceId, targetRef, confirmed),
+            actorRole = ActionRole.ADMIN,
+            providerCapabilities = ProviderRegistry.capabilities(ServiceType.QBITTORRENT)
+        ) {
+            try {
+                result = operation()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ActionOperationException) {
+                throw error
+            } catch (error: Exception) {
+                throw controlledFailure(error)
+            }
+        }
+        if (audit.state != ActionExecutionState.SUCCEEDED) {
+            throw IllegalStateException(audit.reasonCode)
+        }
+        return result ?: throw IllegalStateException("qbittorrent-provider-error")
+    }
+
+    private fun controlledFailure(error: Exception): ActionOperationException {
+        // requestRaw() reports HTTP failures as IllegalStateException("<code>: <message>").
+        val httpCode = Regex("^(\\d{3}):").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+        val reasonCode = when {
+            error is IOException -> "qbittorrent-outcome-indeterminate"
+            httpCode == 401 || httpCode == 403 -> "qbittorrent-invalid-credentials"
+            httpCode != null -> "qbittorrent-http-$httpCode"
+            error is IllegalStateException -> "qbittorrent-provider-reported-failure"
+            else -> "qbittorrent-provider-error"
+        }
+        return ActionOperationException(
+            reasonCode = reasonCode,
+            disposition = ActionFailureDisposition.NON_RETRYABLE,
+            cause = error
+        )
     }
 
     fun runJellyseerrRequestAction(

@@ -1,5 +1,95 @@
 import Foundation
 
+/// Controlled-action identity for qBittorrent mutations. Torrent resume and reannounce are low risk;
+/// pause, recheck and the alternative-speed toggle are medium risk; removing a torrent (with or
+/// without its data) is high risk. Names are bounded normalized identifiers and never carry payloads.
+enum QbittorrentControlledAction: String, CaseIterable, Equatable, Sendable {
+    case torrentResume = "torrent.resume"
+    case torrentPause = "torrent.pause"
+    case torrentRecheck = "torrent.recheck"
+    case torrentReannounce = "torrent.reannounce"
+    case torrentDelete = "torrent.delete"
+    case torrentDeleteWithData = "torrent.delete-with-data"
+    case transferResumeAll = "transfer.resume-all"
+    case transferPauseAll = "transfer.pause-all"
+    case transferRecheckAll = "transfer.recheck-all"
+    case transferReannounceAll = "transfer.reannounce-all"
+    case transferToggleAltSpeed = "transfer.toggle-alt-speed"
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .torrentResume, .torrentReannounce, .transferResumeAll, .transferReannounceAll:
+            return .low
+        case .torrentPause, .torrentRecheck, .transferPauseAll, .transferRecheckAll, .transferToggleAltSpeed:
+            return .medium
+        case .torrentDelete, .torrentDeleteWithData:
+            return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        targetRef: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "qbittorrent:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: targetRef.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum QbittorrentControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return failure("qbittorrent-outcome-indeterminate")
+        }
+        guard let apiError = error as? APIError else {
+            return failure("qbittorrent-provider-error")
+        }
+
+        switch apiError {
+        case .networkError, .bothURLsFailed:
+            return failure("qbittorrent-outcome-indeterminate")
+        case .unauthorized:
+            return failure("qbittorrent-invalid-credentials")
+        case .httpError(let statusCode, _):
+            return failure("qbittorrent-http-\(statusCode)")
+        case .notConfigured:
+            return failure("qbittorrent-not-configured")
+        case .invalidURL:
+            return failure("qbittorrent-invalid-url")
+        case .decodingError:
+            return failure("qbittorrent-response-decode-failure")
+        case .requestConfigurationRequired:
+            return failure("qbittorrent-configuration-required")
+        case .custom:
+            return failure("qbittorrent-provider-reported-failure")
+        }
+    }
+
+    private static func failure(_ reasonCode: String) -> ControlledActionOperationError {
+        ControlledActionOperationError(
+            reasonCode: reasonCode,
+            disposition: .nonRetryable
+        )
+    }
+}
+
 actor QbittorrentAPIClient {
     private let instanceId: UUID
     private var engine: BaseNetworkEngine
@@ -104,7 +194,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/pause",
                 method: "POST",
                 headers: formHeaders(),
@@ -117,7 +209,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/resume",
                 method: "POST",
                 headers: formHeaders(),
@@ -130,7 +224,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/pause",
                 method: "POST",
                 headers: formHeaders(),
@@ -143,7 +239,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/resume",
                 method: "POST",
                 headers: formHeaders(),
@@ -156,7 +254,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/recheck",
                 method: "POST",
                 headers: formHeaders(),
@@ -169,7 +269,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/reannounce",
                 method: "POST",
                 headers: formHeaders(),
@@ -182,7 +284,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/torrents/delete",
                 method: "POST",
                 headers: formHeaders(),
@@ -195,7 +299,9 @@ actor QbittorrentAPIClient {
         try await requestVoidWithSessionRefresh {
             try await engine.requestVoid(
                 baseURL: baseURL,
-                fallbackURL: fallbackURL,
+                // Mutations run through the controlled-action coordinator and never replay against the
+                // fallback URL: an indeterminate transport outcome could otherwise repeat the write.
+                fallbackURL: "",
                 path: "/api/v2/transfer/toggleSpeedLimitsMode",
                 method: "POST",
                 headers: formHeaders()

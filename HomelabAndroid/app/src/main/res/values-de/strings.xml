@@ -1123,6 +1123,7 @@
     <string name="media_action_qb_reannounce_torrent">Torrent neu announcen</string>
     <string name="media_action_qb_delete_torrent">Torrent löschen</string>
     <string name="media_action_qb_delete_torrent_with_data">Torrent + Daten löschen</string>
+    <string name="media_action_qb_confirm_all">Auf alle Torrents anwenden</string>
     <string name="media_action_radarr_search_missing">Fehlende Filme suchen</string>
     <string name="media_action_radarr_rss">RSS-Sync starten</string>
     <string name="media_action_radarr_refresh">Filmindex aktualisieren</string>
