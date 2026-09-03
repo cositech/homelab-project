@@ -71,7 +71,7 @@ struct QbittorrentDashboard: View {
             Task { await fetchData(silent: true, includeTorrents: true) }
         }
         .confirmationDialog(
-            pendingConfirmation?.title ?? localizer.t.actionConfirm,
+            localizer.t.actionConfirm,
             isPresented: Binding(
                 get: { pendingConfirmation != nil },
                 set: { if !$0 { pendingConfirmation = nil } }
