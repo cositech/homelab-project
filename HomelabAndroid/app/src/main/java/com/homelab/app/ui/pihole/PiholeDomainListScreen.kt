@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homelab.app.R
+import com.homelab.app.data.remote.dto.pihole.PiholeDomainDto
 import com.homelab.app.data.remote.dto.pihole.PiholeDomainListType
 import com.homelab.app.ui.theme.StatusGreen
 import com.homelab.app.ui.theme.StatusRed
@@ -51,6 +52,7 @@ fun PiholeDomainListScreen(
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var showingAddDialog by remember { mutableStateOf(false) }
     var newDomainText by remember { mutableStateOf("") }
+    var pendingRemoval by remember { mutableStateOf<PiholeDomainDto?>(null) }
     
     val selectedListType = if (selectedTabIndex == 0) PiholeDomainListType.ALLOW else PiholeDomainListType.DENY
     
@@ -148,12 +150,14 @@ fun PiholeDomainListScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(filteredDomains, key = { it.id }) { domain ->
-                                val dismissState = rememberSwipeToDismissBoxState()
-                                LaunchedEffect(dismissState.currentValue) {
-                                    if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-                                        viewModel.removeDomain(domain.domain, selectedListType)
+                                val dismissState = rememberSwipeToDismissBoxState(
+                                    confirmValueChange = { value ->
+                                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                                            pendingRemoval = domain
+                                        }
+                                        false
                                     }
-                                }
+                                )
                                 
                                 SwipeToDismissBox(
                                     state = dismissState,
@@ -229,7 +233,7 @@ fun PiholeDomainListScreen(
                     onClick = {
                         val url = newDomainText.trim()
                         if (url.isNotEmpty()) {
-                            viewModel.addDomain(url, selectedListType)
+                            viewModel.addDomain(url, selectedListType, confirmed = true)
                         }
                         showingAddDialog = false
                     },
@@ -240,6 +244,31 @@ fun PiholeDomainListScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showingAddDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    pendingRemoval?.let { domain ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(domain.domain) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.removeDomain(
+                            domain.domain,
+                            domain.type ?: selectedListType,
+                            confirmed = true
+                        )
+                        pendingRemoval = null
+                    }
+                ) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

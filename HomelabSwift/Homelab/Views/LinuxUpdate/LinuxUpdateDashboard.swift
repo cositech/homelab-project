@@ -1,5 +1,16 @@
 import SwiftUI
 
+private actor LinuxUpdateActionOutcomeBox {
+    private var outcome: LinuxUpdateActionOutcome?
+    func store(_ outcome: LinuxUpdateActionOutcome) { self.outcome = outcome }
+    func value() -> LinuxUpdateActionOutcome? { outcome }
+}
+
+private struct PendingLinuxUpdateAction: Sendable {
+    let action: LinuxUpdateActionKind
+    let systemId: Int
+}
+
 struct LinuxUpdateDashboard: View {
     let instanceId: UUID
 
@@ -17,6 +28,7 @@ struct LinuxUpdateDashboard: View {
     @State private var isRunningAction = false
     @State private var isRunningDashboardAction = false
     @State private var actionMessage: String?
+    @State private var pendingAction: PendingLinuxUpdateAction?
 
     private let linuxUpdateColor = ServiceType.linuxUpdate.colors.primary
 
@@ -102,6 +114,27 @@ struct LinuxUpdateDashboard: View {
             }
         } message: {
             Text(actionMessage ?? "")
+        }
+        .confirmationDialog(
+            localizer.t.actionConfirm,
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pendingAction {
+                Button(actionLabel(pendingAction.action), role: .destructive) {
+                    let pending = pendingAction
+                    self.pendingAction = nil
+                    Task {
+                        await runAction(pending.action, systemId: pending.systemId, confirmed: true)
+                    }
+                }
+            }
+            Button(localizer.t.cancel, role: .cancel) { pendingAction = nil }
+        } message: {
+            Text(localizer.t.actionConfirmMessage)
         }
     }
 
@@ -419,21 +452,21 @@ struct LinuxUpdateDashboard: View {
                 }
 
                 actionButton(title: localizer.t.linuxUpdateActionCheck, icon: "checkmark.seal", tint: AppTheme.running, enabled: !isRunningAction) {
-                    Task { await runAction(.check, systemId: detail.system.id) }
+                    requestAction(.check, systemId: detail.system.id)
                 }
 
                 actionButton(title: localizer.t.linuxUpdateActionUpgrade, icon: "arrow.up.circle", tint: AppTheme.info, enabled: !isRunningAction) {
-                    Task { await runAction(.upgradeAll, systemId: detail.system.id) }
+                    requestAction(.upgradeAll, systemId: detail.system.id)
                 }
 
                 if detail.system.supportsFullUpgrade {
                     actionButton(title: localizer.t.linuxUpdateActionFullUpgrade, icon: "arrow.triangle.2.circlepath", tint: AppTheme.warning, enabled: !isRunningAction) {
-                        Task { await runAction(.fullUpgrade, systemId: detail.system.id) }
+                        requestAction(.fullUpgrade, systemId: detail.system.id)
                     }
                 }
 
                 actionButton(title: localizer.t.patchmonReboot, icon: "power", tint: linuxUpdateColor, enabled: !isRunningAction) {
-                    Task { await runAction(.reboot, systemId: detail.system.id) }
+                    requestAction(.reboot, systemId: detail.system.id)
                 }
             }
 
@@ -551,7 +584,7 @@ struct LinuxUpdateDashboard: View {
 
                 if allowUpgrade {
                     Button {
-                        Task { await runAction(.upgradePackage(update.packageName), systemId: systemId) }
+                        requestAction(.upgradePackage(update.packageName), systemId: systemId)
                     } label: {
                         Text(localizer.t.linuxUpdateActionUpgrade)
                             .font(.caption2.weight(.semibold))
@@ -773,69 +806,139 @@ struct LinuxUpdateDashboard: View {
         }
     }
 
-    @MainActor
-    private func runAction(_ action: LinuxUpdateActionKind, systemId: Int) async {
-        guard let client = await servicesStore.linuxUpdateClient(instanceId: selectedInstanceId) else {
-            actionMessage = APIError.notConfigured.localizedDescription
-            return
-        }
-
-        isRunningAction = true
-        defer { isRunningAction = false }
-
-        do {
-            let outcome: LinuxUpdateActionOutcome
-            switch action {
-            case .check:
-                outcome = try await client.runCheck(systemId: systemId)
-            case .upgradeAll:
-                outcome = try await client.runUpgradeAll(systemId: systemId)
-            case .fullUpgrade:
-                outcome = try await client.runFullUpgrade(systemId: systemId)
-            case .reboot:
-                outcome = try await client.runReboot(systemId: systemId)
-            case .upgradePackage(let packageName):
-                outcome = try await client.runUpgradePackage(systemId: systemId, packageName: packageName)
-            }
-
-            actionMessage = outcome.message
-            await fetchDashboard(forceLoading: false)
-            await fetchSystemDetail(systemId: systemId, forceLoading: false)
-        } catch let error as APIError {
-            actionMessage = error.localizedDescription
-        } catch {
-            actionMessage = error.localizedDescription
+    private func requestAction(_ action: LinuxUpdateActionKind, systemId: Int) {
+        if action.controlledAction.requiresConfirmation {
+            pendingAction = PendingLinuxUpdateAction(action: action, systemId: systemId)
+        } else {
+            Task { await runAction(action, systemId: systemId, confirmed: false) }
         }
     }
 
     @MainActor
+    private func runAction(_ action: LinuxUpdateActionKind, systemId: Int, confirmed: Bool) async {
+        await runControlledAction(
+            action.controlledAction,
+            systemId: systemId,
+            packageName: action.packageName,
+            confirmed: confirmed,
+            dashboardAction: false
+        )
+    }
+
+    @MainActor
     private func runDashboardAction(_ action: LinuxUpdateDashboardActionKind) async {
+        await runControlledAction(
+            action.controlledAction,
+            systemId: nil,
+            packageName: nil,
+            confirmed: false,
+            dashboardAction: true
+        )
+    }
+
+    @MainActor
+    private func runControlledAction(
+        _ action: LinuxUpdateControlledAction,
+        systemId: Int?,
+        packageName: String?,
+        confirmed: Bool,
+        dashboardAction: Bool
+    ) async {
+        guard !isRunningAction && !isRunningDashboardAction else { return }
         guard let client = await servicesStore.linuxUpdateClient(instanceId: selectedInstanceId) else {
             actionMessage = APIError.notConfigured.localizedDescription
             return
         }
 
-        isRunningDashboardAction = true
-        defer { isRunningDashboardAction = false }
-
-        do {
-            let outcome: LinuxUpdateActionOutcome
-            switch action {
-            case .checkAll:
-                outcome = try await client.runCheckAll()
-            case .refreshCache:
-                outcome = try await client.runRefreshCache()
+        if dashboardAction {
+            isRunningDashboardAction = true
+        } else {
+            isRunningAction = true
+        }
+        defer {
+            if dashboardAction {
+                isRunningDashboardAction = false
+            } else {
+                isRunningAction = false
             }
+        }
 
-            actionMessage = outcome.message
-            await fetchDashboard(forceLoading: false)
-            if let selectedSystemId {
-                await fetchSystemDetail(systemId: selectedSystemId, forceLoading: false)
+        let outcomeBox = LinuxUpdateActionOutcomeBox()
+        let audit = await servicesStore.controlledActionCoordinator.execute(
+            request: action.request(
+                instanceId: selectedInstanceId,
+                targetRef: action.targetRef(systemId: systemId, packageName: packageName),
+                confirmed: confirmed
+            ),
+            actorRole: .admin,
+            providerCapabilities: ProviderRegistry.descriptor(for: .linuxUpdate).capabilities
+        ) {
+            do {
+                let outcome: LinuxUpdateActionOutcome
+                switch action {
+                case .checkAll:
+                    outcome = try await client.runCheckAll()
+                case .refreshCache:
+                    outcome = try await client.runRefreshCache()
+                case .checkSystem:
+                    outcome = try await client.runCheck(systemId: systemId ?? 0)
+                case .upgradePackage:
+                    outcome = try await client.runUpgradePackage(
+                        systemId: systemId ?? 0,
+                        packageName: packageName ?? ""
+                    )
+                case .upgradeAll:
+                    outcome = try await client.runUpgradeAll(systemId: systemId ?? 0)
+                case .fullUpgrade:
+                    outcome = try await client.runFullUpgrade(systemId: systemId ?? 0)
+                case .reboot:
+                    outcome = try await client.runReboot(systemId: systemId ?? 0)
+                }
+                guard outcome.success else {
+                    throw ControlledActionOperationError(
+                        reasonCode: "linux-update-provider-reported-failure",
+                        disposition: .nonRetryable
+                    )
+                }
+                await outcomeBox.store(outcome)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                throw ControlledActionOperationError(
+                    reasonCode: "linux-update-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
             }
-        } catch let error as APIError {
-            actionMessage = error.localizedDescription
-        } catch {
-            actionMessage = error.localizedDescription
+        }
+
+        guard audit.state == .succeeded else {
+            actionMessage = audit.reasonCode
+            return
+        }
+
+        actionMessage = await outcomeBox.value()?.message ?? ServiceType.linuxUpdate.displayName
+        await fetchDashboard(forceLoading: false)
+        if let systemId {
+            await fetchSystemDetail(systemId: systemId, forceLoading: false)
+        } else if let selectedSystemId {
+            await fetchSystemDetail(systemId: selectedSystemId, forceLoading: false)
+        }
+    }
+
+    private func actionLabel(_ action: LinuxUpdateActionKind) -> String {
+        switch action {
+        case .check:
+            return localizer.t.linuxUpdateActionCheck
+        case .upgradeAll:
+            return localizer.t.linuxUpdateActionUpgrade
+        case .fullUpgrade:
+            return localizer.t.linuxUpdateActionFullUpgrade
+        case .reboot:
+            return localizer.t.patchmonReboot
+        case .upgradePackage(let packageName):
+            return "\(localizer.t.linuxUpdateActionPackageUpgrade): \(packageName)"
         }
     }
 
@@ -965,15 +1068,37 @@ private enum LinuxUpdateFilter {
     case reboot
 }
 
-private enum LinuxUpdateActionKind {
+private enum LinuxUpdateActionKind: Sendable {
     case check
     case upgradeAll
     case fullUpgrade
     case reboot
     case upgradePackage(String)
+
+    var controlledAction: LinuxUpdateControlledAction {
+        switch self {
+        case .check: return .checkSystem
+        case .upgradeAll: return .upgradeAll
+        case .fullUpgrade: return .fullUpgrade
+        case .reboot: return .reboot
+        case .upgradePackage: return .upgradePackage
+        }
+    }
+
+    var packageName: String? {
+        if case .upgradePackage(let packageName) = self { return packageName }
+        return nil
+    }
 }
 
-private enum LinuxUpdateDashboardActionKind {
+private enum LinuxUpdateDashboardActionKind: Sendable {
     case checkAll
     case refreshCache
+
+    var controlledAction: LinuxUpdateControlledAction {
+        switch self {
+        case .checkAll: return .checkAll
+        case .refreshCache: return .refreshCache
+        }
+    }
 }

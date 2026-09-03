@@ -98,7 +98,7 @@ struct NpmProxyHost: Codable, Identifiable {
     }
 }
 
-struct NpmProxyHostMeta: Codable {
+struct NpmProxyHostMeta: Codable, Sendable {
     let letsencryptAgree: Bool
     let dnsChallenge: Bool
     let nginxOnline: Bool
@@ -478,7 +478,7 @@ struct NpmUserRequest: Encodable {
     }
 }
 
-struct NpmProxyHostRequest: Encodable {
+struct NpmProxyHostRequest: Encodable, Sendable {
     let domainNames: [String]
     let forwardScheme: String
     let forwardHost: String

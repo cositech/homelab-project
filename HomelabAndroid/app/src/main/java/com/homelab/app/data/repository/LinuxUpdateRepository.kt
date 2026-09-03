@@ -9,6 +9,11 @@ import com.homelab.app.data.remote.dto.linux_update.LinuxUpdateJobStatusResponse
 import com.homelab.app.data.remote.dto.linux_update.LinuxUpdatePackageUpdate
 import com.homelab.app.data.remote.dto.linux_update.LinuxUpdateSystem
 import com.homelab.app.data.remote.dto.linux_update.LinuxUpdateUpgradePackagesRequest
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +40,44 @@ data class LinuxUpdateActionResult(
     val success: Boolean,
     val message: String
 )
+
+enum class LinuxUpdateControlledAction(val wireName: String, val risk: ActionRisk) {
+    CHECK_ALL("systems.check-all", ActionRisk.LOW),
+    REFRESH_CACHE("cache.refresh", ActionRisk.LOW),
+    CHECK_SYSTEM("system.check", ActionRisk.LOW),
+    UPGRADE_PACKAGE("package.upgrade", ActionRisk.MEDIUM),
+    UPGRADE_ALL("system.upgrade", ActionRisk.HIGH),
+    FULL_UPGRADE("system.full-upgrade", ActionRisk.HIGH),
+    REBOOT("system.reboot", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        target: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "linux-update:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = wireName,
+        targetRef = target.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+
+    fun targetRef(systemId: Int? = null, packageName: String? = null): String = when (this) {
+        CHECK_ALL -> "systems/all"
+        REFRESH_CACHE -> "cache/global"
+        UPGRADE_PACKAGE ->
+            "system/${requireNotNull(systemId)}/package/${packageName.orEmpty().trim().lowercase(Locale.ROOT)}"
+        CHECK_SYSTEM, UPGRADE_ALL, FULL_UPGRADE, REBOOT -> "system/${requireNotNull(systemId)}"
+    }
+}
 
 @Singleton
 class LinuxUpdateRepository @Inject constructor(
@@ -314,6 +357,7 @@ class LinuxUpdateRepository @Inject constructor(
                     .addHeader("Content-Type", "application/json")
                     .addHeader("X-Homelab-Service", "Linux Update")
                     .addHeader("X-Homelab-Instance-Id", instanceId)
+                    .addHeader("X-Homelab-No-Fallback", "true")
                     .build()
 
                 try {
@@ -361,7 +405,7 @@ class LinuxUpdateRepository @Inject constructor(
                         )
                     }
                 } catch (error: Exception) {
-                    lastError = error
+                    throw error
                 }
             }
 

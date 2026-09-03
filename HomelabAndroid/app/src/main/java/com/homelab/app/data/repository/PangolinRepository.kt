@@ -13,6 +13,11 @@ import com.homelab.app.data.remote.dto.pangolin.PangolinSiteResourceRole
 import com.homelab.app.data.remote.dto.pangolin.PangolinSiteResourceUser
 import com.homelab.app.data.remote.dto.pangolin.PangolinTarget
 import com.homelab.app.data.remote.dto.pangolin.PangolinUserDevice
+import com.homelab.app.domain.action.ActionRisk
+import com.homelab.app.domain.action.ControlledActionRequest
+import java.time.Instant
+import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -42,6 +47,40 @@ data class PangolinSiteResourceBindings(
     val roleIds: List<Int>,
     val clientIds: List<Int>
 )
+enum class PangolinControlledAction(
+    val actionName: String,
+    val risk: ActionRisk
+) {
+    PUBLIC_RESOURCE_CREATE("public-resource.create", ActionRisk.HIGH),
+    PUBLIC_RESOURCE_UPDATE("public-resource.update", ActionRisk.HIGH),
+    PUBLIC_RESOURCE_ENABLE("public-resource.enable", ActionRisk.LOW),
+    PUBLIC_RESOURCE_DISABLE("public-resource.disable", ActionRisk.MEDIUM),
+    PRIVATE_RESOURCE_CREATE("private-resource.create", ActionRisk.HIGH),
+    PRIVATE_RESOURCE_UPDATE("private-resource.update", ActionRisk.HIGH),
+    PRIVATE_RESOURCE_ENABLE("private-resource.enable", ActionRisk.LOW),
+    PRIVATE_RESOURCE_DISABLE("private-resource.disable", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        targetRef: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "pangolin:${instanceId.trim().lowercase(Locale.ROOT)}",
+        action = actionName,
+        targetRef = targetRef.trim().lowercase(Locale.ROOT),
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
 
 @Singleton
 class PangolinRepository @Inject constructor(

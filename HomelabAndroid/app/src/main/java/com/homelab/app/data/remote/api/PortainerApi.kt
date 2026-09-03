@@ -89,6 +89,7 @@ interface PortainerApi {
     suspend fun renameContainer(
         @Header("X-Homelab-Service") service: String = "Portainer",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("id") endpointId: Int,
         @Path("containerId") containerId: String,
         @Query("name") name: String
@@ -112,6 +113,7 @@ interface PortainerApi {
     suspend fun updateStackFile(
         @Header("X-Homelab-Service") service: String = "Portainer",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("id") stackId: Int,
         @Query("endpointId") endpointId: Int,
         @Body request: UpdateStackRequest

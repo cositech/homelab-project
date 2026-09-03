@@ -100,6 +100,20 @@ actor CraftyAPIClient {
         return response.data
     }
 
+    private func reachableMutationBaseURL() async throws -> String {
+        guard !baseURL.isEmpty else { throw APIError.notConfigured }
+        let headers = authHeaders()
+        if await engine.pingURL("\(baseURL)/api/v2/servers", extraHeaders: headers) {
+            return baseURL
+        }
+        if !fallbackURL.isEmpty,
+           fallbackURL != baseURL,
+           await engine.pingURL("\(fallbackURL)/api/v2/servers", extraHeaders: headers) {
+            return fallbackURL
+        }
+        throw APIError.networkError(URLError(.cannotConnectToHost))
+    }
+
     func sendCommand(serverId: String, command: String) async throws {
         let trimmed = command
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -109,9 +123,10 @@ actor CraftyAPIClient {
         var headers = authHeaders()
         headers["Content-Type"] = "text/plain"
 
+        let mutationBaseURL = try await reachableMutationBaseURL()
         let response: CraftyStatusResponse = try await engine.request(
-            baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            baseURL: mutationBaseURL,
+            fallbackURL: "",
             path: "/api/v2/servers/\(serverId)/stdin",
             method: "POST",
             headers: headers,
@@ -121,9 +136,10 @@ actor CraftyAPIClient {
     }
 
     func sendAction(serverId: String, action: CraftyAction) async throws {
+        let mutationBaseURL = try await reachableMutationBaseURL()
         let response: CraftyStatusResponse = try await engine.request(
-            baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            baseURL: mutationBaseURL,
+            fallbackURL: "",
             path: "/api/v2/servers/\(serverId)/action/\(action.rawValue)",
             method: "POST",
             headers: authHeaders()
@@ -229,11 +245,124 @@ struct CraftyServerStats: Codable, Hashable {
     }
 }
 
-enum CraftyAction: String {
+enum CraftyAction: String, CaseIterable, Equatable, Sendable {
     case start = "start_server"
     case stop = "stop_server"
     case restart = "restart_server"
     case backup = "backup_server"
     case kill = "kill_server"
     case updateExecutable = "update_executable"
+
+    var actionName: String {
+        switch self {
+        case .start: return "server.start"
+        case .stop: return "server.stop"
+        case .restart: return "server.restart"
+        case .backup: return "server.backup"
+        case .kill: return "server.kill"
+        case .updateExecutable: return "server.executable.update"
+        }
+    }
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .start: return .low
+        case .stop, .restart, .backup: return .medium
+        case .kill, .updateExecutable: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        serverId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "crafty-controller:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "server/\(serverId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum CraftyCommandAction: String, CaseIterable, Equatable, Sendable {
+    case send = "server.command.send"
+
+    var risk: ControlledActionRisk { .high }
+    var requiresConfirmation: Bool { true }
+
+    func request(
+        instanceId: UUID,
+        serverId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "crafty-controller:\(instanceId.uuidString.lowercased())",
+            action: rawValue,
+            targetRef: "server/\(serverId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+enum CraftyControlledOperationFailure {
+    static func map(_ error: Error) -> ControlledActionOperationError {
+        if let controlled = error as? ControlledActionOperationError {
+            return controlled
+        }
+        if error is URLError {
+            return indeterminateOutcome()
+        }
+        guard let apiError = error as? APIError else {
+            return providerReportedFailure()
+        }
+
+        switch apiError {
+        case .networkError, .bothURLsFailed:
+            return indeterminateOutcome()
+        case .unauthorized:
+            return failure("crafty-invalid-credentials")
+        case .httpError(let statusCode, _):
+            return failure("crafty-http-\(statusCode)")
+        case .notConfigured:
+            return failure("crafty-not-configured")
+        case .invalidURL:
+            return failure("crafty-invalid-url")
+        case .decodingError:
+            return failure("crafty-response-decode-failure")
+        case .requestConfigurationRequired:
+            return failure("crafty-configuration-required")
+        case .custom:
+            return providerReportedFailure()
+        }
+    }
+
+    private static func indeterminateOutcome() -> ControlledActionOperationError {
+        failure("crafty-outcome-indeterminate")
+    }
+
+    private static func providerReportedFailure() -> ControlledActionOperationError {
+        failure("crafty-provider-reported-failure")
+    }
+
+    private static func failure(_ reasonCode: String) -> ControlledActionOperationError {
+        ControlledActionOperationError(reasonCode: reasonCode, disposition: .nonRetryable)
+    }
 }
