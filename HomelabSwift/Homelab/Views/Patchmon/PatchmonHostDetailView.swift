@@ -915,12 +915,17 @@ struct PatchmonHostDetailView: View {
                     throw PatchmonControlledOperationFailure.map(error)
                 }
             }
+            if audit.state == .cancelled {
+                throw CancellationError()
+            }
             guard audit.state == .succeeded else {
                 throw (await originalError.value) ?? APIError.custom(audit.reasonCode)
             }
             HapticManager.success()
             onHostDeleted?(host.id)
             dismiss()
+        } catch is CancellationError {
+            // The delete was cancelled before it completed; leave the screen untouched.
         } catch let apiError as APIError {
             HapticManager.error()
             deleteErrorMessage = apiError.localizedDescription
