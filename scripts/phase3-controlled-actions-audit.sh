@@ -567,7 +567,8 @@ for pattern in 'executeControlled(' 'ProviderRegistry.capabilities(serviceType)'
 for pattern in 'pendingActionConfirmation' 'actionRequiresConfirmation' 'confirmed = true'; do grep -Fq "$pattern" "$android_media_ui"; done
 for pattern in 'enum MediaServiceControlledAction' 'library.add' 'MediaServiceControlledOperationFailure' 'func executeControlledMediaAction'; do grep -Fq "$pattern" "$swift_media_core"; done
 for ui in "$swift_radarr_ui" "$swift_sonarr_ui" "$swift_lidarr_ui"; do grep -Fq 'executeControlledMediaAction(' "$ui"; done
-grep -Fq 'fallbackURL: ""' "HomelabSwift/Homelab/Networking/Radarr/RadarrAPIClient.swift"
+grep -Fq 'noFallback' "$android_media_repo"
+grep -Fq 'ControlledActionErrorBox' "$swift_media_core"
 grep -Fq 'media-service actions have stable per-provider risk identity and no payload persistence' "$android_tests"
 grep -Fq 'testMediaServiceActionsHaveStablePerProviderRiskIdentityAndNoPayloadPersistence' "$swift_tests"
 
