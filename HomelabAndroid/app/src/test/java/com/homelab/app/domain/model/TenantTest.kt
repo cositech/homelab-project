@@ -20,6 +20,13 @@ class TenantTest {
     }
 
     @Test
+    fun `tenant kind serializes to the lowercase cross-platform wire value`() {
+        assertEquals("\"personal\"", json.encodeToString(TenantKind.serializer(), TenantKind.PERSONAL))
+        assertEquals("\"customer\"", json.encodeToString(TenantKind.serializer(), TenantKind.CUSTOMER))
+        assertEquals(TenantKind.CUSTOMER, json.decodeFromString<TenantKind>("\"customer\""))
+    }
+
+    @Test
     fun `refOrDefault normalizes null and blank to the default tenant`() {
         assertEquals("default", Tenant.refOrDefault(null))
         assertEquals("default", Tenant.refOrDefault(""))

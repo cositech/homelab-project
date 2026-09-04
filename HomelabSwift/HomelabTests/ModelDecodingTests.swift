@@ -786,6 +786,42 @@ final class ModelDecodingTests: XCTestCase {
         )
     }
 
+    func testTenantKindEncodesLowercaseWireValues() throws {
+        let personal = try JSONEncoder().encode(TenantKind.personal)
+        let customer = try JSONEncoder().encode(TenantKind.customer)
+        XCTAssertEqual(String(data: personal, encoding: .utf8), "\"personal\"")
+        XCTAssertEqual(String(data: customer, encoding: .utf8), "\"customer\"")
+    }
+
+    func testServiceInstanceMetadataCarriesTenantScopeAndDefaultsWhenAbsent() throws {
+        let scoped = ServiceInstance(
+            id: UUID(uuidString: "30000000-0000-0000-0000-00000000000c")!,
+            type: .proxmox,
+            label: "PVE",
+            url: "https://pve.acme.internal",
+            tenantRef: "acme",
+            siteRef: "acme-rack-1"
+        )
+        let metadata = ServiceInstanceMetadata(instance: scoped)
+        let round = try JSONDecoder().decode(
+            ServiceInstanceMetadata.self,
+            from: JSONEncoder().encode(metadata)
+        )
+        XCTAssertEqual(round.tenantRef, "acme")
+        XCTAssertEqual(round.siteRef, "acme-rack-1")
+        XCTAssertEqual(round.hydrated(with: nil).tenantRef, "acme")
+        XCTAssertEqual(round.hydrated(with: nil).siteRef, "acme-rack-1")
+
+        // Metadata persisted before Phase 4 has no tenant key and hydrates into the default tenant.
+        let legacy = Data("""
+        { "id": "30000000-0000-0000-0000-00000000000d", "type": "gitea", "label": "Gitea",
+          "url": "https://gitea.local", "credentialRef": "credential:v1:x", "tlsMode": "SYSTEM" }
+        """.utf8)
+        let legacyDecoded = try JSONDecoder().decode(ServiceInstanceMetadata.self, from: legacy)
+        XCTAssertEqual(legacyDecoded.tenantRef, Tenant.defaultId)
+        XCTAssertNil(legacyDecoded.siteRef)
+    }
+
     func testLegacyServiceConnectionMigrationUsesDisplayNameLabel() {
         let connection = ServiceConnection(
             type: .beszel,

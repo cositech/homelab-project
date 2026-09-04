@@ -38,6 +38,7 @@ import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.CalagopusRepository
 import com.homelab.app.domain.model.PiHoleAuthMode
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -858,7 +859,12 @@ class ServiceLoginViewModel @Inject constructor(
                             )
                         }
                     }
-                }.copy(allowSelfSigned = allowSelfSigned)
+                }.copy(
+                    allowSelfSigned = allowSelfSigned,
+                    // Editing an instance must never move it between tenants or sites.
+                    tenantRef = existing?.tenantRef ?: Tenant.DEFAULT_ID,
+                    siteRef = existing?.siteRef
+                )
 
                 servicesRepository.saveInstance(instance)
                 _existingInstance.value = instance

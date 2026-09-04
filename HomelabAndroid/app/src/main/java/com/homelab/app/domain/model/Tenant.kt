@@ -1,5 +1,6 @@
 package com.homelab.app.domain.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -13,10 +14,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class TenantKind {
     /** The operator's own estate. The [Tenant.DEFAULT_ID] tenant is always this kind. */
-    PERSONAL,
+    @SerialName("personal") PERSONAL,
 
     /** An MSP-managed customer estate. Carries [Customer] metadata. */
-    CUSTOMER
+    @SerialName("customer") CUSTOMER
 }
 
 @Serializable

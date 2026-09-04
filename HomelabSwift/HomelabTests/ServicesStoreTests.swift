@@ -114,6 +114,48 @@ final class ServicesStoreTests: XCTestCase {
         XCTAssertEqual(store.preferredInstance(for: .beszel)?.id, first.id)
     }
 
+    func testTenantAndSiteScopeSurviveKeychainRoundTrip() async {
+        let scoped = ServiceInstance(
+            id: UUID(uuidString: "40000000-0000-0000-0000-000000000001")!,
+            type: .portainer,
+            label: "Acme Portainer",
+            url: "https://portainer.acme.internal",
+            tenantRef: "acme",
+            siteRef: "acme-rack-1",
+            apiKey: "acme-key"
+        )
+
+        let store = ServicesStore()
+        await store.saveInstance(scoped)
+
+        let reloaded = ServicesStore()
+        await reloaded.initialize()
+        reloaded.stopPeriodicHealthChecks()
+
+        let round = reloaded.instance(id: scoped.id)
+        XCTAssertEqual(round?.tenantRef, "acme")
+        XCTAssertEqual(round?.siteRef, "acme-rack-1")
+    }
+
+    func testInstanceWithoutTenantHydratesIntoDefaultTenant() async {
+        let untenanted = ServiceInstance(
+            id: UUID(uuidString: "40000000-0000-0000-0000-000000000002")!,
+            type: .gitea,
+            label: "Home Gitea",
+            url: "https://gitea.home.local",
+            token: "t"
+        )
+        let store = ServicesStore()
+        await store.saveInstance(untenanted)
+
+        let reloaded = ServicesStore()
+        await reloaded.initialize()
+        reloaded.stopPeriodicHealthChecks()
+
+        XCTAssertEqual(reloaded.instance(id: untenanted.id)?.tenantRef, Tenant.defaultId)
+        XCTAssertNil(reloaded.instance(id: untenanted.id)?.siteRef)
+    }
+
     func testUnauthorizedNotificationMarksOnlyAffectedInstanceUnreachable() async {
         let store = ServicesStore()
         let first = ServiceInstance(

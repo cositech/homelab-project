@@ -458,6 +458,8 @@ struct ServiceInstanceMetadata: Codable, Equatable {
     let type: ServiceType
     var label: String
     var url: String
+    var tenantRef: String
+    var siteRef: String?
     var username: String?
     var piholeAuthMode: PiHoleAuthMode?
     var proxmoxAuthMode: ProxmoxAuthMode?
@@ -468,11 +470,18 @@ struct ServiceInstanceMetadata: Codable, Equatable {
     var tlsMode: TLSMode
     var certificatePin: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, type, label, url, tenantRef, siteRef, username, piholeAuthMode
+        case proxmoxAuthMode, proxmoxRealm, unifiAuthMode, fallbackUrl, credentialRef, tlsMode, certificatePin
+    }
+
     init(instance: ServiceInstance) {
         id = instance.id
         type = instance.type
         label = instance.displayLabel
         url = instance.url
+        tenantRef = instance.tenantRef
+        siteRef = instance.siteRef
         username = instance.username
         piholeAuthMode = instance.piholeAuthMode
         proxmoxAuthMode = instance.proxmoxAuthMode
@@ -484,6 +493,26 @@ struct ServiceInstanceMetadata: Codable, Equatable {
         certificatePin = instance.tlsPolicy.certificatePin
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        type = try container.decode(ServiceType.self, forKey: .type)
+        label = try container.decode(String.self, forKey: .label)
+        url = try container.decode(String.self, forKey: .url)
+        // Metadata persisted before Phase 4 has no tenant scope; it belongs to the default tenant.
+        tenantRef = Tenant.refOrDefault(try container.decodeIfPresent(String.self, forKey: .tenantRef))
+        siteRef = try container.decodeIfPresent(String.self, forKey: .siteRef)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        piholeAuthMode = try container.decodeIfPresent(PiHoleAuthMode.self, forKey: .piholeAuthMode)
+        proxmoxAuthMode = try container.decodeIfPresent(ProxmoxAuthMode.self, forKey: .proxmoxAuthMode)
+        proxmoxRealm = try container.decodeIfPresent(String.self, forKey: .proxmoxRealm)
+        unifiAuthMode = try container.decodeIfPresent(UniFiAuthMode.self, forKey: .unifiAuthMode)
+        fallbackUrl = try container.decodeIfPresent(String.self, forKey: .fallbackUrl)
+        credentialRef = try container.decode(String.self, forKey: .credentialRef)
+        tlsMode = try container.decode(TLSMode.self, forKey: .tlsMode)
+        certificatePin = try container.decodeIfPresent(String.self, forKey: .certificatePin)
+    }
+
     func hydrated(with credentials: ServiceCredentialEnvelope?) -> ServiceInstance {
         let credentials = credentials ?? ServiceCredentialEnvelope.empty
         return ServiceInstance(
@@ -491,6 +520,8 @@ struct ServiceInstanceMetadata: Codable, Equatable {
             type: type,
             label: label,
             url: url,
+            tenantRef: tenantRef,
+            siteRef: siteRef,
             token: credentials.token ?? "",
             username: username,
             apiKey: credentials.apiKey,
