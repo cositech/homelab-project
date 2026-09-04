@@ -1490,14 +1490,14 @@ final class ServicesStore {
         return updated
     }
 
-    /// Re-keys a pre-Phase-4 `credential:v1:` reference into the tenant-namespaced
-    /// `ServiceInstance.credentialRefV2Prefix` format, in the instance's own tenant. A reference
-    /// that already carries the v2 prefix is left untouched (idempotent).
+    /// Re-keys a reference that does not match the tenant-namespaced
+    /// `ServiceInstance.credentialRefV2Prefix` format for the instance's *current* tenant — a
+    /// pre-Phase-4 `credential:v1:` reference, or a v2 reference minted under a different tenant
+    /// (an edit that moved the instance to another tenant, before the tenant scope was reapplied).
+    /// A reference that already matches exactly is left untouched (idempotent).
     private static func migratedCredentialRef(for instance: ServiceInstance) -> String {
-        guard !instance.credentialRef.hasPrefix(ServiceInstance.credentialRefV2Prefix) else {
-            return instance.credentialRef
-        }
-        return "\(ServiceInstance.credentialRefV2Prefix)\(instance.tenantRef):\(instance.id.uuidString.lowercased())"
+        let expected = "\(ServiceInstance.credentialRefV2Prefix)\(instance.tenantRef):\(instance.id.uuidString.lowercased())"
+        return instance.credentialRef == expected ? instance.credentialRef : expected
     }
 
     private func stripKnownUniFiAPIPath(from raw: String) -> String {

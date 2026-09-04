@@ -173,6 +173,30 @@ final class ServicesStoreTests: XCTestCase {
         XCTAssertEqual(ref, "credential:v2:acme:\(instance.id.uuidString.lowercased())")
     }
 
+    func testSavedInstanceReKeysAStaleV2ReferenceWhenTheTenantHasChanged() async {
+        let store = ServicesStore()
+        let id = UUID(uuidString: "40000000-0000-0000-0000-000000000005")!
+        let staleRef = "credential:v2:acme:\(id.uuidString.lowercased())"
+        // Guards against the edit-flow bug this fixes: a v2 reference minted for the instance's
+        // previous tenant, carried forward unchanged while the tenant field itself moved on.
+        let movedInstance = ServiceInstance(
+            id: id,
+            type: .portainer,
+            label: "Moved Portainer",
+            url: "https://portainer.globex.internal",
+            tenantRef: "globex",
+            apiKey: "globex-key",
+            credentialRef: staleRef
+        )
+
+        await store.saveInstance(movedInstance)
+
+        let saved = store.instance(id: id)
+        XCTAssertEqual(saved?.tenantRef, "globex")
+        XCTAssertEqual(saved?.credentialRef, "credential:v2:globex:\(id.uuidString.lowercased())")
+        XCTAssertFalse(backend.contains(service: KeychainService.service, account: staleRef))
+    }
+
     func testInitializeMigratesALegacyCredentialReferenceAndDropsTheOldEntry() async {
         let legacyId = UUID(uuidString: "40000000-0000-0000-0000-000000000004")!
         let legacyRef = "credential:v1:\(legacyId.uuidString.lowercased())"

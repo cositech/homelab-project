@@ -191,23 +191,31 @@ class ServiceInstancesRepository @Inject constructor(
             if (legacyRef.startsWith(SecureCredentialStore.CREDENTIAL_REF_V2_PREFIX)) return@forEach
 
             val envelope = credentialStore.get(legacyRef)
-            if (envelope == null) {
-                dao.upsert(entity.copy(credentialRef = null))
-                return@forEach
+            val newRef = if (envelope != null) {
+                credentialStore.newReference(Tenant.refOrDefault(entity.tenantRef))
+            } else {
+                null
+            }
+            val stored = envelope != null && newRef != null &&
+                credentialStore.put(newRef, envelope) && credentialStore.get(newRef) == envelope
+
+            // The DB row is updated before either Keystore entry is touched further, so a failure
+            // here leaves `legacyRef` — still fully intact — as the row's reference, retryable on
+            // the next launch, rather than deleting a reference the row still depends on.
+            try {
+                dao.upsert(entity.copy(credentialRef = if (stored) newRef else null))
+            } catch (error: Throwable) {
+                // `put` may have written `newRef` even if verification then failed; either way it
+                // is now unreferenced, so clean it up. `legacyRef` is untouched: the row still
+                // depends on it.
+                newRef?.let(credentialStore::delete)
+                throw error
             }
 
-            val newRef = credentialStore.newReference(Tenant.refOrDefault(entity.tenantRef))
-            val stored = credentialStore.put(newRef, envelope) && credentialStore.get(newRef) == envelope
-            if (!stored) {
-                // The instance already loses its only reference here, so the legacy entry is
-                // unreachable regardless; clean it up rather than leaving dead secret material.
-                credentialStore.delete(newRef)
-                credentialStore.delete(legacyRef)
-                dao.upsert(entity.copy(credentialRef = null))
-                return@forEach
-            }
-
-            dao.upsert(entity.copy(credentialRef = newRef))
+            // The row no longer depends on either the legacy reference, or (when verification
+            // failed) the new one; both are unreachable now, so clean them up rather than leaving
+            // dead secret material.
+            if (!stored) newRef?.let(credentialStore::delete)
             credentialStore.delete(legacyRef)
         }
     }

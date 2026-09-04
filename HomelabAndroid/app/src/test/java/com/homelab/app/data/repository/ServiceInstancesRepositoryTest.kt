@@ -171,6 +171,30 @@ class ServiceInstancesRepositoryTest {
         assertTrue(!credentials.contains("credential:v1:instance-1:old"))
     }
 
+    @Test
+    fun `migration leaves the legacy reference intact when the database write fails`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        val envelope = CredentialEnvelope(token = "legacy-token")
+        credentials.put("credential:v1:instance-1:old", envelope)
+        dao.upsert(legacyEntity(id = "instance-1", credentialRef = "credential:v1:instance-1:old"))
+        dao.failNextUpsert = true
+
+        try {
+            repository.migrateCredentialReferencesIfNeeded()
+            org.junit.Assert.fail("expected the simulated database failure to propagate")
+        } catch (_: IllegalStateException) {
+            // expected
+        }
+
+        // The row still depends on the legacy reference, so it must still be readable, and the
+        // newly minted (now-unreferenced) v2 reference must not have been left dangling.
+        assertEquals("credential:v1:instance-1:old", dao.getById("instance-1")?.credentialRef)
+        assertEquals(envelope, credentials.get("credential:v1:instance-1:old"))
+        assertTrue(!credentials.contains("credential:v2:default:0"))
+    }
+
     private fun legacyEntity(
         id: String,
         tenantRef: String = "default",
@@ -236,7 +260,14 @@ private class FakeServiceInstanceDao : ServiceInstanceDao {
     override suspend fun getByType(type: String): List<ServiceInstanceEntity> =
         state.value.filter { it.type == type }.sortedWith(compareBy<ServiceInstanceEntity> { it.label }.thenBy { it.id })
 
+    /** Simulates a Room I/O failure on the next [upsert] call only. */
+    var failNextUpsert: Boolean = false
+
     override suspend fun upsert(entity: ServiceInstanceEntity) {
+        if (failNextUpsert) {
+            failNextUpsert = false
+            throw IllegalStateException("simulated database failure")
+        }
         state.value = state.value.filterNot { it.id == entity.id } + entity
     }
 
