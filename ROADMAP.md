@@ -76,7 +76,7 @@ See `docs/architecture/PHASE4_CORRELATION_MSP.md` for the design.
 
 - [x] Canonical asset model: cross-provider identity resolution (hostname, IP, MAC, serial, cloud id) into stable asset keys, read-only
 - [ ] Site and tenant contracts: `Tenant`, `Site`, `Customer` value objects; every provider instance, asset, health record, alert and action request carries a `tenantRef`
-- [ ] Tenant-scoped storage and queries: operations snapshots, search, the Phase-3 audit ledger and durable action queue partition by tenant; no cross-tenant reads
+- [ ] Tenant-scoped storage and queries: operations snapshots, search, the Phase-3 audit ledger and durable action queue partition by tenant; no cross-tenant reads — _in progress: device-local `TenantSelection` + `TenantStore` (configured tenants, active selection, all-tenants mode) persisted on both clients; per-query `tenantRef` filtering not yet wired_
 - [ ] Per-tenant credential isolation: the Phase-1 `credentialRef` indirection is kept but tenant-namespaced (migration re-keys existing references into `default`); Keystore/Keychain entries and TLS trust never shared across tenants
 - [ ] Cross-provider correlation views: group health, alerts and assets by canonical asset and by site/customer; surface "same host, three providers" rollups
 - [ ] Tenant switcher and scoping UI on both clients; global workspace defaults to the active tenant, with an explicit all-tenants mode for single-tenant installs

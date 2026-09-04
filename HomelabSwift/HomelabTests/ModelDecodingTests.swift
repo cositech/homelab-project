@@ -786,6 +786,89 @@ final class ModelDecodingTests: XCTestCase {
         )
     }
 
+    func testTenantSelectionPureTransforms() throws {
+        let initial = TenantSelection.initial
+        XCTAssertEqual(initial.tenants, [Tenant.default])
+        XCTAssertEqual(initial.activeTenantId, Tenant.defaultId)
+        XCTAssertTrue(initial.isSingleTenant)
+        XCTAssertFalse(initial.allTenantsMode)
+        XCTAssertEqual(initial.membershipRefs, [Tenant.defaultId])
+
+        let acme = Tenant(id: "acme", name: "Acme", kind: .customer)
+        let globex = Tenant(id: "globex", name: "Globex", kind: .customer)
+
+        // normalize: default first, unknown active pinned back, all-tenants needs >1 tenant.
+        let normalized = TenantSelection(
+            tenants: [acme, globex],
+            activeTenantId: "ghost",
+            allTenantsMode: true
+        ).normalized()
+        XCTAssertEqual(normalized.tenants.map(\.id), [Tenant.defaultId, "acme", "globex"])
+        XCTAssertEqual(normalized.activeTenantId, Tenant.defaultId)
+        XCTAssertTrue(normalized.allTenantsMode)
+        XCTAssertFalse(TenantSelection(allTenantsMode: true).normalized().allTenantsMode)
+
+        // normalize trims a stored active tenant id before matching it.
+        XCTAssertEqual(
+            TenantSelection(tenants: [acme], activeTenantId: "  acme  ").normalized().activeTenantId,
+            "acme"
+        )
+
+        // adding leaves the active selection alone; a duplicate id replaces the entry.
+        let added = TenantSelection.initial.adding(acme)
+        XCTAssertEqual(added.tenants.map(\.id), [Tenant.defaultId, "acme"])
+        XCTAssertEqual(added.activeTenantId, Tenant.defaultId)
+        let replaced = added.adding(Tenant(id: "acme", name: "Acme Corp", kind: .customer))
+        XCTAssertEqual(replaced.tenants.count, 2)
+        XCTAssertEqual(replaced.tenants.first { $0.id == "acme" }?.name, "Acme Corp")
+
+        // the default is never replaced or removed.
+        XCTAssertEqual(
+            TenantSelection.initial.adding(Tenant(id: Tenant.defaultId, name: "Hacked")).tenants.first?.name,
+            "Default"
+        )
+        XCTAssertTrue(added.removing(id: Tenant.defaultId).tenants.contains { $0.isDefault })
+
+        // activating leaves all-tenants mode; removing the active tenant falls back to default.
+        let active = added.settingAllTenantsMode(true).activating(id: "acme")
+        XCTAssertEqual(active.activeTenantId, "acme")
+        XCTAssertFalse(active.allTenantsMode)
+        XCTAssertEqual(active.removing(id: "acme").activeTenantId, Tenant.defaultId)
+        XCTAssertEqual(added.activating(id: "ghost").activeTenantId, Tenant.defaultId)
+
+        // JSON round trip.
+        let source = TenantSelection.initial.adding(acme).adding(globex).activating(id: "acme")
+        let restored = try JSONDecoder().decode(
+            TenantSelection.self,
+            from: JSONEncoder().encode(source)
+        ).normalized()
+        XCTAssertEqual(source, restored)
+    }
+
+    @MainActor
+    func testTenantStorePersistsSelectionAcrossInstances() {
+        let suite = "tenant-store-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = TenantStore(defaults: defaults)
+        XCTAssertTrue(store.selection.isSingleTenant)
+
+        store.addTenant(name: "  Acme  ", kind: .customer)
+        let selection = store.setActiveTenant(id: store.selection.tenants.last!.id)
+        XCTAssertEqual(store.activeTenant.name, "Acme")
+        XCTAssertFalse(store.isSingleTenant)
+        XCTAssertEqual(store.membershipRefs, selection.membershipRefs)
+
+        let reopened = TenantStore(defaults: defaults)
+        XCTAssertEqual(reopened.selection, store.selection)
+        XCTAssertEqual(reopened.activeTenant.name, "Acme")
+
+        _ = reopened.removeTenant(id: reopened.selection.tenants.last!.id)
+        XCTAssertTrue(reopened.isSingleTenant)
+        XCTAssertEqual(reopened.activeTenantRef, Tenant.defaultId)
+    }
+
     func testTenantKindEncodesLowercaseWireValues() throws {
         let personal = try JSONEncoder().encode(TenantKind.personal)
         let customer = try JSONEncoder().encode(TenantKind.customer)

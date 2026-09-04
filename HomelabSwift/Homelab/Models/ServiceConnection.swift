@@ -181,6 +181,112 @@ struct Customer: Codable, Equatable, Sendable {
     var notes: String?
 }
 
+/// The device-local set of configured tenants plus which one is active.
+///
+/// Every transform is pure and returns a re-`normalized()` value, so the store layer is a thin
+/// persistence wrapper and the rules are unit-testable. Invariants held by `normalized()`:
+///
+///  - `tenants` is non-empty, contains `Tenant.default`, lists it first, and has no duplicate ids.
+///  - `activeTenantId` names a tenant that is present.
+///  - `allTenantsMode` is only ever `true` when more than one tenant exists.
+struct TenantSelection: Codable, Equatable, Sendable {
+    var tenants: [Tenant]
+    var activeTenantId: String
+    var allTenantsMode: Bool
+
+    init(
+        tenants: [Tenant] = [Tenant.default],
+        activeTenantId: String = Tenant.defaultId,
+        allTenantsMode: Bool = false
+    ) {
+        self.tenants = tenants
+        self.activeTenantId = activeTenantId
+        self.allTenantsMode = allTenantsMode
+    }
+
+    static let initial = TenantSelection()
+
+    var activeTenant: Tenant {
+        tenants.first { $0.id == activeTenantId } ?? Tenant.default
+    }
+
+    /// A single-tenant install shows no tenant UI and behaves exactly as before Phase 4.
+    var isSingleTenant: Bool { tenants.count == 1 }
+
+    /// Local membership set for the Phase-4 `ControlledActionPolicy` gate: every tenant configured
+    /// on this device. A local convenience check, not a trust boundary.
+    var membershipRefs: Set<String> { Set(tenants.map(\.id)) }
+
+    func normalized() -> TenantSelection {
+        var ordered: [Tenant] = [Tenant.default]
+        for tenant in tenants {
+            let id = Tenant.refOrDefault(tenant.id)
+            if id == Tenant.defaultId { continue }
+            let normalizedTenant = Tenant(id: id, name: tenant.name, kind: tenant.kind)
+            if let existing = ordered.firstIndex(where: { $0.id == id }) {
+                ordered[existing] = normalizedTenant
+            } else {
+                ordered.append(normalizedTenant)
+            }
+        }
+        let requestedActive = Tenant.refOrDefault(activeTenantId)
+        let active = ordered.contains { $0.id == requestedActive } ? requestedActive : Tenant.defaultId
+        return TenantSelection(
+            tenants: ordered,
+            activeTenantId: active,
+            allTenantsMode: allTenantsMode && ordered.count > 1
+        )
+    }
+
+    /// Adds `tenant`, or replaces the existing entry with the same id. The default is never replaced.
+    func adding(_ tenant: Tenant) -> TenantSelection {
+        let id = Tenant.refOrDefault(tenant.id)
+        guard id != Tenant.defaultId else { return normalized() }
+        var next = tenants.filter { $0.id != id }
+        next.append(Tenant(id: id, name: tenant.name, kind: tenant.kind))
+        var copy = self
+        copy.tenants = next
+        return copy.normalized()
+    }
+
+    func renaming(id: String, to name: String) -> TenantSelection {
+        let target = Tenant.refOrDefault(id)
+        var copy = self
+        copy.tenants = tenants.map { tenant in
+            guard tenant.id == target else { return tenant }
+            return Tenant(id: tenant.id, name: name, kind: tenant.kind)
+        }
+        return copy.normalized()
+    }
+
+    /// Removes a tenant. The default cannot be removed; removing the active tenant falls back to it.
+    func removing(id: String) -> TenantSelection {
+        let target = Tenant.refOrDefault(id)
+        guard target != Tenant.defaultId else { return normalized() }
+        var copy = self
+        copy.tenants = tenants.filter { $0.id != target }
+        if activeTenantId == target { copy.activeTenantId = Tenant.defaultId }
+        return copy.normalized()
+    }
+
+    /// Selects a single active tenant, leaving all-tenants mode. A no-op if `id` is not present.
+    func activating(id: String) -> TenantSelection {
+        let target = Tenant.refOrDefault(id)
+        guard tenants.contains(where: { $0.id == target }) else { return normalized() }
+        var copy = self
+        copy.activeTenantId = target
+        copy.allTenantsMode = false
+        return copy.normalized()
+    }
+
+    /// Enables the fan-out "All tenants" mode. Ignored unless more than one tenant exists.
+    func settingAllTenantsMode(_ enabled: Bool) -> TenantSelection {
+        var copy = self
+        copy.allTenantsMode = enabled
+        return copy.normalized()
+    }
+}
+
 struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let type: ServiceType
