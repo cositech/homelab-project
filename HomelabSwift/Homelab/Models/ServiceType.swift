@@ -1840,18 +1840,21 @@ actor ControlledActionCoordinator {
         await recoverIfNeeded()
 
         // Stamp the target instance's tenant onto the request (unless it already carries one) and
-        // default the actor's membership set from the device's configured tenants.
-        var scopedRequest = request
-        var effectiveActorTenants = actorTenants
+        // default the actor's membership set from the device's configured tenants. Bound to `let`
+        // afterwards so the execution `Task` can capture them.
+        var mutableRequest = request
+        var mutableActorTenants = actorTenants
         if let tenantScope {
-            if scopedRequest.tenantRef == nil,
-               let resolved = await tenantScope.tenantRef(forProviderRef: scopedRequest.providerRef) {
-                scopedRequest.tenantRef = resolved
+            if mutableRequest.tenantRef == nil,
+               let resolved = await tenantScope.tenantRef(forProviderRef: mutableRequest.providerRef) {
+                mutableRequest.tenantRef = resolved
             }
-            if effectiveActorTenants == nil {
-                effectiveActorTenants = await tenantScope.membershipRefs()
+            if mutableActorTenants == nil {
+                mutableActorTenants = await tenantScope.membershipRefs()
             }
         }
+        let scopedRequest = mutableRequest
+        let effectiveActorTenants = mutableActorTenants
 
         // Authorization is actor-contextual, so it is re-checked here ahead of any cached
         // terminal result: a non-member never receives another actor's success, and a
