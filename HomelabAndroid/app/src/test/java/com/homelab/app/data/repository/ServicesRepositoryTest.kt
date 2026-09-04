@@ -190,6 +190,9 @@ private class ReachabilityFakeDao : ServiceInstanceDao {
 
     override suspend fun getById(id: String): ServiceInstanceEntity? = state.value.firstOrNull { it.id == id }
 
+    override suspend fun getTenantRefById(id: String): String? =
+        state.value.firstOrNull { it.id.equals(id, ignoreCase = true) }?.tenantRef
+
     override suspend fun getByType(type: String): List<ServiceInstanceEntity> = state.value.filter { it.type == type }
 
     override suspend fun upsert(entity: ServiceInstanceEntity) {

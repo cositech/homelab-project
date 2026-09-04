@@ -18,6 +18,9 @@ interface ServiceInstanceDao {
     @Query("SELECT * FROM service_instances WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): ServiceInstanceEntity?
 
+    @Query("SELECT tenantRef FROM service_instances WHERE id = :id COLLATE NOCASE LIMIT 1")
+    suspend fun getTenantRefById(id: String): String?
+
     @Query("SELECT * FROM service_instances WHERE type = :type ORDER BY label ASC, id ASC")
     suspend fun getByType(type: String): List<ServiceInstanceEntity>
 

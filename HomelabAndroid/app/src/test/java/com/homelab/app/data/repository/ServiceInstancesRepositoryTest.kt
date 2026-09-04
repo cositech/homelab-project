@@ -134,6 +134,9 @@ private class FakeServiceInstanceDao : ServiceInstanceDao {
 
     override suspend fun getById(id: String): ServiceInstanceEntity? = state.value.firstOrNull { it.id == id }
 
+    override suspend fun getTenantRefById(id: String): String? =
+        state.value.firstOrNull { it.id.equals(id, ignoreCase = true) }?.tenantRef
+
     override suspend fun getByType(type: String): List<ServiceInstanceEntity> =
         state.value.filter { it.type == type }.sortedWith(compareBy<ServiceInstanceEntity> { it.label }.thenBy { it.id })
 

@@ -1609,6 +1609,76 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(invocations, 1)
     }
 
+    func testCoordinatorTenantScopeStampsAndGatesRequests() async {
+        struct FakeScope: ControlledActionTenantScope {
+            let tenantByRef: [String: String]
+            let membership: Set<String>
+            func tenantRef(forProviderRef providerRef: String) async -> String? { tenantByRef[providerRef] }
+            func membershipRefs() async -> Set<String> { membership }
+        }
+
+        // An unscoped request is stamped with the target instance's tenant.
+        let stamping = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 2) },
+            tenantScope: FakeScope(tenantByRef: ["proxmox:cluster-a": "acme"], membership: ["default", "acme"])
+        )
+        let stamped = await stamping.execute(
+            request: controlledActionRequest(risk: .low),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {}
+        XCTAssertEqual(stamped.state, .succeeded)
+        XCTAssertEqual(stamped.tenantRef, "acme")
+
+        // An explicit request tenant wins over the scope.
+        let explicit = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 2) },
+            tenantScope: FakeScope(tenantByRef: ["proxmox:cluster-a": "acme"], membership: ["default", "acme", "globex"])
+        )
+        let explicitResult = await explicit.execute(
+            request: controlledActionRequest(risk: .low, tenantRef: "globex"),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {}
+        XCTAssertEqual(explicitResult.tenantRef, "globex")
+
+        // A scoped tenant outside device membership is denied, and the operation never runs.
+        let counter = ActionInvocationCounter()
+        let gating = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 2) },
+            tenantScope: FakeScope(tenantByRef: ["proxmox:cluster-a": "ghost"], membership: ["default"])
+        )
+        let denied = await gating.execute(
+            request: controlledActionRequest(risk: .low),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+        XCTAssertEqual(denied.state, .rejected)
+        XCTAssertEqual(denied.reasonCode, "tenant-membership-required")
+        XCTAssertEqual(invocations, 0)
+
+        // An unresolvable target (stale dashboard, deleted instance) fails closed.
+        let unresolvedCounter = ActionInvocationCounter()
+        let unresolving = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 2) },
+            tenantScope: FakeScope(tenantByRef: [:], membership: ["default"])
+        )
+        let unresolved = await unresolving.execute(
+            request: controlledActionRequest(risk: .low),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await unresolvedCounter.increment()
+        }
+        let unresolvedInvocations = await unresolvedCounter.value
+        XCTAssertEqual(unresolved.state, .rejected)
+        XCTAssertEqual(unresolved.reasonCode, "target-tenant-unresolved")
+        XCTAssertEqual(unresolvedInvocations, 0)
+    }
+
     func testActionAuditRecordDecodesLegacyPayloadWithoutTenantRef() throws {
         let legacy = """
         {

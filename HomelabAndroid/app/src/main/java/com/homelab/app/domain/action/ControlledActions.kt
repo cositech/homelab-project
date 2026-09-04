@@ -252,23 +252,64 @@ class ControlledActionLedger(private val maximumRecords: Int = 500) {
     @Synchronized fun snapshot(): List<ActionAuditRecord> = records.toList()
 }
 
+/**
+ * Resolves the tenant a controlled action belongs to from its [ControlledActionRequest.providerRef],
+ * plus the device-local set of tenants the actor may act in. Supplied by the app so the coordinator
+ * stays free of the data layer; absent in unit tests, where the coordinator falls back to the
+ * request's own [ControlledActionRequest.tenantRef] and the explicitly passed `actorTenants`.
+ */
+interface ControlledActionTenantScope {
+    suspend fun tenantRefFor(providerRef: String): String?
+    suspend fun membershipRefs(): Set<String>
+}
+
 class ControlledActionCoordinator(
     private val ledger: ControlledActionLedger = ControlledActionLedger(),
     private val durableStore: DurableActionQueueStore = InMemoryDurableActionQueueStore(),
     private val retryPolicy: ActionRetryPolicy = ActionRetryPolicy(),
     private val now: () -> Long = System::currentTimeMillis,
-    private val waitBeforeRetry: suspend (Long) -> Unit = { delay(it) }
+    private val waitBeforeRetry: suspend (Long) -> Unit = { delay(it) },
+    private val tenantScope: ControlledActionTenantScope? = null
 ) {
     private val queue = Mutex()
     private val terminalResults = mutableMapOf<String, ActionAuditRecord>()
     private val durableEntries = mutableMapOf<String, DurableActionQueueEntry>()
     private var recovered = false
 
+    @Suppress("NAME_SHADOWING")
     suspend fun execute(
         request: ControlledActionRequest,
         actorRole: ActionRole,
         providerCapabilities: Set<ProviderCapability>,
         actorTenants: Set<String>? = null,
+        operation: suspend () -> Unit
+    ): ActionAuditRecord {
+        // Resolve the tenant scope outside the queue mutex so slow DataStore/DB reads never stall
+        // other actions. Stamp the target instance's tenant onto the request (unless it already
+        // carries one) and default the actor's membership set from the device's configured tenants.
+        val scopedRequest: ControlledActionRequest
+        if (tenantScope == null || request.tenantRef != null) {
+            scopedRequest = request
+        } else {
+            val resolved = tenantScope.tenantRefFor(request.providerRef)
+            if (resolved == null) {
+                // Fail closed: an action that cannot be placed in a tenant is rejected outright,
+                // not run under the implicit default tenant.
+                return queue.withLock {
+                    audit(request, actorRole, ActionExecutionState.REJECTED, "target-tenant-unresolved")
+                }
+            }
+            scopedRequest = request.copy(tenantRef = resolved)
+        }
+        val effectiveActorTenants = actorTenants ?: tenantScope?.membershipRefs()
+        return executeLocked(scopedRequest, actorRole, providerCapabilities, effectiveActorTenants, operation)
+    }
+
+    private suspend fun executeLocked(
+        request: ControlledActionRequest,
+        actorRole: ActionRole,
+        providerCapabilities: Set<ProviderCapability>,
+        actorTenants: Set<String>?,
         operation: suspend () -> Unit
     ): ActionAuditRecord = queue.withLock {
         recoverLocked()

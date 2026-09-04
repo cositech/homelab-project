@@ -4,7 +4,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.homelab.app.data.action.RepositoryControlledActionTenantScope
 import com.homelab.app.domain.action.ControlledActionCoordinator
+import com.homelab.app.domain.action.ControlledActionTenantScope
 import com.homelab.app.domain.action.DurableActionQueueEntry
 import com.homelab.app.domain.action.DurableActionQueueStore
 import com.homelab.app.security.AndroidKeystoreCredentialStore
@@ -64,6 +66,12 @@ abstract class SecurityModule {
         implementation: AndroidKeystoreCredentialStore
     ): SecureCredentialStore
 
+    @Binds
+    @Singleton
+    abstract fun bindControlledActionTenantScope(
+        implementation: RepositoryControlledActionTenantScope
+    ): ControlledActionTenantScope
+
     companion object {
         @Provides
         @Singleton
@@ -75,7 +83,11 @@ abstract class SecurityModule {
         @Provides
         @Singleton
         fun provideControlledActionCoordinator(
-            durableStore: DurableActionQueueStore
-        ): ControlledActionCoordinator = ControlledActionCoordinator(durableStore = durableStore)
+            durableStore: DurableActionQueueStore,
+            tenantScope: ControlledActionTenantScope
+        ): ControlledActionCoordinator = ControlledActionCoordinator(
+            durableStore = durableStore,
+            tenantScope = tenantScope
+        )
     }
 }

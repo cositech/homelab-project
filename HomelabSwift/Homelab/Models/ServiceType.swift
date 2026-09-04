@@ -1788,6 +1788,15 @@ actor ControlledActionExecutionGate {
     }
 }
 
+/// Resolves the tenant a controlled action belongs to from its `providerRef`, plus the device-local
+/// set of tenants the actor may act in. Supplied by the app so the coordinator stays free of the
+/// store layer; absent in unit tests, where the coordinator falls back to the request's own
+/// `tenantRef` and the explicitly passed `actorTenants`.
+protocol ControlledActionTenantScope: Sendable {
+    func tenantRef(forProviderRef providerRef: String) async -> String?
+    func membershipRefs() async -> Set<String>
+}
+
 actor ControlledActionCoordinator {
     private let ledger: ControlledActionLedger
     private let executionGate: ControlledActionExecutionGate
@@ -1795,6 +1804,7 @@ actor ControlledActionCoordinator {
     private let retryPolicy: ActionRetryPolicy
     private let now: @Sendable () -> Date
     private let waitBeforeRetry: @Sendable (Int) async -> Void
+    private let tenantScope: (any ControlledActionTenantScope)?
     private var terminalResults: [String: ActionAuditRecord] = [:]
     private var durableEntries: [String: DurableActionQueueEntry] = [:]
     private var inFlight: [String: Task<ActionAuditRecord, Never>] = [:]
@@ -1808,7 +1818,8 @@ actor ControlledActionCoordinator {
         now: @escaping @Sendable () -> Date = Date.init,
         waitBeforeRetry: @escaping @Sendable (Int) async -> Void = {
             try? await Task.sleep(nanoseconds: UInt64($0) * 1_000_000)
-        }
+        },
+        tenantScope: (any ControlledActionTenantScope)? = nil
     ) {
         self.ledger = ledger
         self.executionGate = executionGate
@@ -1816,6 +1827,7 @@ actor ControlledActionCoordinator {
         self.retryPolicy = retryPolicy
         self.now = now
         self.waitBeforeRetry = waitBeforeRetry
+        self.tenantScope = tenantScope
     }
 
     func execute(
@@ -1826,45 +1838,70 @@ actor ControlledActionCoordinator {
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
         await recoverIfNeeded()
+
+        // Stamp the target instance's tenant onto the request (unless it already carries one) and
+        // default the actor's membership set from the device's configured tenants. Bound to `let`
+        // afterwards so the execution `Task` can capture them.
+        var mutableRequest = request
+        var mutableActorTenants = actorTenants
+        if let tenantScope {
+            if mutableRequest.tenantRef == nil {
+                guard let resolved = await tenantScope.tenantRef(forProviderRef: mutableRequest.providerRef) else {
+                    // Fail closed: an action that cannot be placed in a tenant is rejected outright,
+                    // not run under the implicit default tenant.
+                    return await Self.audit(
+                        request: request, actorRole: actorRole, state: .rejected,
+                        reasonCode: "target-tenant-unresolved", ledger: ledger, now: now
+                    )
+                }
+                mutableRequest.tenantRef = resolved
+            }
+            if mutableActorTenants == nil {
+                mutableActorTenants = await tenantScope.membershipRefs()
+            }
+        }
+        let scopedRequest = mutableRequest
+        let effectiveActorTenants = mutableActorTenants
+
         // Authorization is actor-contextual, so it is re-checked here ahead of any cached
         // terminal result: a non-member never receives another actor's success, and a
         // membership denial is never persisted to block a later authorized submission.
-        if !ControlledActionPolicy.tenantMembershipSatisfied(request, actorTenants: actorTenants) {
+        if !ControlledActionPolicy.tenantMembershipSatisfied(scopedRequest, actorTenants: effectiveActorTenants) {
             return await Self.audit(
-                request: request, actorRole: actorRole, state: .rejected,
+                request: scopedRequest, actorRole: actorRole, state: .rejected,
                 reasonCode: "tenant-membership-required", ledger: ledger, now: now
             )
         }
-        let existing = durableEntries[request.idempotencyKey]
-        if let existing, !existing.request.hasSameIdentity(as: request) {
+        let existing = durableEntries[scopedRequest.idempotencyKey]
+        if let existing, !existing.request.hasSameIdentity(as: scopedRequest) {
             return await Self.audit(
-                request: request, actorRole: actorRole, state: .rejected,
+                request: scopedRequest, actorRole: actorRole, state: .rejected,
                 reasonCode: "idempotency-key-conflict", ledger: ledger, now: now
             )
         }
-        if let completed = terminalResults[request.idempotencyKey] { return completed }
-        if let existingTask = inFlight[request.idempotencyKey] { return await existingTask.value }
+        if let completed = terminalResults[scopedRequest.idempotencyKey] { return completed }
+        if let existingTask = inFlight[scopedRequest.idempotencyKey] { return await existingTask.value }
         if let existing, existing.state == .manualReview {
             let result: ActionAuditRecord
             if let terminal = existing.terminalRecord {
                 result = terminal
             } else {
                 result = await Self.audit(
-                    request: request, actorRole: actorRole, state: .manualReview,
+                    request: scopedRequest, actorRole: actorRole, state: .manualReview,
                     reasonCode: existing.reasonCode, ledger: ledger, now: now
                 )
             }
-            terminalResults[request.idempotencyKey] = result
+            terminalResults[scopedRequest.idempotencyKey] = result
             return result
         }
 
         let task = Task { [executionGate, ledger, durableStore, retryPolicy, now, waitBeforeRetry] in
             await executionGate.withLock {
                 await Self.perform(
-                    request: request,
+                    request: scopedRequest,
                     actorRole: actorRole,
                     providerCapabilities: providerCapabilities,
-                    actorTenants: actorTenants,
+                    actorTenants: effectiveActorTenants,
                     existing: existing,
                     ledger: ledger,
                     durableStore: durableStore,
@@ -1875,14 +1912,14 @@ actor ControlledActionCoordinator {
                 )
             }
         }
-        inFlight[request.idempotencyKey] = task
+        inFlight[scopedRequest.idempotencyKey] = task
         let result = await task.value
-        terminalResults[request.idempotencyKey] = result
-        inFlight[request.idempotencyKey] = nil
+        terminalResults[scopedRequest.idempotencyKey] = result
+        inFlight[scopedRequest.idempotencyKey] = nil
         if let updated = await durableStore.snapshot().first(where: {
-            $0.request.idempotencyKey == request.idempotencyKey
+            $0.request.idempotencyKey == scopedRequest.idempotencyKey
         }) {
-            durableEntries[request.idempotencyKey] = updated
+            durableEntries[scopedRequest.idempotencyKey] = updated
         }
         return result
     }
