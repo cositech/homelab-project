@@ -18,12 +18,14 @@ horizontal concern layered under Phases 1–3.
    `ProviderDiagnostic`, operations snapshots, search results, `ActionAuditRecord`
    and `DurableActionQueueEntry` — carries the `tenantRef` of its originating
    instance and is only ever read back within that tenant.
-3. Credentials are stored per `(tenantRef, instanceId)`. A Keystore/Keychain entry,
-   TLS trust anchor or pinned certificate is never shared across tenants, even for
-   byte‑identical secrets.
+3. Credential references are tenant‑scoped. The Phase‑1 indirection is kept — the
+   Keystore/Keychain entry is still addressed by the instance's random
+   `credentialRef` — but that reference is namespaced by `tenantRef`, so a
+   Keystore/Keychain entry, TLS trust anchor or pinned certificate is never shared
+   across tenants even for byte‑identical secrets.
 4. There is no query, storage key, cache key or code path that returns data from
    more than one tenant unless the caller is explicitly in all‑tenants mode and the
-   result is labelled per tenant.
+   result is labeled per tenant.
 5. Canonical asset resolution is read‑only and advisory. It never rewrites provider
    data, never merges records across tenants, and a wrong match degrades to
    "two assets" rather than leaking one tenant's host into another.
@@ -41,11 +43,15 @@ horizontal concern layered under Phases 1–3.
 
 A `CanonicalAsset` is a stable key plus the set of `(providerId, instanceId,
 resourceId)` observations that resolved to it. Resolution runs over the identity
-fields the providers already expose — hostname (normalised, FQDN‑stripped), IPv4
-and IPv6 addresses, MAC addresses, hardware serial, and provider‑native cloud or
-cluster ids — with a fixed precedence: serial and MAC are strong, an exact FQDN or
-a stable cloud id is strong, a bare short hostname or a private IP alone is weak
-and only matches when corroborated by a second field.
+fields the providers already expose. Each observed hostname is kept in two forms:
+a normalized FQDN (lowercased, trailing dot stripped, left intact) and a derived
+short hostname (the first label). Together with IPv4 and IPv6 addresses, MAC
+addresses, hardware serial, and provider‑native cloud or cluster ids, they carry a
+fixed precedence: serial and MAC are strong; an exact normalized‑FQDN match or a
+stable cloud id is strong; the short hostname alone or a private IP alone is weak
+and only matches when a second field corroborates it. `host.site-a` and
+`host.site-b` therefore stay distinct on the FQDN even though their short form
+collides.
 
 Resolution is deterministic and pure: same observations in, same asset keys out,
 no clock or network dependency, so it is unit‑testable the way the Phase‑3 policy
@@ -79,10 +85,14 @@ ledger snapshot are stored per tenant. iOS applies the same partitioning to its
 `UserDefaults` Codable payloads and Keychain query attributes
 (`kSecAttrService` gains the tenant id).
 
-The credential store's lookup signature changes from `instanceId` to
-`(tenantRef, instanceId)` on both platforms. Migration walks existing entries into
-the `default` tenant in place; a failure to migrate an entry fails closed (the
-instance is shown as unconfigured) rather than falling back to an untenanted read.
+The credential store keeps its Phase‑1 shape — lookups are by the instance's
+random `credentialRef`, not by `instanceId` — but that reference is now
+tenant‑namespaced (`credential:v2:<tenantRef>:<random>` on Android;
+`kSecAttrService` gains the tenant id on iOS). Migration re‑keys every existing
+`credentialRef` into the `default` tenant, updating the persisted
+`ServiceInstance.credentialRef` in the same transaction; a failure to re‑key an
+entry fails closed (the instance is shown as unconfigured) rather than falling
+back to an untenanted read.
 
 Every repository query that today takes an `instanceId` or a `ServiceType` gains a
 `tenantRef` (or reads the active tenant from a scope holder). The operations
