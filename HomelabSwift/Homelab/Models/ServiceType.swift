@@ -2052,8 +2052,8 @@ private extension ControlledActionRequest {
 
 // MARK: - Phase 4 canonical asset model
 
-/// Resolution is pure, deterministic and read-only: the same observations in produce the same asset
-/// keys out, with no clock or network dependency. It never rewrites provider data, never merges
+/// Resolution is pure, deterministic and read-only: the same observations always produce the same
+/// asset keys out, with no clock or network dependency. It never rewrites provider data, never merges
 /// across tenants, and a wrong match degrades to "two assets" rather than leaking one tenant's host
 /// into another. Assets are recomputed from the current operations snapshot on every refresh.
 
@@ -2117,9 +2117,12 @@ struct AssetIdentity: Equatable, Sendable {
 
         var fqdns: Set<String> = []
         var shorts: Set<String> = []
+        var hostIPv4: Set<String> = []
         for raw in values(Self.hostnameKeys) + [resource.name] {
             guard let host = normalizeHost(raw) else { continue }
-            if host.contains("."), normalizeIPv4(host) == nil {
+            if let asIPv4 = normalizeIPv4(host) {
+                hostIPv4.insert(asIPv4)
+            } else if host.contains(".") {
                 fqdns.insert(host)
                 let label = host.split(separator: ".").first.map(String.init) ?? ""
                 if !label.isEmpty { shorts.insert(label) }
@@ -2131,7 +2134,7 @@ struct AssetIdentity: Equatable, Sendable {
         return AssetIdentity(
             fqdns: fqdns,
             shortHostnames: shorts,
-            ipv4: Set(values(Self.ipv4Keys).compactMap(normalizeIPv4)),
+            ipv4: Set(values(Self.ipv4Keys).compactMap(normalizeIPv4)).union(hostIPv4),
             ipv6: Set(values(Self.ipv6Keys).compactMap(normalizeIPv6)),
             macs: Set(values(Self.macKeys).compactMap(normalizeMAC)),
             serials: Set(values(Self.serialKeys).compactMap { s in
@@ -2162,21 +2165,54 @@ struct AssetIdentity: Equatable, Sendable {
         return clean
     }
 
+    /// Expand to the canonical, fully zero-padded 8-group form so differing spellings match.
     private static func normalizeIPv6(_ raw: String) -> String? {
-        let clean = (raw.trimmingCharacters(in: .whitespaces).split(separator: "/").first.map(String.init) ?? "").lowercased()
-        guard clean.contains(":"), clean.allSatisfy({ "0123456789abcdef:".contains($0) }) else { return nil }
-        return clean
-    }
-
-    private static func normalizeMAC(_ raw: String) -> String? {
-        let clean = raw.trimmingCharacters(in: .whitespaces).lowercased()
-            .replacingOccurrences(of: "-", with: ":")
-            .replacingOccurrences(of: ".", with: "")
-        let parts = clean.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 6, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy { "0123456789abcdef".contains($0) } }) else {
+        var clean = (raw.trimmingCharacters(in: .whitespaces).split(separator: "/").first.map(String.init) ?? "").lowercased()
+        if let percent = clean.firstIndex(of: "%") { clean = String(clean[clean.startIndex..<percent]) }
+        guard clean.filter({ $0 == ":" }).count >= 2 else { return nil }
+        guard clean.range(of: "::") == clean.range(of: "::", options: .backwards) else { return nil }
+        let compressed = clean.contains("::")
+        let headRaw: String
+        let tailRaw: String
+        if compressed {
+            let halves = clean.components(separatedBy: "::")
+            headRaw = halves[0]
+            tailRaw = halves.count > 1 ? halves[1] : ""
+        } else {
+            headRaw = clean
+            tailRaw = ""
+        }
+        let head = headRaw.isEmpty ? [] : headRaw.components(separatedBy: ":")
+        let tail = tailRaw.isEmpty ? [] : tailRaw.components(separatedBy: ":")
+        let present = head.count + tail.count
+        let groups: [String]
+        if compressed, present <= 7 {
+            groups = head + Array(repeating: "0", count: 8 - present) + tail
+        } else if !compressed, present == 8 {
+            groups = head + tail
+        } else {
             return nil
         }
-        return clean
+        var out: [String] = []
+        for g in groups {
+            guard !g.isEmpty, g.count <= 4, g.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
+            out.append(String(repeating: "0", count: 4 - g.count) + g)
+        }
+        return out.joined(separator: ":")
+    }
+
+    /// Accepts colon, hyphen and dotted spellings; emits canonical `aa:bb:cc:dd:ee:ff`.
+    private static func normalizeMAC(_ raw: String) -> String? {
+        let hex = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: ".", with: "")
+        guard hex.count == 12, hex.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
+        return stride(from: 0, to: 12, by: 2).map { i -> String in
+            let start = hex.index(hex.startIndex, offsetBy: i)
+            let end = hex.index(start, offsetBy: 2)
+            return String(hex[start..<end])
+        }.joined(separator: ":")
     }
 }
 

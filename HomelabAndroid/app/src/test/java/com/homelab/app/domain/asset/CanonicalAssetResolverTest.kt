@@ -155,6 +155,59 @@ class CanonicalAssetResolverTest {
     }
 
     @Test
+    fun `dotted and hyphenated MAC spellings still correlate`() {
+        val assets = CanonicalAssetResolver.resolve(
+            Tenant.DEFAULT_ID,
+            listOf(
+                obs("unifi", "d1", "AP", mapOf("mac" to "aabb.ccdd.eeff")),
+                obs("prometheus", "n1", "ap", mapOf("macAddress" to "AA-BB-CC-DD-EE-FF"))
+            )
+        )
+        assertEquals(1, assets.size)
+        assertEquals("mac:aa:bb:cc:dd:ee:ff", assets.single().key)
+    }
+
+    @Test
+    fun `differently spelled IPv6 addresses are one weak signal`() {
+        val identity = AssetIdentity.from(
+            ProviderResource(
+                providerId = "x", instanceId = "i", resourceType = "host", resourceId = "r",
+                name = "n", attributes = mapOf("ipv6" to "2001:db8::1")
+            )
+        )
+        val other = AssetIdentity.from(
+            ProviderResource(
+                providerId = "y", instanceId = "i", resourceType = "host", resourceId = "r",
+                name = "n", attributes = mapOf("primaryIp6" to "2001:0db8:0000:0000:0000:0000:0000:0001")
+            )
+        )
+        assertEquals(identity.ipv6, other.ipv6)
+        assertEquals(setOf("2001:0db8:0000:0000:0000:0000:0000:0001"), identity.ipv6)
+
+        val malformed = AssetIdentity.from(
+            ProviderResource(
+                providerId = "z", instanceId = "i", resourceType = "host", resourceId = "r",
+                name = "n", attributes = mapOf("ipv6" to ":")
+            )
+        )
+        assertTrue(malformed.ipv6.isEmpty())
+    }
+
+    @Test
+    fun `an IPv4 literal in a hostname field is not a second weak signal`() {
+        val assets = CanonicalAssetResolver.resolve(
+            Tenant.DEFAULT_ID,
+            listOf(
+                obs("a", "1", "10.0.0.5"),
+                obs("b", "2", "10.0.0.5", mapOf("ip" to "10.0.0.5"))
+            )
+        )
+        assertEquals(2, assets.size)
+        assertTrue(assets.all { it.identity.shortHostnames.isEmpty() })
+        assertTrue(assets.all { it.identity.ipv4 == setOf("10.0.0.5") })
+    }
+
+    @Test
     fun `carries the tenant ref through unchanged`() {
         val assets = CanonicalAssetResolver.resolve(
             "acme",

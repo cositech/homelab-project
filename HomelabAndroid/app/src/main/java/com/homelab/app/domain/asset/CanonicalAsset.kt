@@ -5,7 +5,7 @@ import com.homelab.app.domain.provider.ProviderResource
 /**
  * Phase 4 canonical asset model.
  *
- * Resolution is pure, deterministic and read-only: the same observations in produce the same
+ * Resolution is pure, deterministic and read-only: the same observations always produce the same
  * asset keys out, with no clock or network dependency. It never rewrites provider data, never
  * merges across tenants, and a wrong match degrades to "two assets" rather than leaking one
  * tenant's host into another. Assets are recomputed from the current operations snapshot on every
@@ -64,7 +64,6 @@ data class AssetIdentity(
         private val CLOUD_ID_KEYS = listOf("cloudId", "canonicalId")
 
         private val ipv4Regex = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
-        private val macRegex = Regex("""^[0-9a-f]{2}(:[0-9a-f]{2}){5}$""")
 
         /** Best-effort identity extraction from a normalized resource. Unknown/garbage fields are dropped. */
         fun from(resource: ProviderResource): AssetIdentity {
@@ -75,20 +74,24 @@ data class AssetIdentity(
 
             val fqdns = mutableSetOf<String>()
             val shorts = mutableSetOf<String>()
+            val hostIpv4 = mutableSetOf<String>()
             (values(HOSTNAME_KEYS) + resource.name).forEach { raw ->
                 val host = normalizeHost(raw) ?: return@forEach
-                if (host.contains('.') && ipv4Regex.matchEntire(host) == null) {
-                    fqdns += host
-                    host.substringBefore('.').takeIf { it.isNotBlank() }?.let(shorts::add)
-                } else if (!host.contains(':')) {
-                    shorts += host
+                val asIpv4 = normalizeIpv4(host)
+                when {
+                    asIpv4 != null -> hostIpv4 += asIpv4
+                    host.contains('.') -> {
+                        fqdns += host
+                        host.substringBefore('.').takeIf { it.isNotBlank() }?.let(shorts::add)
+                    }
+                    !host.contains(':') -> shorts += host
                 }
             }
 
             return AssetIdentity(
                 fqdns = fqdns,
                 shortHostnames = shorts,
-                ipv4 = values(IPV4_KEYS).mapNotNull(::normalizeIpv4).toSet(),
+                ipv4 = (values(IPV4_KEYS).mapNotNull(::normalizeIpv4) + hostIpv4).toSet(),
                 ipv6 = values(IPV6_KEYS).mapNotNull(::normalizeIpv6).toSet(),
                 macs = values(MAC_KEYS).mapNotNull(::normalizeMac).toSet(),
                 serials = values(SERIAL_KEYS).mapNotNull { it.trim().lowercase().takeIf(String::isNotBlank) }.toSet(),
@@ -109,15 +112,39 @@ data class AssetIdentity(
             return clean
         }
 
+        /** Expand to the canonical, fully zero-padded 8-group form so differing spellings match. */
         private fun normalizeIpv6(raw: String?): String? {
-            val clean = raw?.trim()?.substringBefore('/')?.lowercase() ?: return null
-            if (!clean.contains(':') || clean.any { it !in "0123456789abcdef:" }) return null
-            return clean
+            val clean = raw?.trim()?.substringBefore('/')?.substringBefore('%')?.lowercase() ?: return null
+            if (clean.count { it == ':' } < 2) return null
+            if (clean.indexOf("::") != clean.lastIndexOf("::")) return null
+            val compressed = clean.contains("::")
+            val headRaw: String
+            val tailRaw: String
+            if (compressed) {
+                val halves = clean.split("::", limit = 2)
+                headRaw = halves[0]
+                tailRaw = halves[1]
+            } else {
+                headRaw = clean
+                tailRaw = ""
+            }
+            val head = if (headRaw.isEmpty()) emptyList() else headRaw.split(":")
+            val tail = if (tailRaw.isEmpty()) emptyList() else tailRaw.split(":")
+            val present = head.size + tail.size
+            val groups = when {
+                compressed && present <= 7 -> head + List(8 - present) { "0" } + tail
+                !compressed && present == 8 -> head + tail
+                else -> return null
+            }
+            if (groups.any { it.isEmpty() || it.length > 4 || it.any { c -> c !in "0123456789abcdef" } }) return null
+            return groups.joinToString(":") { it.padStart(4, '0') }
         }
 
+        /** Accepts colon, hyphen and dotted spellings; emits canonical `aa:bb:cc:dd:ee:ff`. */
         private fun normalizeMac(raw: String?): String? {
-            val clean = raw?.trim()?.lowercase()?.replace('-', ':')?.replace(".", "") ?: return null
-            return clean.takeIf { macRegex.matchEntire(it) != null }
+            val hex = raw?.trim()?.lowercase()?.replace(Regex("[:.-]"), "") ?: return null
+            if (hex.length != 12 || hex.any { it !in "0123456789abcdef" }) return null
+            return hex.chunked(2).joinToString(":")
         }
     }
 }

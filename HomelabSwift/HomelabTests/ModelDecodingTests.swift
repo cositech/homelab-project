@@ -2768,6 +2768,56 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(identity.fqdns, ["real-host.example.com"])
         XCTAssertEqual(identity.shortHostnames, ["real-host"])
     }
+
+    func testCanonicalAssetIdentityNormalizesMACAndIPv6Spellings() {
+        // Dotted and hyphenated MAC spellings canonicalize to the same strong token.
+        let byMAC = CanonicalAssetResolver.resolve(
+            tenantRef: Tenant.defaultId,
+            observations: [
+                assetObservation("unifi", "d1", name: "AP", attributes: ["mac": "aabb.ccdd.eeff"]),
+                assetObservation("prometheus", "n1", name: "ap", attributes: ["macAddress": "AA-BB-CC-DD-EE-FF"])
+            ]
+        )
+        XCTAssertEqual(byMAC.count, 1)
+        XCTAssertEqual(byMAC[0].key, "mac:aa:bb:cc:dd:ee:ff")
+
+        // Compressed and fully expanded IPv6 spellings produce the same weak token.
+        let compressed = AssetIdentity.from(
+            ProviderResource(
+                providerId: "x", instanceId: UUID(), resourceType: "host", resourceId: "r",
+                name: "n", state: nil, attributes: ["ipv6": "2001:db8::1"]
+            )
+        )
+        let expanded = AssetIdentity.from(
+            ProviderResource(
+                providerId: "y", instanceId: UUID(), resourceType: "host", resourceId: "r",
+                name: "n", state: nil, attributes: ["primaryIp6": "2001:0db8:0000:0000:0000:0000:0000:0001"]
+            )
+        )
+        XCTAssertEqual(compressed.ipv6, ["2001:0db8:0000:0000:0000:0000:0000:0001"])
+        XCTAssertEqual(compressed.ipv6, expanded.ipv6)
+
+        let malformedV6 = AssetIdentity.from(
+            ProviderResource(
+                providerId: "z", instanceId: UUID(), resourceType: "host", resourceId: "r",
+                name: "n", state: nil, attributes: ["ipv6": ":"]
+            )
+        )
+        XCTAssertTrue(malformedV6.ipv6.isEmpty)
+
+        // An IPv4 literal in a hostname field routes to ipv4, not shortHostnames, so a lone shared
+        // address never counts as two weak signals.
+        let ipInName = CanonicalAssetResolver.resolve(
+            tenantRef: Tenant.defaultId,
+            observations: [
+                assetObservation("a", "1", name: "10.0.0.5"),
+                assetObservation("b", "2", name: "10.0.0.5", attributes: ["ip": "10.0.0.5"])
+            ]
+        )
+        XCTAssertEqual(ipInName.count, 2)
+        XCTAssertTrue(ipInName.allSatisfy { $0.identity.shortHostnames.isEmpty })
+        XCTAssertTrue(ipInName.allSatisfy { $0.identity.ipv4 == ["10.0.0.5"] })
+    }
 }
 
 private actor ActionInvocationCounter {
