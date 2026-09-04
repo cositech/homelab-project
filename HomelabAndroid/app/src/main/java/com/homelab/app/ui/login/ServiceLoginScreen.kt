@@ -111,11 +111,14 @@ fun ServiceLoginScreen(
     var showSecret by remember { mutableStateOf(false) }
     var hasSubmitted by remember { mutableStateOf(false) }
     // Null until the user touches the picker; until then it tracks the existing instance's
-    // tenant (editing) or the active tenant (creating) as those load in.
+    // tenant (editing) or the active tenant (creating) as those load in. Clamped to a tenant
+    // that is actually still configured — e.g. the existing instance's tenant may have been
+    // deleted since — falling back to the active one, which `TenantSelection` always keeps valid.
     var manuallySelectedTenantId by remember { mutableStateOf<String?>(null) }
-    val effectiveTenantId = manuallySelectedTenantId
-        ?: existingInstance?.tenantRef
-        ?: tenantSelection.activeTenantId
+    val effectiveTenantId = run {
+        val candidate = manuallySelectedTenantId ?: existingInstance?.tenantRef ?: tenantSelection.activeTenantId
+        if (tenantSelection.tenants.any { it.id == candidate }) candidate else tenantSelection.activeTenantId
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val shakeOffset = remember { Animatable(0f) }

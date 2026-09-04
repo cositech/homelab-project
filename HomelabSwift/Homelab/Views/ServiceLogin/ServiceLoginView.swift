@@ -32,13 +32,16 @@ struct ServiceLoginView: View {
     @State private var unifiAuthMode: UniFiAuthMode = .siteManager
     @State private var showUniFiDemo = false
     // Nil until the user touches the tenant picker; until then it tracks the existing
-    // instance's tenant (editing) or the active tenant (creating) as those load in.
+    // instance's tenant (editing) or the active tenant (creating) as those load in. Clamped to a
+    // tenant that is actually still configured — e.g. the existing instance's tenant may have
+    // been deleted since — falling back to the active one, which `TenantSelection` always keeps
+    // valid.
     @State private var manuallySelectedTenantId: String?
 
     private var effectiveTenantId: String {
-        manuallySelectedTenantId
-            ?? existingInstance?.tenantRef
-            ?? tenantStore.selection.activeTenantId
+        let candidate = manuallySelectedTenantId ?? existingInstance?.tenantRef ?? tenantStore.selection.activeTenantId
+        let selection = tenantStore.selection
+        return selection.tenants.contains { $0.id == candidate } ? candidate : selection.activeTenantId
     }
 
     private var existingInstance: ServiceInstance? {
@@ -723,7 +726,12 @@ struct ServiceLoginView: View {
                 var instance = try await buildInstance(label: cleanLabel, url: cleanUrl, fallbackUrl: cleanFallback)
                 // The picker's choice, or the existing instance's tenant, or the active tenant
                 // for a new one — resolved once, up front, so it can't drift mid-save.
-                instance = instance.updating(tenantRef: effectiveTenantId, siteRef: existingInstance?.siteRef)
+                let resolvedTenantRef = effectiveTenantId
+                instance = instance.updating(tenantRef: resolvedTenantRef)
+                // A site belongs to exactly one tenant, so moving an instance to a different
+                // tenant must not carry its old site along. `updating(siteRef:)` treats `nil` as
+                // "leave unchanged" (it merges with `??`), so the clear is a direct assignment.
+                instance.siteRef = existingInstance?.tenantRef == resolvedTenantRef ? existingInstance?.siteRef : nil
                 await servicesStore.saveInstance(instance, refreshPiHoleAuth: false)
                 HapticManager.success()
                 dismiss()

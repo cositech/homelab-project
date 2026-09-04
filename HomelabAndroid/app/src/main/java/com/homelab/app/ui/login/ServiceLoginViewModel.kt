@@ -868,16 +868,25 @@ class ServiceLoginViewModel @Inject constructor(
                             )
                         }
                     }
-                }.copy(
-                    allowSelfSigned = allowSelfSigned,
+                }.let { built ->
                     // The caller (the login screen) resolves the effective tenant — the picker's
                     // choice, or the existing instance's tenant, or the active tenant for a new
                     // one — and always passes it explicitly; this fallback only covers a caller
                     // that omits it, preserving the instance's current tenant rather than
                     // silently resetting it to default.
-                    tenantRef = Tenant.refOrDefault(tenantRef ?: existing?.tenantRef),
-                    siteRef = existing?.siteRef
-                )
+                    val resolvedTenantRef = Tenant.refOrDefault(tenantRef ?: existing?.tenantRef)
+                    built.copy(
+                        allowSelfSigned = allowSelfSigned,
+                        tenantRef = resolvedTenantRef,
+                        // A site belongs to exactly one tenant (Site.tenantRef); moving an
+                        // instance to a different tenant must not carry its old site along.
+                        siteRef = if (existing != null && existing.tenantRef == resolvedTenantRef) {
+                            existing.siteRef
+                        } else {
+                            null
+                        }
+                    )
+                }
 
                 servicesRepository.saveInstance(instance)
                 _existingInstance.value = instance
