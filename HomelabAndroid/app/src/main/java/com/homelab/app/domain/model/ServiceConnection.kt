@@ -23,6 +23,8 @@ data class ServiceInstance(
     val type: ServiceType,
     val label: String,
     val url: String,
+    val tenantRef: String = Tenant.DEFAULT_ID,
+    val siteRef: String? = null,
     val token: String = "",
     val proxmoxCsrfToken: String? = null,
     val proxmoxOtp: String? = null,

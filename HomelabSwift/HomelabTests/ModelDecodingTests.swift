@@ -746,6 +746,46 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(decoded.allowSelfSigned)
     }
 
+    func testTenantContractsAndDefaultTenantScoping() throws {
+        XCTAssertEqual(Tenant.defaultId, "default")
+        XCTAssertEqual(Tenant.default.id, Tenant.defaultId)
+        XCTAssertEqual(Tenant.default.kind, .personal)
+        XCTAssertTrue(Tenant.default.isDefault)
+        XCTAssertFalse(Tenant(id: "acme", name: "Acme", kind: .customer).isDefault)
+
+        XCTAssertEqual(Tenant.refOrDefault(nil), "default")
+        XCTAssertEqual(Tenant.refOrDefault("  "), "default")
+        XCTAssertEqual(Tenant.refOrDefault(" acme "), "acme")
+
+        // A legacy persisted instance without a tenant belongs to the default tenant.
+        let legacy = Data("""
+        { "id": "30000000-0000-0000-0000-000000000009", "type": "pihole", "label": "Pi-hole", "url": "https://pihole.local" }
+        """.utf8)
+        let decodedLegacy = try JSONDecoder().decode(ServiceInstance.self, from: legacy)
+        XCTAssertEqual(decodedLegacy.tenantRef, Tenant.defaultId)
+        XCTAssertNil(decodedLegacy.siteRef)
+
+        // An explicit tenant and site round-trip.
+        let scoped = ServiceInstance(
+            id: UUID(uuidString: "30000000-0000-0000-0000-00000000000a")!,
+            type: .proxmox,
+            label: "PVE",
+            url: "https://pve.acme.internal",
+            tenantRef: "acme",
+            siteRef: "acme-rack-1"
+        )
+        let roundTripped = try JSONDecoder().decode(ServiceInstance.self, from: JSONEncoder().encode(scoped))
+        XCTAssertEqual(roundTripped.tenantRef, "acme")
+        XCTAssertEqual(roundTripped.siteRef, "acme-rack-1")
+
+        XCTAssertEqual(
+            ServiceConnection(type: .beszel, url: "https://beszel.local")
+                .migratedInstance(id: UUID(uuidString: "30000000-0000-0000-0000-00000000000b")!)
+                .tenantRef,
+            Tenant.defaultId
+        )
+    }
+
     func testLegacyServiceConnectionMigrationUsesDisplayNameLabel() {
         let connection = ServiceConnection(
             type: .beszel,
