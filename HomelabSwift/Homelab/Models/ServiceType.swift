@@ -1845,8 +1845,15 @@ actor ControlledActionCoordinator {
         var mutableRequest = request
         var mutableActorTenants = actorTenants
         if let tenantScope {
-            if mutableRequest.tenantRef == nil,
-               let resolved = await tenantScope.tenantRef(forProviderRef: mutableRequest.providerRef) {
+            if mutableRequest.tenantRef == nil {
+                guard let resolved = await tenantScope.tenantRef(forProviderRef: mutableRequest.providerRef) else {
+                    // Fail closed: an action that cannot be placed in a tenant is rejected outright,
+                    // not run under the implicit default tenant.
+                    return await Self.audit(
+                        request: request, actorRole: actorRole, state: .rejected,
+                        reasonCode: "target-tenant-unresolved", ledger: ledger, now: now
+                    )
+                }
                 mutableRequest.tenantRef = resolved
             }
             if mutableActorTenants == nil {

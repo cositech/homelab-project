@@ -188,6 +188,25 @@ class ControlledActionsTest {
     }
 
     @Test
+    fun `an unresolvable target tenant is rejected fail-closed`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(
+            now = { 2_000 },
+            tenantScope = FakeTenantScope(tenantByProviderRef = emptyMap(), membership = setOf("default"))
+        )
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { invocations += 1 }
+
+        assertEquals(ActionExecutionState.REJECTED, result.state)
+        assertEquals("target-tenant-unresolved", result.reasonCode)
+        assertEquals(0, invocations)
+    }
+
+    @Test
     fun `an explicit actor tenant set overrides the scope default`() = runTest {
         val coordinator = ControlledActionCoordinator(
             now = { 2_000 },

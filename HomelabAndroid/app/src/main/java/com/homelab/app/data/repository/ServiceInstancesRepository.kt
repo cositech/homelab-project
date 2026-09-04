@@ -58,6 +58,9 @@ class ServiceInstancesRepository @Inject constructor(
 
     suspend fun getInstance(id: String): ServiceInstance? = dao.getById(id)?.toDomain(credentialStore)
 
+    /** Reads only the `tenantRef` column (case-insensitive id match); no credential hydration. */
+    suspend fun getTenantRef(id: String): String? = dao.getTenantRefById(id)
+
     suspend fun getAllInstances(): List<ServiceInstance> {
         return dao.getAll().map { it.toDomain(credentialStore) }
     }

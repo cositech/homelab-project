@@ -125,6 +125,17 @@ enum KeychainService {
         }
         return try? JSONDecoder().decode(ServiceStateV3.self, from: data)
     }
+
+    /// Instance id (lowercased UUID string) → `tenantRef`, read from the V3 metadata blob only —
+    /// no per-instance credential hydration. Empty when there is no V3 metadata at all
+    /// (a pre-tenant install), which callers treat as "everything is the default tenant".
+    nonisolated static func instanceTenantRefs() -> [String: String] {
+        guard let metadata = loadV3Metadata() else { return [:] }
+        return Dictionary(
+            metadata.instances.map { ($0.id.uuidString.lowercased(), Tenant.refOrDefault($0.tenantRef)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
 }
 
 protocol KeychainBackend: Sendable {

@@ -1659,6 +1659,24 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(denied.state, .rejected)
         XCTAssertEqual(denied.reasonCode, "tenant-membership-required")
         XCTAssertEqual(invocations, 0)
+
+        // An unresolvable target (stale dashboard, deleted instance) fails closed.
+        let unresolvedCounter = ActionInvocationCounter()
+        let unresolving = ControlledActionCoordinator(
+            now: { Date(timeIntervalSince1970: 2) },
+            tenantScope: FakeScope(tenantByRef: [:], membership: ["default"])
+        )
+        let unresolved = await unresolving.execute(
+            request: controlledActionRequest(risk: .low),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        ) {
+            await unresolvedCounter.increment()
+        }
+        let unresolvedInvocations = await unresolvedCounter.value
+        XCTAssertEqual(unresolved.state, .rejected)
+        XCTAssertEqual(unresolved.reasonCode, "target-tenant-unresolved")
+        XCTAssertEqual(unresolvedInvocations, 0)
     }
 
     func testActionAuditRecordDecodesLegacyPayloadWithoutTenantRef() throws {

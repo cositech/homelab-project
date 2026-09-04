@@ -94,11 +94,11 @@ struct KeychainControlledActionTenantScope: ControlledActionTenantScope {
         else {
             return nil
         }
-        let target = idPart.lowercased()
-        let match = KeychainService.loadServiceState().instances.first {
-            $0.id.uuidString.lowercased() == target
-        }
-        return match.map { Tenant.refOrDefault($0.tenantRef) }
+        let refs = KeychainService.instanceTenantRefs()
+        if let ref = refs[idPart.lowercased()] { return ref }
+        // No V3 metadata at all → a pre-tenant install, so everything is the default tenant.
+        // Otherwise the id matched no known instance: return nil so the coordinator fails closed.
+        return refs.isEmpty ? Tenant.defaultId : nil
     }
 
     func membershipRefs() async -> Set<String> {

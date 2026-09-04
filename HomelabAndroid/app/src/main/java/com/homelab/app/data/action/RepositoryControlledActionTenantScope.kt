@@ -22,10 +22,7 @@ class RepositoryControlledActionTenantScope @Inject constructor(
     override suspend fun tenantRefFor(providerRef: String): String? {
         val instanceId = providerRef.substringAfter(':', "").trim()
         if (instanceId.isEmpty()) return null
-        val instance = serviceInstances.getAllInstances()
-            .firstOrNull { it.id.equals(instanceId, ignoreCase = true) }
-            ?: return null
-        return Tenant.refOrDefault(instance.tenantRef)
+        return serviceInstances.getTenantRef(instanceId)?.let(Tenant::refOrDefault)
     }
 
     override suspend fun membershipRefs(): Set<String> = tenantStore.current().membershipRefs

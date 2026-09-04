@@ -597,19 +597,23 @@ grep -Fq 'a membership denial is not cached and does not block a later authorize
 grep -Fq 'testControlledActionMembershipDenialIsNotCachedAndUnblocksLaterAuthorizedActor' "$swift_tests"
 
 # The coordinator resolves the target instance's tenant from providerRef and defaults the actor
-# membership set, via an app-supplied scope wired through DI.
+# membership set, via an app-supplied scope wired through DI. Resolution happens before the queue
+# lock, and an unresolvable target fails closed.
 test -s "HomelabAndroid/app/src/main/java/com/homelab/app/data/action/RepositoryControlledActionTenantScope.kt"
-for pattern in 'interface ControlledActionTenantScope' 'tenantScope: ControlledActionTenantScope? = null' 'tenantScope.tenantRefFor(request.providerRef)'; do
+for pattern in 'interface ControlledActionTenantScope' 'tenantScope: ControlledActionTenantScope? = null' 'tenantScope.tenantRefFor(request.providerRef)' 'target-tenant-unresolved'; do
   grep -Fq "$pattern" "$android_core"
 done
+grep -Fq 'suspend fun getTenantRefById' "HomelabAndroid/app/src/main/java/com/homelab/app/data/local/dao/ServiceInstanceDao.kt"
 for pattern in 'bindControlledActionTenantScope' 'tenantScope: ControlledActionTenantScope'; do
   grep -Fq "$pattern" "$android_di"
 done
-for pattern in 'protocol ControlledActionTenantScope' 'tenantScope: (any ControlledActionTenantScope)? = nil' 'tenantScope.tenantRef(forProviderRef:'; do
+for pattern in 'protocol ControlledActionTenantScope' 'tenantScope: (any ControlledActionTenantScope)? = nil' 'tenantScope.tenantRef(forProviderRef:' 'target-tenant-unresolved'; do
   grep -Fq "$pattern" "$swift_core"
 done
 grep -Fq 'KeychainControlledActionTenantScope()' "$swift_store"
+grep -Fq 'instanceTenantRefs()' "HomelabSwift/Homelab/Services/KeychainService.swift"
 grep -Fq 'the coordinator stamps the target instance tenant onto an unscoped request' "$android_tests"
+grep -Fq 'an unresolvable target tenant is rejected fail-closed' "$android_tests"
 grep -Fq 'testCoordinatorTenantScopeStampsAndGatesRequests' "$swift_tests"
 
 echo "Phase 3 controlled actions audit passed"
