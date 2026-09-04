@@ -60,6 +60,7 @@ fun SettingsScreen(
     onNavigateToLogin: (ServiceType, String?) -> Unit = { _, _ -> },
     onNavigateToDebugLogs: () -> Unit = {},
     onNavigateToConfiguredServices: () -> Unit = {},
+    onNavigateToTenants: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -70,6 +71,7 @@ fun SettingsScreen(
     val hiddenServices by viewModel.hiddenServices.collectAsStateWithLifecycle()
     val serviceOrder by viewModel.serviceOrder.collectAsStateWithLifecycle()
     val isPinSet by viewModel.isPinSet.collectAsStateWithLifecycle()
+    val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
 
 
     val appIcon by viewModel.appIcon.collectAsStateWithLifecycle()
@@ -250,6 +252,50 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = stringResource(R.string.settings_configured_services_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // --- TENANTS ---
+            item {
+                Surface(
+                    onClick = onNavigateToTenants,
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Groups,
+                            contentDescription = stringResource(R.string.settings_tenants_title),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_tenants_title),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = tenantDisplayName(tenantSelection.activeTenant),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = stringResource(R.string.settings_tenants_title),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

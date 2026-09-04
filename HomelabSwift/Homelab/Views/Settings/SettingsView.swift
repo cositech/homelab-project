@@ -7,6 +7,7 @@ import UIKit
 struct SettingsView: View {
     @Environment(ServicesStore.self) private var servicesStore
     @Environment(SettingsStore.self) private var settingsStore
+    @Environment(TenantStore.self) private var tenantStore
     @Environment(Localizer.self) private var localizer
 
     @State private var showDisableSecurityAlert = false
@@ -38,6 +39,7 @@ struct SettingsView: View {
 
                             updateBannerSection
                             servicesSection
+                            tenantsSection
                             themeSection
                             appIconSection
 
@@ -412,6 +414,52 @@ struct SettingsView: View {
                                 .font(.caption2)
                                 .foregroundStyle(AppTheme.textMuted)
                         }
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.textMuted)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .glassCard()
+        }
+    }
+
+    private var tenantsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(localizer.t.settingsTenants.sentenceCased())
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(AppTheme.accent)
+                .padding(.leading, 8)
+                .padding(.top, 16)
+
+            VStack(spacing: 0) {
+                NavigationLink {
+                    TenantsView()
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "person.2.fill")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(width: 40, height: 40)
+                            .background(AppTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(localizer.t.settingsTenants)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Text(tenantDisplayName(tenantStore.activeTenant, localizer: localizer))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
 
                         Image(systemName: "chevron.right")
                             .font(.caption.bold())

@@ -111,6 +111,7 @@
 		8FFDF0EE5740DBE97A232906 /* ProxmoxClusterResourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C39BB672913A3C03C2CF06 /* ProxmoxClusterResourcesView.swift */; };
 		9037BD60739CD62C84EFCDF1 /* PatchmonDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B344770A37AF6E6CF0CCB9E /* PatchmonDashboard.swift */; };
 		91FEB90D9F7C9387B1CD8BA9 /* ConfiguredServicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98C831E84A42E73C9A480BE3 /* ConfiguredServicesView.swift */; };
+		B2C3D4E5F6A7B8C9D0E1F202 /* TenantsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F201 /* TenantsView.swift */; };
 		928B90DF3E307BB08C536CB9 /* ProxmoxConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915D9BA2E760A11C22688E74 /* ProxmoxConsoleView.swift */; };
 		94D317107C8A2E613083BE90 /* LidarrAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 720C06DC422C83CEF5E542D0 /* LidarrAPIClient.swift */; };
 		952767CF7AF01E00666D4CF6 /* MaltrailAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0726BE937688EDCEF843DA4A /* MaltrailAPIClient.swift */; };
@@ -325,6 +326,7 @@
 		9578616120B5FC6C6CBC942C /* SonarrAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonarrAPIClient.swift; sourceTree = "<group>"; };
 		95AC46B2418C37382FC7EAB9 /* LoadableState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadableState.swift; sourceTree = "<group>"; };
 		98C831E84A42E73C9A480BE3 /* ConfiguredServicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguredServicesView.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7B8C9D0E1F201 /* TenantsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantsView.swift; sourceTree = "<group>"; };
 		9A1C1112D8A8BF86BB78353D /* NpmUserForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NpmUserForm.swift; sourceTree = "<group>"; };
 		9B16543E222589D62D5DFD50 /* PatchmonHostDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchmonHostDetailView.swift; sourceTree = "<group>"; };
 		9CB770E60C2FE5FB6640BE98 /* EditBookmarkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditBookmarkView.swift; sourceTree = "<group>"; };
@@ -437,6 +439,7 @@
 				292913B0F73994A51217D87F /* BackupView.swift */,
 				98C831E84A42E73C9A480BE3 /* ConfiguredServicesView.swift */,
 				0DB66F8274714A001051F1BE /* SettingsView.swift */,
+				B2C3D4E5F6A7B8C9D0E1F201 /* TenantsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -1488,6 +1491,7 @@
 				B5EC1AE9E8F74A570F189E3D /* CalagopusDashboard.swift in Sources */,
 				654B246C79458CB80AEC15D8 /* CategoryFormView.swift in Sources */,
 				91FEB90D9F7C9387B1CD8BA9 /* ConfiguredServicesView.swift in Sources */,
+				B2C3D4E5F6A7B8C9D0E1F202 /* TenantsView.swift in Sources */,
 				CFFCFA6F071D0F46DECAB36B /* ContainerDetailView.swift in Sources */,
 				A3E3BAB096611E807728CA89 /* ContainerListView.swift in Sources */,
 				9F77F33FFB5F27A3D1A8109E /* ContentView.swift in Sources */,

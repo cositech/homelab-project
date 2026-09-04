@@ -261,6 +261,15 @@
     <string name="settings_language_label">Idioma</string>
     <string name="settings_services_label">Servicios conectados</string>
     <string name="settings_configured_services_title">Servicios Configurados</string>
+    <string name="settings_tenants_title">Inquilinos</string>
+    <string name="tenants_add_tenant">Añadir Inquilino</string>
+    <string name="tenants_name_label">Nombre</string>
+    <string name="tenants_kind_personal">Personal</string>
+    <string name="tenants_kind_customer">Cliente</string>
+    <string name="tenants_active_badge">Activo</string>
+    <string name="tenants_set_active">Establecer como activo</string>
+    <string name="tenants_rename">Renombrar</string>
+    <string name="tenants_delete_confirm_message">¿Eliminar %1$s? Esta acción no se puede deshacer.</string>
     <string name="settings_not_connected">No conectado</string>
     <string name="settings_disconnect">Desconectar</string>
     <string name="settings_fallback_url">URL de respaldo (p. ej. Cloudflare)</string>

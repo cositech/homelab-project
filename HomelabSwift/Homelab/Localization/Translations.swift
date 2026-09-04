@@ -971,6 +971,15 @@ struct Translations {
     let settingsGerman: String
     let settingsServices: String
     let settingsConfiguredServices: String
+    let settingsTenants: String
+    let tenantsAddTenant: String
+    let tenantsName: String
+    let tenantsKindPersonal: String
+    let tenantsKindCustomer: String
+    let tenantsActive: String
+    let tenantsSetActive: String
+    let tenantsRename: String
+    let tenantsDeleteConfirmMessage: String
     let settingsDisconnect: String
     let settingsDisconnectConfirm: String
     let settingsDisconnectMessage: String

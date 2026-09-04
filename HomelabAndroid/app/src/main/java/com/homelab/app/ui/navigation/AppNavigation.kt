@@ -276,6 +276,9 @@ fun AppNavigation() {
                     onNavigateToConfiguredServices = {
                         navController.navigate("settings/configured-services")
                     },
+                    onNavigateToTenants = {
+                        navController.navigate("settings/tenants")
+                    },
                     onNavigateToBackup = {
                         navController.navigate("settings/backup")
                     }
@@ -284,6 +287,14 @@ fun AppNavigation() {
 
             composable("settings/debug-logs") {
                 DebugLogsScreen(onNavigateBack = { navController.popBackStack() })
+            }
+
+            composable("settings/tenants") {
+                val settingsVm: com.homelab.app.ui.settings.SettingsViewModel = hiltViewModel()
+                com.homelab.app.ui.settings.TenantsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    viewModel = settingsVm
+                )
             }
 
             composable("settings/configured-services") {

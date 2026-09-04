@@ -29,7 +29,8 @@ import org.json.JSONObject
 class SettingsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
     private val localPreferencesRepository: LocalPreferencesRepository,
-    private val appIconManager: AppIconManager
+    private val appIconManager: AppIconManager,
+    private val tenantStore: com.homelab.app.data.local.TenantStore
 ) : ViewModel() {
 
     data class UpdateBannerState(
@@ -85,6 +86,13 @@ class SettingsViewModel @Inject constructor(
     val biometricEnabled: StateFlow<Boolean> = localPreferencesRepository.biometricEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val tenantSelection: StateFlow<com.homelab.app.domain.model.TenantSelection> = tenantStore.selection
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            com.homelab.app.domain.model.TenantSelection.INITIAL
+        )
+
     val isPinSet: StateFlow<Boolean> = localPreferencesRepository.appPin
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
         .let { flow ->
@@ -101,6 +109,22 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             checkForUpdateBanner(force = false)
         }
+    }
+
+    fun addTenant(name: String, kind: com.homelab.app.domain.model.TenantKind) {
+        viewModelScope.launch { tenantStore.addTenant(name, kind) }
+    }
+
+    fun renameTenant(id: String, name: String) {
+        viewModelScope.launch { tenantStore.renameTenant(id, name) }
+    }
+
+    fun removeTenant(id: String) {
+        viewModelScope.launch { tenantStore.removeTenant(id) }
+    }
+
+    fun setActiveTenant(id: String) {
+        viewModelScope.launch { tenantStore.setActiveTenant(id) }
     }
 
     fun setThemeMode(mode: ThemeMode) {
