@@ -1255,10 +1255,23 @@ struct ActionPolicyDecision: Codable, Equatable, Sendable {
 }
 
 enum ControlledActionPolicy {
+    /// Tenant-membership gate. `actorTenants == nil` means membership is not configured
+    /// (single-tenant install) and the gate is a no-op. A non-nil set — including an empty
+    /// one, meaning the actor belongs to no tenant — is enforced: the target instance's
+    /// tenant must be a member.
+    static func tenantMembershipSatisfied(
+        _ request: ControlledActionRequest,
+        actorTenants: Set<String>?
+    ) -> Bool {
+        guard let actorTenants else { return true }
+        return actorTenants.contains(Tenant.refOrDefault(request.tenantRef))
+    }
+
     static func evaluate(
         _ request: ControlledActionRequest,
         actorRole: ControlledActionRole,
-        providerCapabilities: Set<ProviderCapability>
+        providerCapabilities: Set<ProviderCapability>,
+        actorTenants: Set<String>? = nil
     ) -> ActionPolicyDecision {
         let requiredRole: ControlledActionRole
         switch request.risk {
@@ -1293,6 +1306,15 @@ enum ControlledActionPolicy {
             return ActionPolicyDecision(
                 outcome: .denied,
                 reasonCode: invalidReason,
+                requiredRole: requiredRole,
+                confirmationRequired: confirmationRequired
+            )
+        }
+        // Tenant-membership gate, evaluated before the write-capability and role checks.
+        if !tenantMembershipSatisfied(request, actorTenants: actorTenants) {
+            return ActionPolicyDecision(
+                outcome: .denied,
+                reasonCode: "tenant-membership-required",
                 requiredRole: requiredRole,
                 confirmationRequired: confirmationRequired
             )
@@ -1350,6 +1372,7 @@ struct ActionAuditRecord: Codable, Equatable, Sendable {
     let auditId: UUID
     let requestId: String
     let providerRef: String
+    let tenantRef: String
     let action: String
     let targetRef: String
     let risk: ControlledActionRisk
@@ -1358,6 +1381,51 @@ struct ActionAuditRecord: Codable, Equatable, Sendable {
     let state: ActionExecutionState
     let reasonCode: String
     let recordedAt: Date
+
+    init(
+        auditId: UUID,
+        requestId: String,
+        providerRef: String,
+        tenantRef: String,
+        action: String,
+        targetRef: String,
+        risk: ControlledActionRisk,
+        actorRole: ControlledActionRole,
+        idempotencyKey: String,
+        state: ActionExecutionState,
+        reasonCode: String,
+        recordedAt: Date
+    ) {
+        self.auditId = auditId
+        self.requestId = requestId
+        self.providerRef = providerRef
+        self.tenantRef = tenantRef
+        self.action = action
+        self.targetRef = targetRef
+        self.risk = risk
+        self.actorRole = actorRole
+        self.idempotencyKey = idempotencyKey
+        self.state = state
+        self.reasonCode = reasonCode
+        self.recordedAt = recordedAt
+    }
+
+    // Back-compat: records persisted before Phase 4 carry no tenantRef and resolve to `default`.
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.auditId = try c.decode(UUID.self, forKey: .auditId)
+        self.requestId = try c.decode(String.self, forKey: .requestId)
+        self.providerRef = try c.decode(String.self, forKey: .providerRef)
+        self.tenantRef = Tenant.refOrDefault(try c.decodeIfPresent(String.self, forKey: .tenantRef))
+        self.action = try c.decode(String.self, forKey: .action)
+        self.targetRef = try c.decode(String.self, forKey: .targetRef)
+        self.risk = try c.decode(ControlledActionRisk.self, forKey: .risk)
+        self.actorRole = try c.decode(ControlledActionRole.self, forKey: .actorRole)
+        self.idempotencyKey = try c.decode(String.self, forKey: .idempotencyKey)
+        self.state = try c.decode(ActionExecutionState.self, forKey: .state)
+        self.reasonCode = try c.decode(String.self, forKey: .reasonCode)
+        self.recordedAt = try c.decode(Date.self, forKey: .recordedAt)
+    }
 }
 
 struct DurableActionQueueEntry: Codable, Equatable, Sendable {
@@ -1754,9 +1822,19 @@ actor ControlledActionCoordinator {
         request: ControlledActionRequest,
         actorRole: ControlledActionRole,
         providerCapabilities: Set<ProviderCapability>,
+        actorTenants: Set<String>? = nil,
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
         await recoverIfNeeded()
+        // Authorization is actor-contextual, so it is re-checked here ahead of any cached
+        // terminal result: a non-member never receives another actor's success, and a
+        // membership denial is never persisted to block a later authorized submission.
+        if !ControlledActionPolicy.tenantMembershipSatisfied(request, actorTenants: actorTenants) {
+            return await Self.audit(
+                request: request, actorRole: actorRole, state: .rejected,
+                reasonCode: "tenant-membership-required", ledger: ledger, now: now
+            )
+        }
         let existing = durableEntries[request.idempotencyKey]
         if let existing, !existing.request.hasSameIdentity(as: request) {
             return await Self.audit(
@@ -1786,6 +1864,7 @@ actor ControlledActionCoordinator {
                     request: request,
                     actorRole: actorRole,
                     providerCapabilities: providerCapabilities,
+                    actorTenants: actorTenants,
                     existing: existing,
                     ledger: ledger,
                     durableStore: durableStore,
@@ -1848,6 +1927,7 @@ actor ControlledActionCoordinator {
         request: ControlledActionRequest,
         actorRole: ControlledActionRole,
         providerCapabilities: Set<ProviderCapability>,
+        actorTenants: Set<String>?,
         existing: DurableActionQueueEntry?,
         ledger: ControlledActionLedger,
         durableStore: any DurableActionQueueStore,
@@ -1857,7 +1937,8 @@ actor ControlledActionCoordinator {
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
         let decision = ControlledActionPolicy.evaluate(
-            request, actorRole: actorRole, providerCapabilities: providerCapabilities
+            request, actorRole: actorRole, providerCapabilities: providerCapabilities,
+            actorTenants: actorTenants
         )
         switch decision.outcome {
         case .denied, .confirmationRequired:
@@ -2028,6 +2109,7 @@ actor ControlledActionCoordinator {
     ) async -> ActionAuditRecord {
         let record = ActionAuditRecord(
             auditId: UUID(), requestId: request.id, providerRef: request.providerRef,
+            tenantRef: Tenant.refOrDefault(request.tenantRef),
             action: request.action, targetRef: request.targetRef, risk: request.risk,
             actorRole: actorRole, idempotencyKey: request.idempotencyKey,
             state: state, reasonCode: reasonCode, recordedAt: now()
@@ -2045,8 +2127,9 @@ private extension ControlledActionRequest {
     }
 
     func hasSameIdentity(as other: ControlledActionRequest) -> Bool {
-        providerRef == other.providerRef && tenantRef == other.tenantRef &&
-            action == other.action && targetRef == other.targetRef && risk == other.risk
+        providerRef == other.providerRef
+            && Tenant.refOrDefault(tenantRef) == Tenant.refOrDefault(other.tenantRef)
+            && action == other.action && targetRef == other.targetRef && risk == other.risk
     }
 }
 

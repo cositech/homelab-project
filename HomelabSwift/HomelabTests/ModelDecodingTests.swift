@@ -1403,11 +1403,13 @@ final class ModelDecodingTests: XCTestCase {
         risk: ControlledActionRisk = .medium,
         dryRun: Bool = false,
         confirmed: Bool = false,
-        idempotencyKey: String = "0123456789abcdef"
+        idempotencyKey: String = "0123456789abcdef",
+        tenantRef: String? = nil
     ) -> ControlledActionRequest {
         ControlledActionRequest(
             id: "request-1",
             providerRef: "proxmox:cluster-a",
+            tenantRef: tenantRef,
             action: "guest.shutdown",
             targetRef: "qemu/101",
             risk: risk,
@@ -1416,6 +1418,133 @@ final class ModelDecodingTests: XCTestCase {
             dryRun: dryRun,
             confirmed: confirmed
         )
+    }
+
+    func testControlledActionTenantMembershipGate() async {
+        // No membership set -> gate is a no-op even for a non-default tenant.
+        let openDecision = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .low, tenantRef: "acme"),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions]
+        )
+        XCTAssertEqual(openDecision.outcome, .approved)
+
+        // Actor outside the target tenant is denied, ahead of role and capability checks.
+        let deniedDecision = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .high, tenantRef: "acme"),
+            actorRole: .viewer,
+            providerCapabilities: [],
+            actorTenants: ["default", "globex"]
+        )
+        XCTAssertEqual(deniedDecision.outcome, .denied)
+        XCTAssertEqual(deniedDecision.reasonCode, "tenant-membership-required")
+
+        // Actor inside the target tenant passes the gate.
+        let allowedDecision = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .low, tenantRef: "acme"),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["acme"]
+        )
+        XCTAssertEqual(allowedDecision.outcome, .approved)
+
+        // A nil tenantRef is gated as the default tenant.
+        let nilDenied = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .low, tenantRef: nil),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["acme"]
+        )
+        XCTAssertEqual(nilDenied.reasonCode, "tenant-membership-required")
+
+        // A configured but empty membership set denies every tenant.
+        let emptyDenied = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .low, tenantRef: nil),
+            actorRole: .admin,
+            providerCapabilities: [.writeActions],
+            actorTenants: []
+        )
+        XCTAssertEqual(emptyDenied.outcome, .denied)
+        XCTAssertEqual(emptyDenied.reasonCode, "tenant-membership-required")
+    }
+
+    func testControlledActionCoordinatorEnforcesTenantMembershipAndStampsAudit() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(now: { Date(timeIntervalSince1970: 2) })
+
+        let denied = await coordinator.execute(
+            request: controlledActionRequest(risk: .low, tenantRef: "acme"),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["default"]
+        ) {
+            await counter.increment()
+        }
+        let deniedInvocations = await counter.value
+        XCTAssertEqual(denied.state, .rejected)
+        XCTAssertEqual(denied.reasonCode, "tenant-membership-required")
+        XCTAssertEqual(deniedInvocations, 0)
+
+        let ok = await coordinator.execute(
+            request: controlledActionRequest(risk: .low, idempotencyKey: "fedcba9876543210", tenantRef: "acme"),
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["acme"]
+        ) {
+            await counter.increment()
+        }
+        XCTAssertEqual(ok.state, .succeeded)
+        XCTAssertEqual(ok.tenantRef, "acme")
+    }
+
+    func testControlledActionMembershipDenialIsNotCachedAndUnblocksLaterAuthorizedActor() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(now: { Date(timeIntervalSince1970: 2) })
+        let request = controlledActionRequest(risk: .low, tenantRef: "acme")
+
+        let denied = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["default"]
+        ) {
+            await counter.increment()
+        }
+        XCTAssertEqual(denied.state, .rejected)
+
+        let allowed = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["acme"]
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(allowed.state, .succeeded)
+        XCTAssertEqual(invocations, 1)
+    }
+
+    func testActionAuditRecordDecodesLegacyPayloadWithoutTenantRef() throws {
+        let legacy = """
+        {
+            "auditId": "1B4E28BA-2FA1-11D2-883F-0016D3CCA427",
+            "requestId": "request-1",
+            "providerRef": "proxmox:cluster-a",
+            "action": "guest.shutdown",
+            "targetRef": "qemu/101",
+            "risk": "low",
+            "actorRole": "operator",
+            "idempotencyKey": "0123456789abcdef",
+            "state": "succeeded",
+            "reasonCode": "completed",
+            "recordedAt": 0
+        }
+        """.data(using: .utf8)!
+
+        let record = try JSONDecoder().decode(ActionAuditRecord.self, from: legacy)
+        XCTAssertEqual(record.tenantRef, Tenant.defaultId)
     }
 
     func testControlledActionViewerCannotExecuteWrites() {

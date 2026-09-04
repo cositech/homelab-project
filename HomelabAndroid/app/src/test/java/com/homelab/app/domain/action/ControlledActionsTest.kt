@@ -41,10 +41,12 @@ class ControlledActionsTest {
         risk: ActionRisk = ActionRisk.MEDIUM,
         dryRun: Boolean = false,
         confirmed: Boolean = false,
-        idempotencyKey: String = "0123456789abcdef"
+        idempotencyKey: String = "0123456789abcdef",
+        tenantRef: String? = null
     ) = ControlledActionRequest(
         id = "request-1",
         providerRef = "proxmox:cluster-a",
+        tenantRef = tenantRef,
         action = "guest.shutdown",
         targetRef = "qemu/101",
         risk = risk,
@@ -88,6 +90,132 @@ class ControlledActionsTest {
 
         assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
         assertEquals(ActionRole.ADMIN, decision.requiredRole)
+    }
+
+    @Test
+    fun `null tenant membership leaves the gate a no-op`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.LOW, tenantRef = "acme"),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = null
+        )
+
+        assertEquals(ActionPolicyOutcome.APPROVED, decision.outcome)
+    }
+
+    @Test
+    fun `a configured but empty membership set denies every tenant`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.LOW, tenantRef = null),
+            ActionRole.ADMIN,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = emptySet()
+        )
+
+        assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
+        assertEquals("tenant-membership-required", decision.reasonCode)
+    }
+
+    @Test
+    fun `a membership denial is not cached and does not block a later authorized submission`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(now = { 2_000 })
+        val req = request(risk = ActionRisk.LOW, tenantRef = "acme")
+
+        val denied = coordinator.execute(
+            req, ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("default")
+        ) { invocations += 1 }
+        assertEquals(ActionExecutionState.REJECTED, denied.state)
+
+        val allowed = coordinator.execute(
+            req, ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("acme")
+        ) { invocations += 1 }
+
+        assertEquals(ActionExecutionState.SUCCEEDED, allowed.state)
+        assertEquals(1, invocations)
+    }
+
+    @Test
+    fun `actor outside the target tenant is denied before role and capability checks`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.HIGH, tenantRef = "acme"),
+            ActionRole.VIEWER,
+            providerCapabilities = emptySet(),
+            actorTenants = setOf("default", "globex")
+        )
+
+        assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
+        assertEquals("tenant-membership-required", decision.reasonCode)
+    }
+
+    @Test
+    fun `actor inside the target tenant passes the gate`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.LOW, tenantRef = "acme"),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("acme")
+        )
+
+        assertEquals(ActionPolicyOutcome.APPROVED, decision.outcome)
+    }
+
+    @Test
+    fun `a null tenant ref is gated as the default tenant`() {
+        val denied = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.LOW, tenantRef = null),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("acme")
+        )
+        assertEquals("tenant-membership-required", denied.reasonCode)
+
+        val allowed = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.LOW, tenantRef = null),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("default")
+        )
+        assertEquals(ActionPolicyOutcome.APPROVED, allowed.outcome)
+    }
+
+    @Test
+    fun `audit record carries the resolved tenant ref`() = runTest {
+        val coordinator = ControlledActionCoordinator(now = { 2_000 })
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW, tenantRef = "acme"),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("acme")
+        ) {}
+
+        assertEquals(ActionExecutionState.SUCCEEDED, result.state)
+        assertEquals("acme", result.tenantRef)
+    }
+
+    @Test
+    fun `coordinator denies actions targeting a tenant the actor is not in`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(now = { 2_000 })
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW, tenantRef = "acme"),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("default")
+        ) {
+            invocations += 1
+        }
+
+        assertEquals(ActionExecutionState.REJECTED, result.state)
+        assertEquals("tenant-membership-required", result.reasonCode)
+        assertEquals(0, invocations)
     }
 
     @Test
