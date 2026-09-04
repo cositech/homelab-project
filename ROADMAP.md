@@ -59,13 +59,31 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] qBittorrent torrent and transfer lifecycle actions
   - [x] PatchMon monitored-host removal
   - [x] Radarr, Sonarr, Lidarr, Jellyseerr, Prowlarr, Gluetun and FlareSolverr media-service actions
-  - [ ] Remaining container, DNS, monitoring, update and configuration providers
+  - [ ] Proxmox VE non-lifecycle mutations — backup-job trigger, storage-content delete, firewall
+    enable/disable, VM/LXC snapshot create/delete/rollback, and guest clone/migrate — plus a
+    Proxmox Backup Server backup-job trigger; today only the guest lifecycle path routes through
+    the coordinator and these call `proxmoxRepository` / the Proxmox API client directly
+  - [x] Every other provider audited — the integrations without a controlled-action surface
+    (Uptime Kuma, Gitea, OPNsense, Beszel, Maltrail, Jellystat, Plex, UniFi, TrueNAS, Wakapi and
+    the Phase-2 read-only observability providers) expose no mutating endpoints in this app, so
+    there is nothing further to migrate
 
-Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass.
+Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place and every provider except Proxmox routes its write surface through the coordinator; the gate closes once the Proxmox non-lifecycle mutations above are migrated and `scripts/phase3-controlled-actions-audit.sh` asserts each Proxmox mutation (not just one coordinator call per file).
 
 ## Phase 4 — Correlation and MSP mode
 
-Sites, tenants, customers, canonical assets, cross-provider correlation, per-tenant credentials and strict tenant isolation.
+See `docs/architecture/PHASE4_CORRELATION_MSP.md` for the design.
+
+- [ ] Canonical asset model: cross-provider identity resolution (hostname, IP, MAC, serial, cloud id) into stable asset keys, read-only
+- [ ] Site and tenant contracts: `Tenant`, `Site`, `Customer` value objects; every provider instance, asset, health record, alert and action request carries a `tenantRef`
+- [ ] Tenant-scoped storage and queries: operations snapshots, search, the Phase-3 audit ledger and durable action queue partition by tenant; no cross-tenant reads
+- [ ] Per-tenant credential isolation: the Phase-1 `credentialRef` indirection is kept but tenant-namespaced (migration re-keys existing references into `default`); Keystore/Keychain entries and TLS trust never shared across tenants
+- [ ] Cross-provider correlation views: group health, alerts and assets by canonical asset and by site/customer; surface "same host, three providers" rollups
+- [ ] Tenant switcher and scoping UI on both clients; global workspace defaults to the active tenant, with an explicit all-tenants mode for single-tenant installs
+- [ ] Policy extension: `ControlledActionPolicy` gains a tenant-membership check; an actor may only execute against instances in tenants they belong to
+- [ ] Migration and back-compat: existing single-tenant installs map to an implicit `default` tenant with no user-visible change
+
+Exit gate: canonical-asset and tenant-isolation contract tests, a cross-provider correlation reference (one host seen by Proxmox + a monitor + a patch provider), Android/iOS compilation and unit tests, Phase-1 credential-isolation invariants, Phase-3 policy/audit invariants, CodeQL and dependency review pass. No cross-tenant data path may exist in storage, query, credential or action code.
 
 ## Phase 5 — Gateway and push
 
