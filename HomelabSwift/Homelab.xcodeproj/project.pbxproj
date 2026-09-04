@@ -91,6 +91,7 @@
 		7E7FBBDCDE4E1CAE6CC714D9 /* NpmDeadHostCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDFB66029D52483B7F25F83F /* NpmDeadHostCard.swift */; };
 		7E861F79CA67DDAD2078A333 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DB66F8274714A001051F1BE /* SettingsView.swift */; };
 		7EBB5603EC5B23E166D98E33 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151F3E3C716170F5B65A688F /* SettingsStore.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E102 /* TenantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E101 /* TenantStore.swift */; };
 		7EF18D092660634150160E03 /* Translations+English.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F7AE0005466E2FF260B000 /* Translations+English.swift */; };
 		7FAEE452C0F73043A465DF53 /* NpmRedirectionHostCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F233D9CF75937405674EEE4 /* NpmRedirectionHostCard.swift */; };
 		825A29FD831832ED501CF764 /* HealthchecksCheckEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4ED2EF6B8B525C2387A59EC /* HealthchecksCheckEditor.swift */; };
@@ -222,6 +223,7 @@
 		1432776545071E3C10F37827 /* NpmCertificateForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NpmCertificateForm.swift; sourceTree = "<group>"; };
 		1474391595DB64C568F77CE2 /* ProxmoxAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxmoxAPIClient.swift; sourceTree = "<group>"; };
 		151F3E3C716170F5B65A688F /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E101 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
 		15D7F6591D7ABB7E8CB96944 /* GiteaAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiteaAPIClient.swift; sourceTree = "<group>"; };
 		18C16B119CB2EDEE60B4784D /* UptimeKumaDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UptimeKumaDashboard.swift; sourceTree = "<group>"; };
 		1911146A0ED528B1D912614C /* AdGuardHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdGuardHomeModels.swift; sourceTree = "<group>"; };
@@ -842,6 +844,7 @@
 			children = (
 				258507E3A00D686FDEF7E9CE /* ServicesStore.swift */,
 				151F3E3C716170F5B65A688F /* SettingsStore.swift */,
+				A1B2C3D4E5F6A7B8C9D0E101 /* TenantStore.swift */,
 			);
 			path = Stores;
 			sourceTree = "<group>";
@@ -1608,6 +1611,7 @@
 				E6E04DD8242F5252CD32CCAB /* ServiceType.swift in Sources */,
 				BAA4219103CC83A339C434BD /* ServicesStore.swift in Sources */,
 				7EBB5603EC5B23E166D98E33 /* SettingsStore.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E102 /* TenantStore.swift in Sources */,
 				7E861F79CA67DDAD2078A333 /* SettingsView.swift in Sources */,
 				8EADC34444DEB43F553D0513 /* SkeletonLoader.swift in Sources */,
 				D2668B335DA6FE0CD64E6594 /* SonarrAPIClient.swift in Sources */,
