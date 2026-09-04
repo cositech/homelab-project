@@ -5,6 +5,7 @@ struct ServiceLoginView: View {
     var existingInstanceId: UUID? = nil
 
     @Environment(ServicesStore.self) private var servicesStore
+    @Environment(TenantStore.self) private var tenantStore
     @Environment(Localizer.self) private var localizer
     @Environment(\.dismiss) private var dismiss
 
@@ -30,6 +31,18 @@ struct ServiceLoginView: View {
     @State private var proxmoxApiTokenSecret = ""
     @State private var unifiAuthMode: UniFiAuthMode = .siteManager
     @State private var showUniFiDemo = false
+    // Nil until the user touches the tenant picker; until then it tracks the existing
+    // instance's tenant (editing) or the active tenant (creating) as those load in. Clamped to a
+    // tenant that is actually still configured — e.g. the existing instance's tenant may have
+    // been deleted since — falling back to the active one, which `TenantSelection` always keeps
+    // valid.
+    @State private var manuallySelectedTenantId: String?
+
+    private var effectiveTenantId: String {
+        let candidate = manuallySelectedTenantId ?? existingInstance?.tenantRef ?? tenantStore.selection.activeTenantId
+        let selection = tenantStore.selection
+        return selection.tenants.contains { $0.id == candidate } ? candidate : selection.activeTenantId
+    }
 
     private var existingInstance: ServiceInstance? {
         existingInstanceId.flatMap { servicesStore.instance(id: $0) }
@@ -315,6 +328,49 @@ struct ServiceLoginView: View {
                     text: $fallbackUrl,
                     keyboardType: .URL
                 )
+            }
+
+            // Which tenant this instance belongs to. Hidden on a single-tenant install (only the
+            // `default` tenant configured) so it adds no UI surface until a second tenant exists.
+            if tenantStore.selection.tenants.count > 1 {
+                let selectedTenant = tenantStore.selection.tenants.first { $0.id == effectiveTenantId } ?? Tenant.default
+
+                HStack(spacing: 12) {
+                    Image(systemName: "person.2.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(width: 32, height: 32)
+                        .background(AppTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Text(localizer.t.settingsTenants)
+                        .font(.body.weight(.medium))
+
+                    Spacer()
+
+                    Menu {
+                        ForEach(tenantStore.selection.tenants) { tenant in
+                            Button {
+                                manuallySelectedTenantId = tenant.id
+                            } label: {
+                                if tenant.id == effectiveTenantId {
+                                    Label(tenantDisplayName(tenant, localizer: localizer), systemImage: "checkmark")
+                                } else {
+                                    Text(tenantDisplayName(tenant, localizer: localizer))
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(tenantDisplayName(selectedTenant, localizer: localizer))
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .glassCard()
             }
 
             if serviceType == .unifiNetwork {
@@ -668,10 +724,14 @@ struct ServiceLoginView: View {
         Task {
             do {
                 var instance = try await buildInstance(label: cleanLabel, url: cleanUrl, fallbackUrl: cleanFallback)
-                if let existing = existingInstance {
-                    // Editing an instance must never move it between tenants or sites.
-                    instance = instance.updating(tenantRef: existing.tenantRef, siteRef: existing.siteRef)
-                }
+                // The picker's choice, or the existing instance's tenant, or the active tenant
+                // for a new one — resolved once, up front, so it can't drift mid-save.
+                let resolvedTenantRef = effectiveTenantId
+                instance = instance.updating(tenantRef: resolvedTenantRef)
+                // A site belongs to exactly one tenant, so moving an instance to a different
+                // tenant must not carry its old site along. `updating(siteRef:)` treats `nil` as
+                // "leave unchanged" (it merges with `??`), so the clear is a direct assignment.
+                instance.siteRef = existingInstance?.tenantRef == resolvedTenantRef ? existingInstance?.siteRef : nil
                 await servicesStore.saveInstance(instance, refreshPiHoleAuth: false)
                 HapticManager.success()
                 dismiss()

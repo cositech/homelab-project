@@ -76,7 +76,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homelab.app.R
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.ui.components.ServiceIcon
+import com.homelab.app.ui.components.TenantPicker
 import com.homelab.app.util.ServiceType
 import kotlinx.coroutines.launch
 
@@ -90,6 +92,7 @@ fun ServiceLoginScreen(
     val existingInstance by viewModel.existingInstance.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
@@ -107,6 +110,15 @@ fun ServiceLoginScreen(
     var allowSelfSigned by remember { mutableStateOf(false) }
     var showSecret by remember { mutableStateOf(false) }
     var hasSubmitted by remember { mutableStateOf(false) }
+    // Null until the user touches the picker; until then it tracks the existing instance's
+    // tenant (editing) or the active tenant (creating) as those load in. Clamped to a tenant
+    // that is actually still configured — e.g. the existing instance's tenant may have been
+    // deleted since — falling back to the active one, which `TenantSelection` always keeps valid.
+    var manuallySelectedTenantId by remember { mutableStateOf<String?>(null) }
+    val effectiveTenantId = run {
+        val candidate = manuallySelectedTenantId ?: existingInstance?.tenantRef ?: tenantSelection.activeTenantId
+        if (tenantSelection.tenants.any { it.id == candidate }) candidate else tenantSelection.activeTenantId
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val shakeOffset = remember { Animatable(0f) }
@@ -420,7 +432,8 @@ fun ServiceLoginScreen(
                     allowSelfSigned = allowSelfSigned,
                     proxmoxRealm = proxmoxRealm,
                     proxmoxOtp = proxmoxOtp,
-                    proxmoxUseApiToken = proxmoxUseApiToken
+                    proxmoxUseApiToken = proxmoxUseApiToken,
+                    tenantRef = effectiveTenantId
                 )
             }
 
@@ -462,6 +475,13 @@ fun ServiceLoginScreen(
                     .fillMaxWidth()
                     .padding(bottom = 14.dp),
                 shape = RoundedCornerShape(14.dp)
+            )
+
+            TenantPicker(
+                tenants = tenantSelection.tenants,
+                selectedTenantId = effectiveTenantId,
+                onTenantSelected = { manuallySelectedTenantId = it.id },
+                modifier = Modifier.padding(bottom = 14.dp)
             )
 
             Surface(

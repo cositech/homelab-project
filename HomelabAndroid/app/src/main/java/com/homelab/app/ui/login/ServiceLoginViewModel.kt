@@ -36,9 +36,11 @@ import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.PterodactylRepository
 import com.homelab.app.data.repository.CalagopusRepository
+import com.homelab.app.data.local.TenantStore
 import com.homelab.app.domain.model.PiHoleAuthMode
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.domain.model.Tenant
+import com.homelab.app.domain.model.TenantSelection
 import com.homelab.app.util.ErrorHandler
 import com.homelab.app.util.ServiceType
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,7 +49,9 @@ import java.net.URI
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -84,13 +88,17 @@ class ServiceLoginViewModel @Inject constructor(
     private val pterodactylRepository: PterodactylRepository,
     private val calagopusRepository: CalagopusRepository,
     private val observabilityRepository: ObservabilityRepository,
-    private val infrastructureOperationsRepository: InfrastructureOperationsRepository
+    private val infrastructureOperationsRepository: InfrastructureOperationsRepository,
+    private val tenantStore: TenantStore
 ) : ViewModel() {
 
     private val existingInstanceId: String? = savedStateHandle["instanceId"]
 
     private val _existingInstance = MutableStateFlow<ServiceInstance?>(null)
     val existingInstance: StateFlow<ServiceInstance?> = _existingInstance
+
+    val tenantSelection: StateFlow<TenantSelection> = tenantStore.selection
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TenantSelection.INITIAL)
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -118,7 +126,8 @@ class ServiceLoginViewModel @Inject constructor(
         allowSelfSigned: Boolean = false,
         proxmoxRealm: String = "pam",
         proxmoxOtp: String = "",
-        proxmoxUseApiToken: Boolean = false
+        proxmoxUseApiToken: Boolean = false,
+        tenantRef: String? = null
     ) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -859,12 +868,25 @@ class ServiceLoginViewModel @Inject constructor(
                             )
                         }
                     }
-                }.copy(
-                    allowSelfSigned = allowSelfSigned,
-                    // Editing an instance must never move it between tenants or sites.
-                    tenantRef = existing?.tenantRef ?: Tenant.DEFAULT_ID,
-                    siteRef = existing?.siteRef
-                )
+                }.let { built ->
+                    // The caller (the login screen) resolves the effective tenant — the picker's
+                    // choice, or the existing instance's tenant, or the active tenant for a new
+                    // one — and always passes it explicitly; this fallback only covers a caller
+                    // that omits it, preserving the instance's current tenant rather than
+                    // silently resetting it to default.
+                    val resolvedTenantRef = Tenant.refOrDefault(tenantRef ?: existing?.tenantRef)
+                    built.copy(
+                        allowSelfSigned = allowSelfSigned,
+                        tenantRef = resolvedTenantRef,
+                        // A site belongs to exactly one tenant (Site.tenantRef); moving an
+                        // instance to a different tenant must not carry its old site along.
+                        siteRef = if (existing != null && existing.tenantRef == resolvedTenantRef) {
+                            existing.siteRef
+                        } else {
+                            null
+                        }
+                    )
+                }
 
                 servicesRepository.saveInstance(instance)
                 _existingInstance.value = instance
