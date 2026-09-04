@@ -173,6 +173,26 @@ final class ServicesStoreTests: XCTestCase {
         XCTAssertEqual(ref, "credential:v2:acme:\(instance.id.uuidString.lowercased())")
     }
 
+    func testInstancesForTenantExcludesEveryOtherTenantsInstances() async {
+        let store = ServicesStore()
+        let acme = ServiceInstance(
+            id: UUID(uuidString: "40000000-0000-0000-0000-000000000006")!,
+            type: .gitea, label: "Acme Gitea", url: "https://gitea.acme.internal",
+            tenantRef: "acme", token: "t1"
+        )
+        let globex = ServiceInstance(
+            id: UUID(uuidString: "40000000-0000-0000-0000-000000000007")!,
+            type: .gitea, label: "Globex Gitea", url: "https://gitea.globex.internal",
+            tenantRef: "globex", token: "t2"
+        )
+
+        await store.saveInstance(acme)
+        await store.saveInstance(globex)
+
+        XCTAssertEqual(store.instances(tenantRef: "acme").map(\.id), [acme.id])
+        XCTAssertFalse(store.instances(tenantRef: "globex").contains { $0.tenantRef == "acme" })
+    }
+
     func testSavedInstanceReKeysAStaleV2ReferenceWhenTheTenantHasChanged() async {
         let store = ServicesStore()
         let id = UUID(uuidString: "40000000-0000-0000-0000-000000000005")!

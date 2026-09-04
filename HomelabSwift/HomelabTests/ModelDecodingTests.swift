@@ -2170,6 +2170,43 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(result.reasonCode, "automatic-retry-forbidden-transport-error")
     }
 
+    func testAuditAndQueueReadsScopeToOneTenantWithNoCrossTenantLeakage() async {
+        let coordinator = ControlledActionCoordinator(waitBeforeRetry: { _ in })
+        let acmeRequest = controlledActionRequest(
+            risk: .high, confirmed: true, idempotencyKey: "acme0123456789ab", tenantRef: "acme"
+        )
+        let globexRequest = controlledActionRequest(
+            risk: .high, confirmed: true, idempotencyKey: "globex0123456789", tenantRef: "globex"
+        )
+
+        // Lands in .manualReview (HIGH risk forbids automatic retry), so it stays in the durable
+        // queue's pending-recovery set.
+        _ = await coordinator.execute(
+            request: acmeRequest, actorRole: .admin, providerCapabilities: [.writeActions]
+        ) {
+            throw ControlledActionOperationError(reasonCode: "transport-error", disposition: .retryable)
+        }
+        _ = await coordinator.execute(
+            request: globexRequest, actorRole: .admin, providerCapabilities: [.writeActions]
+        ) {
+            throw ControlledActionOperationError(reasonCode: "transport-error", disposition: .retryable)
+        }
+
+        let acmeAudit = await coordinator.auditSnapshot(tenantRef: "acme")
+        XCTAssertFalse(acmeAudit.isEmpty)
+        XCTAssertTrue(acmeAudit.allSatisfy { $0.tenantRef == "acme" })
+
+        let globexAudit = await coordinator.auditSnapshot(tenantRef: "globex")
+        XCTAssertFalse(globexAudit.isEmpty)
+        XCTAssertTrue(globexAudit.allSatisfy { $0.tenantRef == "globex" })
+
+        let acmeRecovery = await coordinator.pendingRecovery(tenantRef: "acme")
+        XCTAssertFalse(acmeRecovery.isEmpty)
+        XCTAssertTrue(acmeRecovery.allSatisfy { $0.request.tenantRef == "acme" })
+        let globexRecovery = await coordinator.pendingRecovery(tenantRef: "globex")
+        XCTAssertFalse(globexRecovery.contains { $0.request.tenantRef == "acme" })
+    }
+
     func testControlledActionTerminalResultSurvivesCoordinatorReconstruction() async {
         let counter = ActionInvocationCounter()
         let store = InMemoryDurableActionQueueStore()

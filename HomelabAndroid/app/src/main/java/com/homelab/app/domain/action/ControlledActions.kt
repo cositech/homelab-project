@@ -250,6 +250,12 @@ class ControlledActionLedger(private val maximumRecords: Int = 500) {
     }
 
     @Synchronized fun snapshot(): List<ActionAuditRecord> = records.toList()
+
+    /** Only the records belonging to [tenantRef]. No cross-tenant read: every other tenant's records are excluded. */
+    @Synchronized fun snapshot(tenantRef: String): List<ActionAuditRecord> {
+        val target = Tenant.refOrDefault(tenantRef)
+        return records.filter { it.tenantRef == target }
+    }
 }
 
 /**
@@ -451,7 +457,16 @@ class ControlledActionCoordinator(
         }
     }
 
+    /** [pendingRecovery] narrowed to [tenantRef]. No cross-tenant read: every other tenant's entries are excluded. */
+    suspend fun pendingRecovery(tenantRef: String): List<DurableActionQueueEntry> {
+        val target = Tenant.refOrDefault(tenantRef)
+        return pendingRecovery().filter { Tenant.refOrDefault(it.request.tenantRef) == target }
+    }
+
     fun auditSnapshot(): List<ActionAuditRecord> = ledger.snapshot()
+
+    /** [auditSnapshot] narrowed to [tenantRef]. No cross-tenant read: every other tenant's records are excluded. */
+    fun auditSnapshot(tenantRef: String): List<ActionAuditRecord> = ledger.snapshot(tenantRef)
 
     private suspend fun recoverLocked() {
         if (recovered) return

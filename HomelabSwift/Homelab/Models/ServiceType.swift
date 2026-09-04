@@ -1758,6 +1758,13 @@ actor ControlledActionLedger {
     }
 
     func snapshot() -> [ActionAuditRecord] { records }
+
+    /// Only the records belonging to `tenantRef`. No cross-tenant read: every other tenant's
+    /// records are excluded.
+    func snapshot(tenantRef: String) -> [ActionAuditRecord] {
+        let target = Tenant.refOrDefault(tenantRef)
+        return records.filter { $0.tenantRef == target }
+    }
 }
 
 actor ControlledActionExecutionGate {
@@ -1931,7 +1938,18 @@ actor ControlledActionCoordinator {
         }
     }
 
+    /// `pendingRecovery()` narrowed to `tenantRef`. No cross-tenant read: every other tenant's
+    /// entries are excluded.
+    func pendingRecovery(tenantRef: String) async -> [DurableActionQueueEntry] {
+        let target = Tenant.refOrDefault(tenantRef)
+        return await pendingRecovery().filter { Tenant.refOrDefault($0.request.tenantRef) == target }
+    }
+
     func auditSnapshot() async -> [ActionAuditRecord] { await ledger.snapshot() }
+
+    /// `auditSnapshot()` narrowed to `tenantRef`. No cross-tenant read: every other tenant's
+    /// records are excluded.
+    func auditSnapshot(tenantRef: String) async -> [ActionAuditRecord] { await ledger.snapshot(tenantRef: tenantRef) }
 
     private func recoverIfNeeded() async {
         guard !recovered else { return }

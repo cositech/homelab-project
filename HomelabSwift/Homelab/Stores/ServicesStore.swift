@@ -529,6 +529,13 @@ final class ServicesStore {
         allInstances.filter { $0.type == type }
     }
 
+    /// `allInstances` narrowed to `tenantRef`. No cross-tenant read: every other tenant's
+    /// instances are excluded.
+    func instances(tenantRef: String) -> [ServiceInstance] {
+        let target = Tenant.refOrDefault(tenantRef)
+        return allInstances.filter { $0.tenantRef == target }
+    }
+
     func instance(id: UUID) -> ServiceInstance? {
         instancesById[id]
     }
