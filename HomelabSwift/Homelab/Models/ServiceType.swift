@@ -2049,3 +2049,231 @@ private extension ControlledActionRequest {
             action == other.action && targetRef == other.targetRef && risk == other.risk
     }
 }
+
+// MARK: - Phase 4 canonical asset model
+
+/// Resolution is pure, deterministic and read-only: the same observations in produce the same asset
+/// keys out, with no clock or network dependency. It never rewrites provider data, never merges
+/// across tenants, and a wrong match degrades to "two assets" rather than leaking one tenant's host
+/// into another. Assets are recomputed from the current operations snapshot on every refresh.
+
+/// Normalized identity signals extracted from a single provider observation.
+struct AssetIdentity: Equatable, Sendable {
+    var fqdns: Set<String> = []
+    var shortHostnames: Set<String> = []
+    var ipv4: Set<String> = []
+    var ipv6: Set<String> = []
+    var macs: Set<String> = []
+    var serials: Set<String> = []
+    var cloudIds: Set<String> = []
+
+    var isEmpty: Bool {
+        fqdns.isEmpty && shortHostnames.isEmpty && ipv4.isEmpty && ipv6.isEmpty
+            && macs.isEmpty && serials.isEmpty && cloudIds.isEmpty
+    }
+
+    func merged(with other: AssetIdentity) -> AssetIdentity {
+        AssetIdentity(
+            fqdns: fqdns.union(other.fqdns),
+            shortHostnames: shortHostnames.union(other.shortHostnames),
+            ipv4: ipv4.union(other.ipv4),
+            ipv6: ipv6.union(other.ipv6),
+            macs: macs.union(other.macs),
+            serials: serials.union(other.serials),
+            cloudIds: cloudIds.union(other.cloudIds)
+        )
+    }
+
+    /// Fields that uniquely name a host on their own.
+    func strongTokens() -> Set<String> {
+        Set(serials.map { "serial:\($0)" })
+            .union(macs.map { "mac:\($0)" })
+            .union(fqdns.map { "fqdn:\($0)" })
+            .union(cloudIds.map { "cloud:\($0)" })
+    }
+
+    /// Fields that only correlate when at least two agree.
+    func weakTokens() -> Set<String> {
+        Set(shortHostnames.map { "host:\($0)" })
+            .union(ipv4.map { "ipv4:\($0)" })
+            .union(ipv6.map { "ipv6:\($0)" })
+    }
+
+    private static let hostnameKeys = ["fqdn", "hostname", "hostName", "host", "friendlyName", "nodeName", "dnsName"]
+    private static let ipv4Keys = ["ipv4", "primaryIp4", "ip", "ipAddress", "address"]
+    private static let ipv6Keys = ["ipv6", "primaryIp6"]
+    private static let macKeys = ["mac", "macAddress", "hwAddress"]
+    private static let serialKeys = ["serial", "serialNumber", "serviceTag"]
+    private static let cloudIdKeys = ["cloudId", "canonicalId"]
+
+    /// Best-effort identity extraction from a normalized resource. Unknown or garbage fields are dropped.
+    static func from(_ resource: ProviderResource) -> AssetIdentity {
+        let attrs = resource.attributes
+        func values(_ keys: [String]) -> [String] {
+            keys.compactMap { key in
+                attrs.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
+            }
+        }
+
+        var fqdns: Set<String> = []
+        var shorts: Set<String> = []
+        for raw in values(Self.hostnameKeys) + [resource.name] {
+            guard let host = normalizeHost(raw) else { continue }
+            if host.contains("."), normalizeIPv4(host) == nil {
+                fqdns.insert(host)
+                let label = host.split(separator: ".").first.map(String.init) ?? ""
+                if !label.isEmpty { shorts.insert(label) }
+            } else if !host.contains(":") {
+                shorts.insert(host)
+            }
+        }
+
+        return AssetIdentity(
+            fqdns: fqdns,
+            shortHostnames: shorts,
+            ipv4: Set(values(Self.ipv4Keys).compactMap(normalizeIPv4)),
+            ipv6: Set(values(Self.ipv6Keys).compactMap(normalizeIPv6)),
+            macs: Set(values(Self.macKeys).compactMap(normalizeMAC)),
+            serials: Set(values(Self.serialKeys).compactMap { s in
+                let v = s.trimmingCharacters(in: .whitespaces).lowercased()
+                return v.isEmpty ? nil : v
+            }),
+            cloudIds: Set(values(Self.cloudIdKeys).compactMap { s in
+                let v = s.trimmingCharacters(in: .whitespaces).lowercased()
+                return v.isEmpty ? nil : v
+            })
+        )
+    }
+
+    private static func normalizeHost(_ raw: String) -> String? {
+        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while clean.hasSuffix(".") { clean.removeLast() }
+        if clean.isEmpty || clean.contains(" ") || clean.contains("/") { return nil }
+        return clean
+    }
+
+    private static func normalizeIPv4(_ raw: String) -> String? {
+        let clean = raw.trimmingCharacters(in: .whitespaces).split(separator: "/").first.map(String.init) ?? ""
+        let parts = clean.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return nil }
+        for part in parts {
+            guard let n = Int(part), (0...255).contains(n), String(n) == part else { return nil }
+        }
+        return clean
+    }
+
+    private static func normalizeIPv6(_ raw: String) -> String? {
+        let clean = (raw.trimmingCharacters(in: .whitespaces).split(separator: "/").first.map(String.init) ?? "").lowercased()
+        guard clean.contains(":"), clean.allSatisfy({ "0123456789abcdef:".contains($0) }) else { return nil }
+        return clean
+    }
+
+    private static func normalizeMAC(_ raw: String) -> String? {
+        let clean = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: "-", with: ":")
+            .replacingOccurrences(of: ".", with: "")
+        let parts = clean.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 6, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy { "0123456789abcdef".contains($0) } }) else {
+            return nil
+        }
+        return clean
+    }
+}
+
+/// One provider view of an asset within a single refresh.
+struct AssetObservation: Equatable, Sendable {
+    let providerId: String
+    let instanceId: UUID
+    let resourceType: String
+    let resourceId: String
+    let name: String
+    let identity: AssetIdentity
+
+    var ref: String { "\(providerId)/\(instanceId.uuidString.lowercased())/\(resourceId)" }
+
+    static func from(_ resource: ProviderResource) -> AssetObservation {
+        AssetObservation(
+            providerId: resource.providerId,
+            instanceId: resource.instanceId,
+            resourceType: resource.resourceType,
+            resourceId: resource.resourceId,
+            name: resource.name,
+            identity: AssetIdentity.from(resource)
+        )
+    }
+}
+
+/// A host correlated across one or more providers, always within a single tenant.
+struct CanonicalAsset: Equatable, Sendable {
+    let key: String
+    let tenantRef: String
+    let displayName: String
+    let identity: AssetIdentity
+    let observations: [AssetObservation]
+
+    var providerIds: Set<String> { Set(observations.map { $0.providerId }) }
+    var isCorrelated: Bool { providerIds.count > 1 }
+}
+
+enum CanonicalAssetResolver {
+    /// Groups observations into canonical assets for one tenant. Deterministic and order-independent:
+    /// two observations join when they share any strong token (serial, MAC, FQDN, cloud id) or at
+    /// least two weak tokens (short hostname, IPv4, IPv6).
+    static func resolve(tenantRef: String, observations: [AssetObservation]) -> [CanonicalAsset] {
+        let ordered = observations.sorted { $0.ref < $1.ref }
+        var parent = Array(ordered.indices)
+
+        func find(_ node: Int) -> Int {
+            var n = node
+            while parent[n] != n {
+                parent[n] = parent[parent[n]]
+                n = parent[n]
+            }
+            return n
+        }
+        func union(_ a: Int, _ b: Int) {
+            let ra = find(a), rb = find(b)
+            guard ra != rb else { return }
+            if ra < rb { parent[rb] = ra } else { parent[ra] = rb }
+        }
+
+        for i in ordered.indices {
+            let si = ordered[i].identity.strongTokens()
+            let wi = ordered[i].identity.weakTokens()
+            for j in (i + 1)..<ordered.count {
+                let strong = !si.isDisjoint(with: ordered[j].identity.strongTokens())
+                let weak = strong ? 0 : wi.intersection(ordered[j].identity.weakTokens()).count
+                if strong || weak >= 2 { union(i, j) }
+            }
+        }
+
+        var groups: [Int: [AssetObservation]] = [:]
+        for i in ordered.indices { groups[find(i), default: []].append(ordered[i]) }
+
+        return groups.values.map { members -> CanonicalAsset in
+            let identity = members.reduce(AssetIdentity()) { $0.merged(with: $1.identity) }
+            return CanonicalAsset(
+                key: keyFor(identity, members),
+                tenantRef: tenantRef,
+                displayName: displayNameFor(identity, members),
+                identity: identity,
+                observations: members.sorted { $0.ref < $1.ref }
+            )
+        }.sorted { $0.key < $1.key }
+    }
+
+    private static func keyFor(_ identity: AssetIdentity, _ members: [AssetObservation]) -> String {
+        if let s = identity.serials.min() { return "serial:\(s)" }
+        if let c = identity.cloudIds.min() { return "cloud:\(c)" }
+        if let f = identity.fqdns.min() { return "fqdn:\(f)" }
+        if let m = identity.macs.min() { return "mac:\(m)" }
+        return "obs:\(members.map { $0.ref }.sorted().joined(separator: "|"))"
+    }
+
+    private static func displayNameFor(_ identity: AssetIdentity, _ members: [AssetObservation]) -> String {
+        identity.fqdns.min()
+            ?? identity.shortHostnames.min()
+            ?? members.first { !$0.name.isEmpty }?.name
+            ?? members[0].ref
+    }
+}

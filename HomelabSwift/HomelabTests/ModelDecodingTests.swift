@@ -2680,6 +2680,94 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(transport.reasonCode, "media-service-outcome-indeterminate")
         XCTAssertEqual(transport.disposition, .nonRetryable)
     }
+
+    private func assetObservation(
+        _ provider: String,
+        _ resourceId: String,
+        name: String? = nil,
+        attributes: [String: String] = [:]
+    ) -> AssetObservation {
+        AssetObservation.from(
+            ProviderResource(
+                providerId: provider,
+                instanceId: UUID(),
+                resourceType: "host",
+                resourceId: resourceId,
+                name: name ?? resourceId,
+                state: nil,
+                attributes: attributes
+            )
+        )
+    }
+
+    func testCanonicalAssetResolverCorrelatesOnStrongIdentityAndKeepsWeakMatchesSeparate() {
+        // Shared serial across two providers -> one correlated asset.
+        let bySerial = CanonicalAssetResolver.resolve(
+            tenantRef: Tenant.defaultId,
+            observations: [
+                assetObservation("proxmox", "101", name: "web01", attributes: ["serialNumber": "ABC-123"]),
+                assetObservation("netbox", "42", name: "web01.example.com", attributes: ["serial": "abc-123"])
+            ]
+        )
+        XCTAssertEqual(bySerial.count, 1)
+        XCTAssertTrue(bySerial[0].isCorrelated)
+        XCTAssertEqual(bySerial[0].key, "serial:abc-123")
+        XCTAssertEqual(bySerial[0].tenantRef, Tenant.defaultId)
+
+        // Same short hostname in different domains -> stays two assets.
+        let splitDomains = CanonicalAssetResolver.resolve(
+            tenantRef: Tenant.defaultId,
+            observations: [
+                assetObservation("proxmox", "a", name: "host.site-a"),
+                assetObservation("netbox", "b", name: "host.site-b")
+            ]
+        )
+        XCTAssertEqual(splitDomains.count, 2)
+        XCTAssertTrue(splitDomains.allSatisfy { !$0.isCorrelated })
+
+        // A lone shared IP is too weak; two agreeing weak signals correlate.
+        let loneIp = CanonicalAssetResolver.resolve(
+            tenantRef: Tenant.defaultId,
+            observations: [
+                assetObservation("a", "1", name: "x", attributes: ["ipv4": "10.0.0.5"]),
+                assetObservation("b", "2", name: "y", attributes: ["ip": "10.0.0.5"])
+            ]
+        )
+        XCTAssertEqual(loneIp.count, 2)
+
+        let twoWeak = CanonicalAssetResolver.resolve(
+            tenantRef: Tenant.defaultId,
+            observations: [
+                assetObservation("a", "1", name: "nas", attributes: ["ipv4": "10.0.0.5"]),
+                assetObservation("b", "2", name: "NAS", attributes: ["ipAddress": "10.0.0.5/24"])
+            ]
+        )
+        XCTAssertEqual(twoWeak.count, 1)
+        XCTAssertTrue(twoWeak[0].isCorrelated)
+
+        // Order independence.
+        let a = assetObservation("proxmox", "101", name: "web01", attributes: ["serial": "S1"])
+        let b = assetObservation("netbox", "42", name: "web01", attributes: ["serial": "S1"])
+        let c = assetObservation("uptime_kuma", "9", name: "db01", attributes: ["mac": "11:22:33:44:55:66"])
+        XCTAssertEqual(
+            CanonicalAssetResolver.resolve(tenantRef: "t", observations: [a, b, c]).map(\.key),
+            CanonicalAssetResolver.resolve(tenantRef: "t", observations: [c, b, a]).map(\.key)
+        )
+
+        // Garbage identity fields are dropped.
+        let identity = AssetIdentity.from(
+            ProviderResource(
+                providerId: "x", instanceId: UUID(), resourceType: "host", resourceId: "r",
+                name: "my host with spaces",
+                state: nil,
+                attributes: ["ipv4": "999.1.1.1", "mac": "not-a-mac", "hostname": "real-host.example.com"]
+            )
+        )
+        XCTAssertTrue(identity.ipv4.isEmpty)
+        XCTAssertTrue(identity.macs.isEmpty)
+        XCTAssertEqual(identity.fqdns, ["real-host.example.com"])
+        XCTAssertEqual(identity.shortHostnames, ["real-host"])
+    }
 }
 
 private actor ActionInvocationCounter {
