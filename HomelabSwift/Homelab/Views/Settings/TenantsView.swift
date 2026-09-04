@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// The default tenant's stored name is the fixed English `"Default"`; render it localized.
+@MainActor
 func tenantDisplayName(_ tenant: Tenant, localizer: Localizer) -> String {
     tenant.isDefault ? localizer.t.badgeDefault : tenant.name
 }
