@@ -288,6 +288,15 @@
     <string name="settings_language_label">Sprache</string>
     <string name="settings_services_label">Verbundene Dienste</string>
     <string name="settings_configured_services_title">Konfigurierte Dienste</string>
+    <string name="settings_tenants_title">Mandanten</string>
+    <string name="tenants_add_tenant">Mandant hinzufügen</string>
+    <string name="tenants_name_label">Name</string>
+    <string name="tenants_kind_personal">Privat</string>
+    <string name="tenants_kind_customer">Kunde</string>
+    <string name="tenants_active_badge">Aktiv</string>
+    <string name="tenants_set_active">Aktivieren</string>
+    <string name="tenants_rename">Umbenennen</string>
+    <string name="tenants_delete_confirm_message">%1$s löschen? Dies kann nicht rückgängig gemacht werden.</string>
     <string name="settings_not_connected">Nicht verbunden</string>
     <string name="settings_disconnect">Trennen</string>
     <string name="settings_fallback_url">Fallback-URL (z.B. Cloudflare)</string>

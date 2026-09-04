@@ -268,6 +268,15 @@
     <string name="settings_language_label">Lingua</string>
     <string name="settings_services_label">Servizi connessi</string>
     <string name="settings_configured_services_title">Servizi Configurati</string>
+    <string name="settings_tenants_title">Tenant</string>
+    <string name="tenants_add_tenant">Aggiungi Tenant</string>
+    <string name="tenants_name_label">Nome</string>
+    <string name="tenants_kind_personal">Personale</string>
+    <string name="tenants_kind_customer">Cliente</string>
+    <string name="tenants_active_badge">Attivo</string>
+    <string name="tenants_set_active">Imposta come attivo</string>
+    <string name="tenants_rename">Rinomina</string>
+    <string name="tenants_delete_confirm_message">Eliminare %1$s? Questa azione non può essere annullata.</string>
     <string name="settings_not_connected">Non connesso</string>
     <string name="settings_disconnect">Disconnetti</string>
     <string name="settings_fallback_url">Fallback URL (Es. Cloudflare)</string>

@@ -261,6 +261,15 @@
     <string name="settings_language_label">Langue</string>
     <string name="settings_services_label">Services connectés</string>
     <string name="settings_configured_services_title">Services Configurés</string>
+    <string name="settings_tenants_title">Locataires</string>
+    <string name="tenants_add_tenant">Ajouter un locataire</string>
+    <string name="tenants_name_label">Nom</string>
+    <string name="tenants_kind_personal">Personnel</string>
+    <string name="tenants_kind_customer">Client</string>
+    <string name="tenants_active_badge">Actif</string>
+    <string name="tenants_set_active">Définir comme actif</string>
+    <string name="tenants_rename">Renommer</string>
+    <string name="tenants_delete_confirm_message">Supprimer %1$s ? Cette action est irréversible.</string>
     <string name="settings_not_connected">Non connecté</string>
     <string name="settings_disconnect">Déconnecter</string>
     <string name="settings_fallback_url">URL de secours (ex. Cloudflare)</string>
