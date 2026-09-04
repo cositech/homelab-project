@@ -35,6 +35,15 @@ class ServiceInstancesRepository @Inject constructor(
             .associateWith { type -> instances.filter { it.type == type } }
     }
 
+    /**
+     * [allInstances] narrowed to [tenantRef]. Filters at the DAO query, before credential
+     * hydration, so another tenant's secrets are never decrypted to serve this read.
+     */
+    fun instancesForTenant(tenantRef: String): Flow<List<ServiceInstance>> {
+        val target = Tenant.refOrDefault(tenantRef)
+        return dao.observeByTenantRef(target).map { entities -> entities.map { it.toDomain(credentialStore) } }
+    }
+
     val preferredInstanceIdByType: Flow<Map<ServiceType, String?>> = settingsManager.preferredInstanceIds
 
     val preferredInstancesByType: Flow<Map<ServiceType, ServiceInstance?>> = combine(

@@ -368,6 +368,47 @@ class ControlledActionsTest {
     }
 
     @Test
+    fun `audit and queue reads scope to one tenant with no cross-tenant leakage`() = runTest {
+        val coordinator = ControlledActionCoordinator(waitBeforeRetry = {})
+        val acmeRequest = request(
+            risk = ActionRisk.HIGH,
+            confirmed = true,
+            idempotencyKey = "acme0123456789ab",
+            tenantRef = "acme"
+        )
+        val globexRequest = request(
+            risk = ActionRisk.HIGH,
+            confirmed = true,
+            idempotencyKey = "globex0123456789",
+            tenantRef = "globex"
+        )
+
+        // Lands in MANUAL_REVIEW (HIGH risk forbids automatic retry), so it stays in the durable
+        // queue's pending-recovery set.
+        coordinator.execute(
+            acmeRequest, ActionRole.ADMIN,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { throw ActionOperationException("transport-error", ActionFailureDisposition.RETRYABLE) }
+        coordinator.execute(
+            globexRequest, ActionRole.ADMIN,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { throw ActionOperationException("transport-error", ActionFailureDisposition.RETRYABLE) }
+
+        val acmeAudit = coordinator.auditSnapshot("acme")
+        assertTrue(acmeAudit.isNotEmpty())
+        assertTrue(acmeAudit.all { it.tenantRef == "acme" })
+
+        val globexAudit = coordinator.auditSnapshot("globex")
+        assertTrue(globexAudit.isNotEmpty())
+        assertTrue(globexAudit.all { it.tenantRef == "globex" })
+
+        val acmeRecovery = coordinator.pendingRecovery("acme")
+        assertTrue(acmeRecovery.isNotEmpty())
+        assertTrue(acmeRecovery.all { it.request.tenantRef == "acme" })
+        assertTrue(coordinator.pendingRecovery("globex").none { it.request.tenantRef == "acme" })
+    }
+
+    @Test
     fun `provider capability is enforced before execution`() = runTest {
         var invoked = false
         val coordinator = ControlledActionCoordinator()

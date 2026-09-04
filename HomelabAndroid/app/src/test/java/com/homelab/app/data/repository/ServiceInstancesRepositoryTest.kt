@@ -14,6 +14,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -90,6 +91,30 @@ class ServiceInstancesRepositoryTest {
         assertEquals(first.id, repository.getPreferredInstance(ServiceType.GITEA)?.id)
         assertNull(repository.getInstance(second.id))
         assertTrue(!credentials.contains(secondCredentialRef))
+    }
+
+    @Test
+    fun `instancesForTenant excludes every other tenant's instances`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        repository.saveInstance(
+            ServiceInstance(
+                id = "acme-1", type = ServiceType.GITEA, label = "Acme Gitea",
+                url = "https://gitea.acme.internal", token = "t1", tenantRef = "acme"
+            )
+        )
+        repository.saveInstance(
+            ServiceInstance(
+                id = "globex-1", type = ServiceType.GITEA, label = "Globex Gitea",
+                url = "https://gitea.globex.internal", token = "t2", tenantRef = "globex"
+            )
+        )
+
+        val acmeInstances = repository.instancesForTenant("acme").first()
+
+        assertEquals(listOf("acme-1"), acmeInstances.map { it.id })
+        assertTrue(repository.instancesForTenant("globex").first().none { it.tenantRef == "acme" })
     }
 
     @Test
@@ -249,6 +274,9 @@ private class FakeServiceInstanceDao : ServiceInstanceDao {
     private val state = MutableStateFlow<List<ServiceInstanceEntity>>(emptyList())
 
     override fun observeAll(): Flow<List<ServiceInstanceEntity>> = state
+
+    override fun observeByTenantRef(tenantRef: String): Flow<List<ServiceInstanceEntity>> =
+        state.map { entities -> entities.filter { it.tenantRef.equals(tenantRef, ignoreCase = true) } }
 
     override suspend fun getAll(): List<ServiceInstanceEntity> = state.value
 
