@@ -229,7 +229,8 @@ struct TenantSelection: Codable, Equatable, Sendable {
                 ordered.append(normalizedTenant)
             }
         }
-        let active = ordered.contains { $0.id == activeTenantId } ? activeTenantId : Tenant.defaultId
+        let requestedActive = Tenant.refOrDefault(activeTenantId)
+        let active = ordered.contains { $0.id == requestedActive } ? requestedActive : Tenant.defaultId
         return TenantSelection(
             tenants: ordered,
             activeTenantId: active,

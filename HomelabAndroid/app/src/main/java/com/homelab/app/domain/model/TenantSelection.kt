@@ -41,7 +41,8 @@ data class TenantSelection(
             deduped[id] = tenant.copy(id = id)
         }
         val ordered = deduped.values.toList()
-        val active = ordered.firstOrNull { it.id == activeTenantId }?.id ?: Tenant.DEFAULT_ID
+        val requestedActive = Tenant.refOrDefault(activeTenantId)
+        val active = ordered.firstOrNull { it.id == requestedActive }?.id ?: Tenant.DEFAULT_ID
         return TenantSelection(
             tenants = ordered,
             activeTenantId = active,

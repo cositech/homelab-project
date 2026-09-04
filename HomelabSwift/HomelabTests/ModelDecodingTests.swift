@@ -808,6 +808,12 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(normalized.allTenantsMode)
         XCTAssertFalse(TenantSelection(allTenantsMode: true).normalized().allTenantsMode)
 
+        // normalize trims a stored active tenant id before matching it.
+        XCTAssertEqual(
+            TenantSelection(tenants: [acme], activeTenantId: "  acme  ").normalized().activeTenantId,
+            "acme"
+        )
+
         // adding leaves the active selection alone; a duplicate id replaces the entry.
         let added = TenantSelection.initial.adding(acme)
         XCTAssertEqual(added.tenants.map(\.id), [Tenant.defaultId, "acme"])

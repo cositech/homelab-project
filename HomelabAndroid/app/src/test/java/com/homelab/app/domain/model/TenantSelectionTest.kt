@@ -54,6 +54,16 @@ class TenantSelectionTest {
     }
 
     @Test
+    fun `normalize trims the stored active tenant id before matching`() {
+        val selection = TenantSelection(
+            tenants = listOf(tenant("acme")),
+            activeTenantId = "  acme  "
+        ).normalized()
+
+        assertEquals("acme", selection.activeTenantId)
+    }
+
+    @Test
     fun `all-tenants mode collapses to false for a single-tenant install`() {
         assertFalse(TenantSelection(allTenantsMode = true).normalized().allTenantsMode)
     }
