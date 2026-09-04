@@ -275,6 +275,9 @@ private class FakeServiceInstanceDao : ServiceInstanceDao {
 
     override fun observeAll(): Flow<List<ServiceInstanceEntity>> = state
 
+    override fun observeByTenantRef(tenantRef: String): Flow<List<ServiceInstanceEntity>> =
+        state.map { entities -> entities.filter { it.tenantRef.equals(tenantRef, ignoreCase = true) } }
+
     override suspend fun getAll(): List<ServiceInstanceEntity> = state.value
 
     override suspend fun getById(id: String): ServiceInstanceEntity? = state.value.firstOrNull { it.id == id }

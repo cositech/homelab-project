@@ -457,7 +457,13 @@ class ControlledActionCoordinator(
         }
     }
 
-    /** [pendingRecovery] narrowed to [tenantRef]. No cross-tenant read: every other tenant's entries are excluded. */
+    /**
+     * [pendingRecovery] narrowed to [tenantRef]: the returned list never contains another
+     * tenant's entries. Crash recovery itself is device-wide, not tenant-scoped — it runs once
+     * per coordinator lifetime regardless of which tenant's call triggers it, exactly as it
+     * already does for every [execute] call, so that no tenant's interrupted actions are left
+     * unrecovered just because nothing has asked about that tenant yet.
+     */
     suspend fun pendingRecovery(tenantRef: String): List<DurableActionQueueEntry> {
         val target = Tenant.refOrDefault(tenantRef)
         return pendingRecovery().filter { Tenant.refOrDefault(it.request.tenantRef) == target }
