@@ -127,11 +127,67 @@ struct ProxmoxAPITokenParts: Equatable, Hashable {
     }
 }
 
+/// Phase 4 correlation and MSP contracts.
+///
+/// A `Tenant` is the isolation unit: every `ServiceInstance`, credential, operations record and
+/// controlled-action request belongs to exactly one tenant, and no read ever crosses the boundary.
+/// A single-tenant install runs entirely inside the implicit `Tenant.defaultId` tenant and shows
+/// no new UI.
+enum TenantKind: String, Codable, CaseIterable, Equatable, Sendable {
+    /// The operator's own estate. The `Tenant.defaultId` tenant is always this kind.
+    case personal
+    /// An MSP-managed customer estate. Carries `Customer` metadata.
+    case customer
+}
+
+struct Tenant: Codable, Identifiable, Equatable, Hashable, Sendable {
+    let id: String
+    var name: String
+    var kind: TenantKind
+
+    init(id: String, name: String, kind: TenantKind = .personal) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+    }
+
+    var isDefault: Bool { id == Tenant.defaultId }
+
+    /// Id of the implicit tenant every pre-Phase-4 instance is migrated into.
+    static let defaultId = "default"
+
+    /// The implicit personal tenant. Cannot be deleted.
+    static let `default` = Tenant(id: defaultId, name: "Default", kind: .personal)
+
+    /// Normalizes a nil/blank stored value to a usable tenant id.
+    static func refOrDefault(_ value: String?) -> String {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? defaultId : trimmed
+    }
+}
+
+/// A physical or logical location within a `Tenant` (a rack, a home, a branch office).
+struct Site: Codable, Identifiable, Equatable, Hashable, Sendable {
+    let id: String
+    var tenantRef: String
+    var name: String
+}
+
+/// MSP-facing metadata on a `.customer` tenant. Never holds a secret; kept out of the audit ledger.
+struct Customer: Codable, Equatable, Sendable {
+    var tenantRef: String
+    var accountName: String
+    var contact: String?
+    var notes: String?
+}
+
 struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let type: ServiceType
     var label: String
     var url: String
+    var tenantRef: String
+    var siteRef: String?
     var token: String
     var username: String?
     var apiKey: String?
@@ -152,6 +208,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         type: ServiceType,
         label: String,
         url: String,
+        tenantRef: String = Tenant.defaultId,
+        siteRef: String? = nil,
         token: String = "",
         username: String? = nil,
         apiKey: String? = nil,
@@ -171,6 +229,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         self.type = type
         self.label = label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? type.displayName : label.trimmingCharacters(in: .whitespacesAndNewlines)
         self.url = type == .unifiNetwork ? Self.cleanUniFiURL(url) : Self.cleanURL(url)
+        self.tenantRef = Tenant.refOrDefault(tenantRef)
+        self.siteRef = siteRef?.trimmedNilIfEmpty
         self.token = token
         self.username = username?.trimmedNilIfEmpty
         self.apiKey = apiKey?.trimmedNilIfEmpty
@@ -209,6 +269,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
             type: type,
             label: displayLabel,
             url: url,
+            tenantRef: tenantRef,
+            siteRef: siteRef,
             token: token,
             username: username,
             apiKey: apiKey,
@@ -229,6 +291,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
     func updating(
         label: String? = nil,
         url: String? = nil,
+        tenantRef: String? = nil,
+        siteRef: String? = nil,
         token: String? = nil,
         username: String? = nil,
         apiKey: String? = nil,
@@ -248,6 +312,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
             type: type,
             label: label ?? displayLabel,
             url: url ?? self.url,
+            tenantRef: tenantRef ?? self.tenantRef,
+            siteRef: siteRef ?? self.siteRef,
             token: token ?? self.token,
             username: username ?? self.username,
             apiKey: apiKey ?? self.apiKey,
@@ -315,6 +381,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         case type
         case label
         case url
+        case tenantRef
+        case siteRef
         case token
         case username
         case apiKey
@@ -340,6 +408,8 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
             type: try container.decode(ServiceType.self, forKey: .type),
             label: try container.decode(String.self, forKey: .label),
             url: try container.decode(String.self, forKey: .url),
+            tenantRef: try container.decodeIfPresent(String.self, forKey: .tenantRef) ?? Tenant.defaultId,
+            siteRef: try container.decodeIfPresent(String.self, forKey: .siteRef),
             token: try container.decodeIfPresent(String.self, forKey: .token) ?? "",
             username: try container.decodeIfPresent(String.self, forKey: .username),
             apiKey: try container.decodeIfPresent(String.self, forKey: .apiKey),
@@ -388,6 +458,8 @@ struct ServiceInstanceMetadata: Codable, Equatable {
     let type: ServiceType
     var label: String
     var url: String
+    var tenantRef: String
+    var siteRef: String?
     var username: String?
     var piholeAuthMode: PiHoleAuthMode?
     var proxmoxAuthMode: ProxmoxAuthMode?
@@ -398,11 +470,18 @@ struct ServiceInstanceMetadata: Codable, Equatable {
     var tlsMode: TLSMode
     var certificatePin: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, type, label, url, tenantRef, siteRef, username, piholeAuthMode
+        case proxmoxAuthMode, proxmoxRealm, unifiAuthMode, fallbackUrl, credentialRef, tlsMode, certificatePin
+    }
+
     init(instance: ServiceInstance) {
         id = instance.id
         type = instance.type
         label = instance.displayLabel
         url = instance.url
+        tenantRef = instance.tenantRef
+        siteRef = instance.siteRef
         username = instance.username
         piholeAuthMode = instance.piholeAuthMode
         proxmoxAuthMode = instance.proxmoxAuthMode
@@ -414,6 +493,26 @@ struct ServiceInstanceMetadata: Codable, Equatable {
         certificatePin = instance.tlsPolicy.certificatePin
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        type = try container.decode(ServiceType.self, forKey: .type)
+        label = try container.decode(String.self, forKey: .label)
+        url = try container.decode(String.self, forKey: .url)
+        // Metadata persisted before Phase 4 has no tenant scope; it belongs to the default tenant.
+        tenantRef = Tenant.refOrDefault(try container.decodeIfPresent(String.self, forKey: .tenantRef))
+        siteRef = try container.decodeIfPresent(String.self, forKey: .siteRef)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        piholeAuthMode = try container.decodeIfPresent(PiHoleAuthMode.self, forKey: .piholeAuthMode)
+        proxmoxAuthMode = try container.decodeIfPresent(ProxmoxAuthMode.self, forKey: .proxmoxAuthMode)
+        proxmoxRealm = try container.decodeIfPresent(String.self, forKey: .proxmoxRealm)
+        unifiAuthMode = try container.decodeIfPresent(UniFiAuthMode.self, forKey: .unifiAuthMode)
+        fallbackUrl = try container.decodeIfPresent(String.self, forKey: .fallbackUrl)
+        credentialRef = try container.decode(String.self, forKey: .credentialRef)
+        tlsMode = try container.decode(TLSMode.self, forKey: .tlsMode)
+        certificatePin = try container.decodeIfPresent(String.self, forKey: .certificatePin)
+    }
+
     func hydrated(with credentials: ServiceCredentialEnvelope?) -> ServiceInstance {
         let credentials = credentials ?? ServiceCredentialEnvelope.empty
         return ServiceInstance(
@@ -421,6 +520,8 @@ struct ServiceInstanceMetadata: Codable, Equatable {
             type: type,
             label: label,
             url: url,
+            tenantRef: tenantRef,
+            siteRef: siteRef,
             token: credentials.token ?? "",
             username: username,
             apiKey: credentials.apiKey,

@@ -667,7 +667,11 @@ struct ServiceLoginView: View {
 
         Task {
             do {
-                let instance = try await buildInstance(label: cleanLabel, url: cleanUrl, fallbackUrl: cleanFallback)
+                var instance = try await buildInstance(label: cleanLabel, url: cleanUrl, fallbackUrl: cleanFallback)
+                if let existing = existingInstance {
+                    // Editing an instance must never move it between tenants or sites.
+                    instance = instance.updating(tenantRef: existing.tenantRef, siteRef: existing.siteRef)
+                }
                 await servicesStore.saveInstance(instance, refreshPiHoleAuth: false)
                 HapticManager.success()
                 dismiss()

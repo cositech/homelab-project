@@ -746,6 +746,82 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(decoded.allowSelfSigned)
     }
 
+    func testTenantContractsAndDefaultTenantScoping() throws {
+        XCTAssertEqual(Tenant.defaultId, "default")
+        XCTAssertEqual(Tenant.default.id, Tenant.defaultId)
+        XCTAssertEqual(Tenant.default.kind, .personal)
+        XCTAssertTrue(Tenant.default.isDefault)
+        XCTAssertFalse(Tenant(id: "acme", name: "Acme", kind: .customer).isDefault)
+
+        XCTAssertEqual(Tenant.refOrDefault(nil), "default")
+        XCTAssertEqual(Tenant.refOrDefault("  "), "default")
+        XCTAssertEqual(Tenant.refOrDefault(" acme "), "acme")
+
+        // A legacy persisted instance without a tenant belongs to the default tenant.
+        let legacy = Data("""
+        { "id": "30000000-0000-0000-0000-000000000009", "type": "pihole", "label": "Pi-hole", "url": "https://pihole.local" }
+        """.utf8)
+        let decodedLegacy = try JSONDecoder().decode(ServiceInstance.self, from: legacy)
+        XCTAssertEqual(decodedLegacy.tenantRef, Tenant.defaultId)
+        XCTAssertNil(decodedLegacy.siteRef)
+
+        // An explicit tenant and site round-trip.
+        let scoped = ServiceInstance(
+            id: UUID(uuidString: "30000000-0000-0000-0000-00000000000a")!,
+            type: .proxmox,
+            label: "PVE",
+            url: "https://pve.acme.internal",
+            tenantRef: "acme",
+            siteRef: "acme-rack-1"
+        )
+        let roundTripped = try JSONDecoder().decode(ServiceInstance.self, from: JSONEncoder().encode(scoped))
+        XCTAssertEqual(roundTripped.tenantRef, "acme")
+        XCTAssertEqual(roundTripped.siteRef, "acme-rack-1")
+
+        XCTAssertEqual(
+            ServiceConnection(type: .beszel, url: "https://beszel.local")
+                .migratedInstance(id: UUID(uuidString: "30000000-0000-0000-0000-00000000000b")!)
+                .tenantRef,
+            Tenant.defaultId
+        )
+    }
+
+    func testTenantKindEncodesLowercaseWireValues() throws {
+        let personal = try JSONEncoder().encode(TenantKind.personal)
+        let customer = try JSONEncoder().encode(TenantKind.customer)
+        XCTAssertEqual(String(data: personal, encoding: .utf8), "\"personal\"")
+        XCTAssertEqual(String(data: customer, encoding: .utf8), "\"customer\"")
+    }
+
+    func testServiceInstanceMetadataCarriesTenantScopeAndDefaultsWhenAbsent() throws {
+        let scoped = ServiceInstance(
+            id: UUID(uuidString: "30000000-0000-0000-0000-00000000000c")!,
+            type: .proxmox,
+            label: "PVE",
+            url: "https://pve.acme.internal",
+            tenantRef: "acme",
+            siteRef: "acme-rack-1"
+        )
+        let metadata = ServiceInstanceMetadata(instance: scoped)
+        let round = try JSONDecoder().decode(
+            ServiceInstanceMetadata.self,
+            from: JSONEncoder().encode(metadata)
+        )
+        XCTAssertEqual(round.tenantRef, "acme")
+        XCTAssertEqual(round.siteRef, "acme-rack-1")
+        XCTAssertEqual(round.hydrated(with: nil).tenantRef, "acme")
+        XCTAssertEqual(round.hydrated(with: nil).siteRef, "acme-rack-1")
+
+        // Metadata persisted before Phase 4 has no tenant key and hydrates into the default tenant.
+        let legacy = Data("""
+        { "id": "30000000-0000-0000-0000-00000000000d", "type": "gitea", "label": "Gitea",
+          "url": "https://gitea.local", "credentialRef": "credential:v1:x", "tlsMode": "SYSTEM" }
+        """.utf8)
+        let legacyDecoded = try JSONDecoder().decode(ServiceInstanceMetadata.self, from: legacy)
+        XCTAssertEqual(legacyDecoded.tenantRef, Tenant.defaultId)
+        XCTAssertNil(legacyDecoded.siteRef)
+    }
+
     func testLegacyServiceConnectionMigrationUsesDisplayNameLabel() {
         let connection = ServiceConnection(
             type: .beszel,

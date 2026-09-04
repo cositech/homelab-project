@@ -176,6 +176,22 @@ object DatabaseModule {
             }
         }
 
+        // Phase 4: every pre-existing instance belongs to the implicit `default` tenant.
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `service_instances` ADD COLUMN `tenantRef` TEXT NOT NULL DEFAULT 'default'"
+                )
+                db.execSQL(
+                    "ALTER TABLE `service_instances` ADD COLUMN `siteRef` TEXT"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_service_instances_tenantRef` " +
+                        "ON `service_instances` (`tenantRef`)"
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -191,7 +207,8 @@ object DatabaseModule {
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
-            migration6To7(credentialStore)
+            migration6To7(credentialStore),
+            MIGRATION_7_8
         )
         .build()
     }

@@ -5,6 +5,7 @@ import com.homelab.app.data.local.dao.ServiceInstanceDao
 import com.homelab.app.data.local.entity.ServiceInstanceEntity
 import com.homelab.app.domain.model.PiHoleAuthMode
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.domain.model.TlsMode
 import com.homelab.app.security.CredentialEnvelope
 import com.homelab.app.security.SecureCredentialStore
@@ -222,6 +223,8 @@ private fun ServiceInstanceEntity.toDomain(credentialStore: SecureCredentialStor
         type = ServiceType.fromStoredName(type),
         label = label,
         url = url,
+        tenantRef = Tenant.refOrDefault(tenantRef),
+        siteRef = siteRef,
         token = credentials.token.orEmpty(),
         proxmoxCsrfToken = credentials.proxmoxCsrfToken,
         proxmoxOtp = credentials.proxmoxOtp,
@@ -245,6 +248,8 @@ private fun ServiceInstance.toEntity(credentialRef: String?): ServiceInstanceEnt
         type = type.name,
         label = label.ifBlank { type.displayName },
         url = url,
+        tenantRef = Tenant.refOrDefault(tenantRef),
+        siteRef = siteRef,
         credentialRef = credentialRef,
         username = username,
         piholeAuthMode = piholeAuthMode?.name,

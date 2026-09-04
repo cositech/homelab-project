@@ -36,8 +36,9 @@ IOS_LOGIN="$IOS_ROOT/Views/ServiceLogin/ServiceLoginView.swift"
 
 reject_pattern 'val (token|proxmoxCsrfToken|proxmoxOtp|apiKey|piholePassword|password|customCaPem):' "$ENTITY"
 require_pattern 'val credentialRef: String' "$ENTITY"
-require_pattern 'version = 7' "$ANDROID_ROOT/java/com/homelab/app/data/local/AppDatabase.kt"
+require_pattern 'version = 8' "$ANDROID_ROOT/java/com/homelab/app/data/local/AppDatabase.kt"
 require_pattern 'migration6To7' "$ANDROID_ROOT/java/com/homelab/app/di/DatabaseModule.kt"
+require_pattern 'MIGRATION_7_8' "$ANDROID_ROOT/java/com/homelab/app/di/DatabaseModule.kt"
 require_pattern 'AndroidKeyStore' "$ANDROID_STORE"
 require_pattern 'AES/GCM/NoPadding' "$ANDROID_STORE"
 
