@@ -1472,14 +1472,32 @@ final class ServicesStore {
     private func normalizedInstance(_ instance: ServiceInstance) -> ServiceInstance {
         let normalizedUrl = normalizeServiceURL(instance.url, type: instance.type)
         let normalizedFallback = normalizeOptionalURL(instance.fallbackUrl, type: instance.type)
-        if normalizedUrl == instance.url && normalizedFallback == instance.fallbackUrl {
+        let migratedCredentialRef = Self.migratedCredentialRef(for: instance)
+        if normalizedUrl == instance.url && normalizedFallback == instance.fallbackUrl
+            && migratedCredentialRef == instance.credentialRef {
             return instance
         }
-        return instance.updating(
+        var updated = instance.updating(
             url: normalizedUrl,
             fallbackUrl: normalizedFallback,
             allowSelfSigned: instance.allowSelfSigned
         )
+        // `updating(...)` always preserves the existing credentialRef, so the migrated value is
+        // applied afterward. `loadServiceState()` already hydrated the secret fields from whatever
+        // reference the instance carried on disk; the next `persistState()` re-saves the envelope
+        // under this new tenant-namespaced reference and deletes the stale one.
+        updated.credentialRef = migratedCredentialRef
+        return updated
+    }
+
+    /// Re-keys a reference that does not match the tenant-namespaced
+    /// `ServiceInstance.credentialRefV2Prefix` format for the instance's *current* tenant — a
+    /// pre-Phase-4 `credential:v1:` reference, or a v2 reference minted under a different tenant
+    /// (an edit that moved the instance to another tenant, before the tenant scope was reapplied).
+    /// A reference that already matches exactly is left untouched (idempotent).
+    private static func migratedCredentialRef(for instance: ServiceInstance) -> String {
+        let expected = "\(ServiceInstance.credentialRefV2Prefix)\(instance.tenantRef):\(instance.id.uuidString.lowercased())"
+        return instance.credentialRef == expected ? instance.credentialRef : expected
     }
 
     private func stripKnownUniFiAPIPath(from raw: String) -> String {

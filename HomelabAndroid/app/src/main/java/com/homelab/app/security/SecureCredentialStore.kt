@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.homelab.app.domain.model.Tenant
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.ByteBuffer
 import java.security.KeyStore
@@ -22,7 +23,18 @@ interface SecureCredentialStore {
     fun get(reference: String): CredentialEnvelope?
     fun delete(reference: String): Boolean
 
-    fun newReference(instanceId: String): String = "credential:v1:$instanceId:${UUID.randomUUID()}"
+    /**
+     * A fresh, tenant-namespaced reference. The reference is an opaque lookup key (the encryption
+     * key material is shared, as in Phase 1); namespacing it by [tenantRef] means a Keystore entry
+     * is never addressed the same way across tenants, even for byte-identical secrets.
+     */
+    fun newReference(tenantRef: String = Tenant.DEFAULT_ID): String =
+        "$CREDENTIAL_REF_V2_PREFIX${Tenant.refOrDefault(tenantRef)}:${UUID.randomUUID()}"
+
+    companion object {
+        /** Prefix of every reference minted by [newReference]. Pre-Phase-4 references used `credential:v1:`. */
+        const val CREDENTIAL_REF_V2_PREFIX = "credential:v2:"
+    }
 }
 
 @Singleton

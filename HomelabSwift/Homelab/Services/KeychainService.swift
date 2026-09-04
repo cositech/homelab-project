@@ -2,7 +2,8 @@ import Foundation
 import Security
 
 enum KeychainService {
-    private static let service = "com.homelab.homelab.services"
+    /// Not `private` so tests can assert against the raw backend using the same service string.
+    static let service = "com.homelab.homelab.services"
     private static let legacyConnectionsAccount = "homelab_user"
     private static let serviceStateV2Account = "homelab_service_state_v2"
     private static let serviceStateV3Account = "homelab_service_state_v3_metadata"

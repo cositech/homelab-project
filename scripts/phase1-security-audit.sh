@@ -42,6 +42,13 @@ require_pattern 'MIGRATION_7_8' "$ANDROID_ROOT/java/com/homelab/app/di/DatabaseM
 require_pattern 'AndroidKeyStore' "$ANDROID_STORE"
 require_pattern 'AES/GCM/NoPadding' "$ANDROID_STORE"
 
+# Phase 4: credentialRef is tenant-namespaced (Keystore/Keychain entries never addressed the
+# same way across tenants), and pre-Phase-4 references are re-keyed on load, not read untenanted.
+require_pattern 'CREDENTIAL_REF_V2_PREFIX = "credential:v2:"' "$ANDROID_STORE"
+require_pattern 'migrateCredentialReferencesIfNeeded' "$ANDROID_ROOT/java/com/homelab/app/data/repository/ServiceInstancesRepository.kt"
+require_pattern 'static let credentialRefV2Prefix = "credential:v2:"' "$IOS_CONNECTION"
+require_pattern 'migratedCredentialRef' "$IOS_ROOT/Stores/ServicesStore.swift"
+
 for mode in SYSTEM CUSTOM_CA CERTIFICATE_PIN INSECURE_COMPATIBILITY; do
   require_pattern "$mode" "$ANDROID_CONNECTION"
   require_pattern "$mode" "$IOS_CONNECTION"

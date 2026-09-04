@@ -52,6 +52,7 @@ class ServiceInstancesRepository @Inject constructor(
 
     suspend fun initialize() {
         migrateLegacyDataIfNeeded()
+        migrateCredentialReferencesIfNeeded()
         normalizeStoredInstancesIfNeeded()
         repairAllPreferredInstances()
     }
@@ -101,7 +102,7 @@ class ServiceInstancesRepository @Inject constructor(
         val newCredentialRef = if (envelope.isEmpty) {
             null
         } else {
-            credentialStore.newReference(normalized.id).also { reference ->
+            credentialStore.newReference(Tenant.refOrDefault(normalized.tenantRef)).also { reference ->
                 check(credentialStore.put(reference, envelope)) {
                     "Unable to persist credentials for service instance ${normalized.id}"
                 }
@@ -173,6 +174,50 @@ class ServiceInstancesRepository @Inject constructor(
             }
 
         settingsManager.setServiceInstancesMigrated(true)
+    }
+
+    /**
+     * Re-keys every pre-Phase-4 credential reference into the tenant-namespaced
+     * [SecureCredentialStore.newReference] format, in the instance's own tenant, updating
+     * [ServiceInstanceEntity.credentialRef] in the same step. A reference that already carries the
+     * `credential:v2:` prefix is left untouched (idempotent). A reference that cannot be re-keyed —
+     * the stored envelope is gone, or the new entry cannot be written and verified — fails closed:
+     * the instance's `credentialRef` is cleared (shown as unconfigured) rather than left pointing at
+     * an untenanted reference.
+     */
+    suspend fun migrateCredentialReferencesIfNeeded() {
+        dao.getAll().forEach { entity ->
+            val legacyRef = entity.credentialRef ?: return@forEach
+            if (legacyRef.startsWith(SecureCredentialStore.CREDENTIAL_REF_V2_PREFIX)) return@forEach
+
+            val envelope = credentialStore.get(legacyRef)
+            val newRef = if (envelope != null) {
+                credentialStore.newReference(Tenant.refOrDefault(entity.tenantRef))
+            } else {
+                null
+            }
+            val stored = envelope != null && newRef != null &&
+                credentialStore.put(newRef, envelope) && credentialStore.get(newRef) == envelope
+
+            // The DB row is updated before either Keystore entry is touched further, so a failure
+            // here leaves `legacyRef` — still fully intact — as the row's reference, retryable on
+            // the next launch, rather than deleting a reference the row still depends on.
+            try {
+                dao.upsert(entity.copy(credentialRef = if (stored) newRef else null))
+            } catch (error: Throwable) {
+                // `put` may have written `newRef` even if verification then failed; either way it
+                // is now unreferenced, so clean it up. `legacyRef` is untouched: the row still
+                // depends on it.
+                newRef?.let(credentialStore::delete)
+                throw error
+            }
+
+            // The row no longer depends on either the legacy reference, or (when verification
+            // failed) the new one; both are unreachable now, so clean them up rather than leaving
+            // dead secret material.
+            if (!stored) newRef?.let(credentialStore::delete)
+            credentialStore.delete(legacyRef)
+        }
     }
 
     private suspend fun normalizeStoredInstancesIfNeeded() {

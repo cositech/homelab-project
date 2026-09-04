@@ -82,16 +82,23 @@ Android partitions by tenant with a key prefix on the Preferences DataStore
 entries and a `tenant_ref` column on the Room `service_instance` table plus a
 non‑null index; the Phase‑3 `controlled_action_queue_v1` payload and the audit
 ledger snapshot are stored per tenant. iOS applies the same partitioning to its
-`UserDefaults` Codable payloads and Keychain query attributes
-(`kSecAttrService` gains the tenant id).
+`UserDefaults` Codable payloads.
 
 The credential store keeps its Phase‑1 shape — lookups are by the instance's
-random `credentialRef`, not by `instanceId` — but that reference is now
-tenant‑namespaced (`credential:v2:<tenantRef>:<random>` on Android;
-`kSecAttrService` gains the tenant id on iOS). Migration re‑keys every existing
-`credentialRef` into the `default` tenant, updating the persisted
-`ServiceInstance.credentialRef` in the same transaction; a failure to re‑key an
-entry fails closed (the instance is shown as unconfigured) rather than falling
+`credentialRef`, not by `instanceId` — but that reference is now
+tenant‑namespaced on both platforms: `credential:v2:<tenantRef>:<random>` on
+Android (the reference is an opaque DataStore key; the Keystore key material
+stays shared, as in Phase 1), and `credential:v2:<tenantRef>:<instanceId>` as
+the Keychain `kSecAttrAccount` on iOS (the `kSecAttrService` stays the single
+app‑wide value, matching Android's shared‑key‑material choice; see ADR-worthy
+rationale: per‑tenant Keychain services would need a live migration of the
+account‑diffing cleanup `KeychainService.saveServiceState` already performs).
+Migration re‑keys every existing `credentialRef` into its instance's own
+tenant, updating the persisted `ServiceInstance.credentialRef` in the same
+step. On Android a failure to re‑key an entry fails closed (the instance is
+shown as unconfigured) rather than falling back to an untenanted read; on iOS
+the re‑key rides the existing all‑or‑nothing `saveServiceState` write, so a
+failure changes nothing and is retried on the next launch rather than falling
 back to an untenanted read.
 
 Every repository query that today takes an `instanceId` or a `ServiceType` gains a

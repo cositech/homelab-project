@@ -92,6 +92,126 @@ class ServiceInstancesRepositoryTest {
         assertTrue(!credentials.contains(secondCredentialRef))
     }
 
+    @Test
+    fun `saveInstance mints a tenant-namespaced v2 credential reference`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        val instance = ServiceInstance(
+            id = "instance-1",
+            type = ServiceType.GITEA,
+            label = "Main",
+            url = "https://gitea.local",
+            token = "token-1",
+            tenantRef = "acme"
+        )
+
+        repository.saveInstance(instance)
+
+        val ref = dao.getById(instance.id)?.credentialRef!!
+        assertTrue(ref.startsWith("credential:v2:acme:"))
+    }
+
+    @Test
+    fun `migration re-keys a legacy credential reference into the instance tenant`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        val envelope = CredentialEnvelope(token = "legacy-token")
+        credentials.put("credential:v1:instance-1:old", envelope)
+        dao.upsert(legacyEntity(id = "instance-1", tenantRef = "acme", credentialRef = "credential:v1:instance-1:old"))
+
+        repository.migrateCredentialReferencesIfNeeded()
+
+        val migratedRef = dao.getById("instance-1")?.credentialRef!!
+        assertTrue(migratedRef.startsWith("credential:v2:acme:"))
+        assertEquals(envelope, credentials.get(migratedRef))
+        assertTrue(!credentials.contains("credential:v1:instance-1:old"))
+    }
+
+    @Test
+    fun `migration is idempotent for already-migrated references`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        credentials.put("credential:v1:instance-1:old", CredentialEnvelope(token = "legacy-token"))
+        dao.upsert(legacyEntity(id = "instance-1", credentialRef = "credential:v1:instance-1:old"))
+        repository.migrateCredentialReferencesIfNeeded()
+        val firstRef = dao.getById("instance-1")?.credentialRef
+
+        repository.migrateCredentialReferencesIfNeeded()
+
+        assertEquals(firstRef, dao.getById("instance-1")?.credentialRef)
+    }
+
+    @Test
+    fun `migration fails closed when the legacy envelope is missing`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        dao.upsert(legacyEntity(id = "instance-1", credentialRef = "credential:v1:instance-1:gone"))
+
+        repository.migrateCredentialReferencesIfNeeded()
+
+        assertNull(dao.getById("instance-1")?.credentialRef)
+    }
+
+    @Test
+    fun `migration fails closed when the new reference cannot be verified`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        credentials.put("credential:v1:instance-1:old", CredentialEnvelope(token = "legacy-token"))
+        dao.upsert(legacyEntity(id = "instance-1", credentialRef = "credential:v1:instance-1:old"))
+        credentials.failNextPut = true
+
+        repository.migrateCredentialReferencesIfNeeded()
+
+        assertNull(dao.getById("instance-1")?.credentialRef)
+        assertTrue(!credentials.contains("credential:v1:instance-1:old"))
+    }
+
+    @Test
+    fun `migration leaves the legacy reference intact when the database write fails`() = runTest {
+        val dao = FakeServiceInstanceDao()
+        val credentials = InMemorySecureCredentialStore()
+        val repository = ServiceInstancesRepository(dao, settingsManager(SettingsState()), credentials)
+        val envelope = CredentialEnvelope(token = "legacy-token")
+        credentials.put("credential:v1:instance-1:old", envelope)
+        dao.upsert(legacyEntity(id = "instance-1", credentialRef = "credential:v1:instance-1:old"))
+        dao.failNextUpsert = true
+
+        try {
+            repository.migrateCredentialReferencesIfNeeded()
+            org.junit.Assert.fail("expected the simulated database failure to propagate")
+        } catch (_: IllegalStateException) {
+            // expected
+        }
+
+        // The row still depends on the legacy reference, so it must still be readable, and the
+        // newly minted (now-unreferenced) v2 reference must not have been left dangling.
+        assertEquals("credential:v1:instance-1:old", dao.getById("instance-1")?.credentialRef)
+        assertEquals(envelope, credentials.get("credential:v1:instance-1:old"))
+        assertTrue(!credentials.contains("credential:v2:default:0"))
+    }
+
+    private fun legacyEntity(
+        id: String,
+        tenantRef: String = "default",
+        credentialRef: String?
+    ) = ServiceInstanceEntity(
+        id = id,
+        type = ServiceType.GITEA.name,
+        label = "Legacy",
+        url = "https://legacy.local",
+        tenantRef = tenantRef,
+        credentialRef = credentialRef,
+        username = null,
+        piholeAuthMode = null,
+        fallbackUrl = null,
+        tlsMode = "SYSTEM"
+    )
+
     private fun settingsManager(state: SettingsState): SettingsManager {
         return mockk(relaxed = true) {
             every { serviceInstancesMigrated } returns state.migrated
@@ -140,7 +260,14 @@ private class FakeServiceInstanceDao : ServiceInstanceDao {
     override suspend fun getByType(type: String): List<ServiceInstanceEntity> =
         state.value.filter { it.type == type }.sortedWith(compareBy<ServiceInstanceEntity> { it.label }.thenBy { it.id })
 
+    /** Simulates a Room I/O failure on the next [upsert] call only. */
+    var failNextUpsert: Boolean = false
+
     override suspend fun upsert(entity: ServiceInstanceEntity) {
+        if (failNextUpsert) {
+            failNextUpsert = false
+            throw IllegalStateException("simulated database failure")
+        }
         state.value = state.value.filterNot { it.id == entity.id } + entity
     }
 
