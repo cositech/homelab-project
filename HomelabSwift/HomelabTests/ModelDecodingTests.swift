@@ -1476,7 +1476,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(deniedInvocations, 0)
 
         let ok = await coordinator.execute(
-            request: controlledActionRequest(risk: .low, tenantRef: "acme", idempotencyKey: "fedcba9876543210"),
+            request: controlledActionRequest(risk: .low, idempotencyKey: "fedcba9876543210", tenantRef: "acme"),
             actorRole: .operatorRole,
             providerCapabilities: [.writeActions],
             actorTenants: ["acme"]
