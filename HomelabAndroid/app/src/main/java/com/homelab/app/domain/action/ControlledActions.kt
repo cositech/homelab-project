@@ -64,11 +64,20 @@ data class ActionPolicyDecision(
 object ControlledActionPolicy {
     private val actionPattern = Regex("^[a-z][a-z0-9.-]{1,127}$")
 
+    /**
+     * Tenant-membership gate. `actorTenants == null` means membership is not configured
+     * (single-tenant install) and the gate is a no-op. A non-null set — including an empty
+     * one, meaning the actor belongs to no tenant — is enforced: the target instance's
+     * tenant must be a member.
+     */
+    fun tenantMembershipSatisfied(request: ControlledActionRequest, actorTenants: Set<String>?): Boolean =
+        actorTenants == null || Tenant.refOrDefault(request.tenantRef) in actorTenants
+
     fun evaluate(
         request: ControlledActionRequest,
         actorRole: ActionRole,
         providerCapabilities: Set<ProviderCapability>,
-        actorTenants: Set<String> = emptySet()
+        actorTenants: Set<String>? = null
     ): ActionPolicyDecision {
         val requiredRole = when (request.risk) {
             ActionRisk.LOW, ActionRisk.MEDIUM -> ActionRole.OPERATOR
@@ -94,10 +103,8 @@ object ControlledActionPolicy {
                 confirmationRequired
             )
         }
-        // Tenant-membership gate: when the actor's membership set is configured (MSP mode),
-        // the target instance's tenant must be one the actor belongs to. An empty set means
-        // membership is not configured (single-tenant install) and the gate is a no-op.
-        if (actorTenants.isNotEmpty() && Tenant.refOrDefault(request.tenantRef) !in actorTenants) {
+        // Tenant-membership gate, evaluated before the write-capability and role checks.
+        if (!tenantMembershipSatisfied(request, actorTenants)) {
             return ActionPolicyDecision(
                 ActionPolicyOutcome.DENIED,
                 "tenant-membership-required",
@@ -261,10 +268,18 @@ class ControlledActionCoordinator(
         request: ControlledActionRequest,
         actorRole: ActionRole,
         providerCapabilities: Set<ProviderCapability>,
-        actorTenants: Set<String> = emptySet(),
+        actorTenants: Set<String>? = null,
         operation: suspend () -> Unit
     ): ActionAuditRecord = queue.withLock {
         recoverLocked()
+        // Authorization is actor-contextual, so it is re-checked here ahead of any cached
+        // terminal result: a non-member never receives another actor's success, and a
+        // membership denial is never persisted to block a later authorized submission.
+        if (!ControlledActionPolicy.tenantMembershipSatisfied(request, actorTenants)) {
+            return@withLock audit(
+                request, actorRole, ActionExecutionState.REJECTED, "tenant-membership-required"
+            )
+        }
         val existing = durableEntries[request.idempotencyKey]
         if (existing != null && !existing.request.hasSameIdentity(request)) {
             return@withLock audit(request, actorRole, ActionExecutionState.REJECTED, "idempotency-key-conflict")

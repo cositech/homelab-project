@@ -583,16 +583,17 @@ fi
 grep -Fq 'copy(parameters = emptyMap())' "$android_core"
 grep -Fq 'copy.parameters = [:]' "$swift_core"
 
-# Phase 4 tenant-membership gate: the policy honors an actor tenant set, the coordinator
-# threads it through, and the audit record carries the resolved tenantRef.
-for pattern in 'actorTenants: Set<String>' 'tenant-membership-required' 'Tenant.refOrDefault(request.tenantRef)'; do
+# Phase 4 tenant-membership gate: the policy honors an actor tenant set (nil = gate off,
+# a set = enforced, empty set = deny all), the coordinator re-checks it ahead of any cached
+# terminal result, and the audit record carries the resolved tenantRef.
+for pattern in 'fun tenantMembershipSatisfied' 'actorTenants: Set<String>? = null' 'tenant-membership-required' 'Tenant.refOrDefault(request.tenantRef)'; do
   grep -Fq "$pattern" "$android_core"
 done
 grep -Fq 'val tenantRef: String = Tenant.DEFAULT_ID' "$android_core"
-for pattern in 'actorTenants: Set<String>' 'tenant-membership-required' 'Tenant.refOrDefault(request.tenantRef)'; do
+for pattern in 'func tenantMembershipSatisfied' 'actorTenants: Set<String>? = nil' 'tenant-membership-required' 'Tenant.refOrDefault(request.tenantRef)'; do
   grep -Fq "$pattern" "$swift_core"
 done
-grep -Fq 'actor outside the target tenant is denied before role and capability checks' "$android_tests"
-grep -Fq 'testControlledActionTenantMembershipGate' "$swift_tests"
+grep -Fq 'a membership denial is not cached and does not block a later authorized submission' "$android_tests"
+grep -Fq 'testControlledActionMembershipDenialIsNotCachedAndUnblocksLaterAuthorizedActor' "$swift_tests"
 
 echo "Phase 3 controlled actions audit passed"

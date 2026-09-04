@@ -93,15 +93,51 @@ class ControlledActionsTest {
     }
 
     @Test
-    fun `no tenant membership set leaves the gate a no-op`() {
+    fun `null tenant membership leaves the gate a no-op`() {
         val decision = ControlledActionPolicy.evaluate(
             request(risk = ActionRisk.LOW, tenantRef = "acme"),
             ActionRole.OPERATOR,
             providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
-            actorTenants = emptySet()
+            actorTenants = null
         )
 
         assertEquals(ActionPolicyOutcome.APPROVED, decision.outcome)
+    }
+
+    @Test
+    fun `a configured but empty membership set denies every tenant`() {
+        val decision = ControlledActionPolicy.evaluate(
+            request(risk = ActionRisk.LOW, tenantRef = null),
+            ActionRole.ADMIN,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = emptySet()
+        )
+
+        assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
+        assertEquals("tenant-membership-required", decision.reasonCode)
+    }
+
+    @Test
+    fun `a membership denial is not cached and does not block a later authorized submission`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(now = { 2_000 })
+        val req = request(risk = ActionRisk.LOW, tenantRef = "acme")
+
+        val denied = coordinator.execute(
+            req, ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("default")
+        ) { invocations += 1 }
+        assertEquals(ActionExecutionState.REJECTED, denied.state)
+
+        val allowed = coordinator.execute(
+            req, ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("acme")
+        ) { invocations += 1 }
+
+        assertEquals(ActionExecutionState.SUCCEEDED, allowed.state)
+        assertEquals(1, invocations)
     }
 
     @Test

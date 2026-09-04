@@ -1255,11 +1255,23 @@ struct ActionPolicyDecision: Codable, Equatable, Sendable {
 }
 
 enum ControlledActionPolicy {
+    /// Tenant-membership gate. `actorTenants == nil` means membership is not configured
+    /// (single-tenant install) and the gate is a no-op. A non-nil set — including an empty
+    /// one, meaning the actor belongs to no tenant — is enforced: the target instance's
+    /// tenant must be a member.
+    static func tenantMembershipSatisfied(
+        _ request: ControlledActionRequest,
+        actorTenants: Set<String>?
+    ) -> Bool {
+        guard let actorTenants else { return true }
+        return actorTenants.contains(Tenant.refOrDefault(request.tenantRef))
+    }
+
     static func evaluate(
         _ request: ControlledActionRequest,
         actorRole: ControlledActionRole,
         providerCapabilities: Set<ProviderCapability>,
-        actorTenants: Set<String> = []
+        actorTenants: Set<String>? = nil
     ) -> ActionPolicyDecision {
         let requiredRole: ControlledActionRole
         switch request.risk {
@@ -1298,10 +1310,8 @@ enum ControlledActionPolicy {
                 confirmationRequired: confirmationRequired
             )
         }
-        // Tenant-membership gate: when the actor's membership set is configured (MSP mode),
-        // the target instance's tenant must be one the actor belongs to. An empty set means
-        // membership is not configured (single-tenant install) and the gate is a no-op.
-        if !actorTenants.isEmpty, !actorTenants.contains(Tenant.refOrDefault(request.tenantRef)) {
+        // Tenant-membership gate, evaluated before the write-capability and role checks.
+        if !tenantMembershipSatisfied(request, actorTenants: actorTenants) {
             return ActionPolicyDecision(
                 outcome: .denied,
                 reasonCode: "tenant-membership-required",
@@ -1812,10 +1822,19 @@ actor ControlledActionCoordinator {
         request: ControlledActionRequest,
         actorRole: ControlledActionRole,
         providerCapabilities: Set<ProviderCapability>,
-        actorTenants: Set<String> = [],
+        actorTenants: Set<String>? = nil,
         operation: @escaping @Sendable () async throws -> Void
     ) async -> ActionAuditRecord {
         await recoverIfNeeded()
+        // Authorization is actor-contextual, so it is re-checked here ahead of any cached
+        // terminal result: a non-member never receives another actor's success, and a
+        // membership denial is never persisted to block a later authorized submission.
+        if !ControlledActionPolicy.tenantMembershipSatisfied(request, actorTenants: actorTenants) {
+            return await Self.audit(
+                request: request, actorRole: actorRole, state: .rejected,
+                reasonCode: "tenant-membership-required", ledger: ledger, now: now
+            )
+        }
         let existing = durableEntries[request.idempotencyKey]
         if let existing, !existing.request.hasSameIdentity(as: request) {
             return await Self.audit(
@@ -1908,7 +1927,7 @@ actor ControlledActionCoordinator {
         request: ControlledActionRequest,
         actorRole: ControlledActionRole,
         providerCapabilities: Set<ProviderCapability>,
-        actorTenants: Set<String>,
+        actorTenants: Set<String>?,
         existing: DurableActionQueueEntry?,
         ledger: ControlledActionLedger,
         durableStore: any DurableActionQueueStore,

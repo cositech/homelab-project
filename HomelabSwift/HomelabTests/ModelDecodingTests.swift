@@ -1456,6 +1456,16 @@ final class ModelDecodingTests: XCTestCase {
             actorTenants: ["acme"]
         )
         XCTAssertEqual(nilDenied.reasonCode, "tenant-membership-required")
+
+        // A configured but empty membership set denies every tenant.
+        let emptyDenied = ControlledActionPolicy.evaluate(
+            controlledActionRequest(risk: .low, tenantRef: nil),
+            actorRole: .admin,
+            providerCapabilities: [.writeActions],
+            actorTenants: []
+        )
+        XCTAssertEqual(emptyDenied.outcome, .denied)
+        XCTAssertEqual(emptyDenied.reasonCode, "tenant-membership-required")
     }
 
     func testControlledActionCoordinatorEnforcesTenantMembershipAndStampsAudit() async {
@@ -1485,6 +1495,35 @@ final class ModelDecodingTests: XCTestCase {
         }
         XCTAssertEqual(ok.state, .succeeded)
         XCTAssertEqual(ok.tenantRef, "acme")
+    }
+
+    func testControlledActionMembershipDenialIsNotCachedAndUnblocksLaterAuthorizedActor() async {
+        let counter = ActionInvocationCounter()
+        let coordinator = ControlledActionCoordinator(now: { Date(timeIntervalSince1970: 2) })
+        let request = controlledActionRequest(risk: .low, tenantRef: "acme")
+
+        let denied = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["default"]
+        ) {
+            await counter.increment()
+        }
+        XCTAssertEqual(denied.state, .rejected)
+
+        let allowed = await coordinator.execute(
+            request: request,
+            actorRole: .operatorRole,
+            providerCapabilities: [.writeActions],
+            actorTenants: ["acme"]
+        ) {
+            await counter.increment()
+        }
+        let invocations = await counter.value
+
+        XCTAssertEqual(allowed.state, .succeeded)
+        XCTAssertEqual(invocations, 1)
     }
 
     func testActionAuditRecordDecodesLegacyPayloadWithoutTenantRef() throws {
