@@ -14,11 +14,23 @@ final class TenantStore {
     private(set) var selection: TenantSelection
 
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private static let storageKey = "tenant_selection_v1"
+    nonisolated static let storageKey = "tenant_selection_v1"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.selection = Self.load(from: defaults)
+        self.selection = Self.snapshot(defaults: defaults)
+    }
+
+    /// Reads the persisted selection without touching the `@MainActor` store, for callers (such as
+    /// the controlled-action tenant scope) that only need a point-in-time membership set.
+    nonisolated static func snapshot(defaults: UserDefaults = .standard) -> TenantSelection {
+        guard
+            let data = defaults.data(forKey: storageKey),
+            let decoded = try? JSONDecoder().decode(TenantSelection.self, from: data)
+        else {
+            return .initial
+        }
+        return decoded.normalized()
     }
 
     var activeTenant: Tenant { selection.activeTenant }
@@ -68,14 +80,28 @@ final class TenantStore {
         guard let data = try? JSONEncoder().encode(selection) else { return }
         defaults.set(data, forKey: Self.storageKey)
     }
+}
 
-    private static func load(from defaults: UserDefaults) -> TenantSelection {
+/// Maps a controlled action back to its tenant by parsing the instance id out of the
+/// `provider:instanceId` `providerRef` and reading that instance's `tenantRef` from the persisted
+/// service state, and reports the device-local membership set from the persisted `TenantSelection`.
+/// A single-tenant install resolves everything to `Tenant.defaultId`, so the Phase-4 gate stays a
+/// no-op until a second tenant is configured.
+struct KeychainControlledActionTenantScope: ControlledActionTenantScope {
+    func tenantRef(forProviderRef providerRef: String) async -> String? {
         guard
-            let data = defaults.data(forKey: storageKey),
-            let decoded = try? JSONDecoder().decode(TenantSelection.self, from: data)
+            let idPart = providerRef.split(separator: ":", maxSplits: 1).dropFirst().first
         else {
-            return .initial
+            return nil
         }
-        return decoded.normalized()
+        let target = idPart.lowercased()
+        let match = KeychainService.loadServiceState().instances.first {
+            $0.id.uuidString.lowercased() == target
+        }
+        return match.map { Tenant.refOrDefault($0.tenantRef) }
+    }
+
+    func membershipRefs() async -> Set<String> {
+        TenantStore.snapshot().membershipRefs
     }
 }

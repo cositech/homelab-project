@@ -252,18 +252,31 @@ class ControlledActionLedger(private val maximumRecords: Int = 500) {
     @Synchronized fun snapshot(): List<ActionAuditRecord> = records.toList()
 }
 
+/**
+ * Resolves the tenant a controlled action belongs to from its [ControlledActionRequest.providerRef],
+ * plus the device-local set of tenants the actor may act in. Supplied by the app so the coordinator
+ * stays free of the data layer; absent in unit tests, where the coordinator falls back to the
+ * request's own [ControlledActionRequest.tenantRef] and the explicitly passed `actorTenants`.
+ */
+interface ControlledActionTenantScope {
+    suspend fun tenantRefFor(providerRef: String): String?
+    suspend fun membershipRefs(): Set<String>
+}
+
 class ControlledActionCoordinator(
     private val ledger: ControlledActionLedger = ControlledActionLedger(),
     private val durableStore: DurableActionQueueStore = InMemoryDurableActionQueueStore(),
     private val retryPolicy: ActionRetryPolicy = ActionRetryPolicy(),
     private val now: () -> Long = System::currentTimeMillis,
-    private val waitBeforeRetry: suspend (Long) -> Unit = { delay(it) }
+    private val waitBeforeRetry: suspend (Long) -> Unit = { delay(it) },
+    private val tenantScope: ControlledActionTenantScope? = null
 ) {
     private val queue = Mutex()
     private val terminalResults = mutableMapOf<String, ActionAuditRecord>()
     private val durableEntries = mutableMapOf<String, DurableActionQueueEntry>()
     private var recovered = false
 
+    @Suppress("NAME_SHADOWING")
     suspend fun execute(
         request: ControlledActionRequest,
         actorRole: ActionRole,
@@ -272,6 +285,14 @@ class ControlledActionCoordinator(
         operation: suspend () -> Unit
     ): ActionAuditRecord = queue.withLock {
         recoverLocked()
+        // Stamp the target instance's tenant onto the request (unless it already carries one) and
+        // default the actor's membership set from the device's configured tenants.
+        val request = when {
+            tenantScope == null || request.tenantRef != null -> request
+            else -> tenantScope.tenantRefFor(request.providerRef)
+                ?.let { request.copy(tenantRef = it) } ?: request
+        }
+        val actorTenants = actorTenants ?: tenantScope?.membershipRefs()
         // Authorization is actor-contextual, so it is re-checked here ahead of any cached
         // terminal result: a non-member never receives another actor's success, and a
         // membership denial is never persisted to block a later authorized submission.

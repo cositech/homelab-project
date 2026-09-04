@@ -463,7 +463,8 @@ final class ServicesStore {
     private var healthCheckTask: Task<Void, Never>?
     private let clientManager = ServiceClientManager()
     let controlledActionCoordinator = ControlledActionCoordinator(
-        durableStore: UserDefaultsDurableActionQueueStore()
+        durableStore: UserDefaultsDurableActionQueueStore(),
+        tenantScope: KeychainControlledActionTenantScope()
     )
 
     var connectedCount: Int { instancesById.count }

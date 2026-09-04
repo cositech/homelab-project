@@ -37,6 +37,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ControlledActionsTest {
+
+    private class FakeTenantScope(
+        private val tenantByProviderRef: Map<String, String> = emptyMap(),
+        private val membership: Set<String> = setOf("default")
+    ) : ControlledActionTenantScope {
+        override suspend fun tenantRefFor(providerRef: String): String? = tenantByProviderRef[providerRef]
+        override suspend fun membershipRefs(): Set<String> = membership
+    }
+
     private fun request(
         risk: ActionRisk = ActionRisk.MEDIUM,
         dryRun: Boolean = false,
@@ -115,6 +124,88 @@ class ControlledActionsTest {
 
         assertEquals(ActionPolicyOutcome.DENIED, decision.outcome)
         assertEquals("tenant-membership-required", decision.reasonCode)
+    }
+
+    @Test
+    fun `the coordinator stamps the target instance tenant onto an unscoped request`() = runTest {
+        val coordinator = ControlledActionCoordinator(
+            now = { 2_000 },
+            tenantScope = FakeTenantScope(
+                tenantByProviderRef = mapOf("proxmox:cluster-a" to "acme"),
+                membership = setOf("default", "acme")
+            )
+        )
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {}
+
+        assertEquals(ActionExecutionState.SUCCEEDED, result.state)
+        assertEquals("acme", result.tenantRef)
+    }
+
+    @Test
+    fun `an explicit request tenant is not overwritten by the scope`() = runTest {
+        val coordinator = ControlledActionCoordinator(
+            now = { 2_000 },
+            tenantScope = FakeTenantScope(
+                tenantByProviderRef = mapOf("proxmox:cluster-a" to "acme"),
+                membership = setOf("default", "acme", "globex")
+            )
+        )
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW, tenantRef = "globex"),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) {}
+
+        assertEquals("globex", result.tenantRef)
+    }
+
+    @Test
+    fun `the coordinator denies when the scoped tenant is outside device membership`() = runTest {
+        var invocations = 0
+        val coordinator = ControlledActionCoordinator(
+            now = { 2_000 },
+            tenantScope = FakeTenantScope(
+                tenantByProviderRef = mapOf("proxmox:cluster-a" to "ghost"),
+                membership = setOf("default")
+            )
+        )
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS)
+        ) { invocations += 1 }
+
+        assertEquals(ActionExecutionState.REJECTED, result.state)
+        assertEquals("tenant-membership-required", result.reasonCode)
+        assertEquals(0, invocations)
+    }
+
+    @Test
+    fun `an explicit actor tenant set overrides the scope default`() = runTest {
+        val coordinator = ControlledActionCoordinator(
+            now = { 2_000 },
+            tenantScope = FakeTenantScope(
+                tenantByProviderRef = mapOf("proxmox:cluster-a" to "acme"),
+                membership = emptySet()
+            )
+        )
+
+        val result = coordinator.execute(
+            request(risk = ActionRisk.LOW),
+            ActionRole.OPERATOR,
+            providerCapabilities = setOf(ProviderCapability.WRITE_ACTIONS),
+            actorTenants = setOf("acme")
+        ) {}
+
+        assertEquals(ActionExecutionState.SUCCEEDED, result.state)
+        assertEquals("acme", result.tenantRef)
     }
 
     @Test
