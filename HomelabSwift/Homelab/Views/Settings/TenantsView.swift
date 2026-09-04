@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// The default tenant's stored name is the fixed English `"Default"`; render it localized.
+func tenantDisplayName(_ tenant: Tenant, localizer: Localizer) -> String {
+    tenant.isDefault ? localizer.t.badgeDefault : tenant.name
+}
+
 /// Phase 4 tenant management. A single-tenant install (the implicit `default` tenant only) reaches
 /// this screen only through its entry point in Settings; every list it shows always includes the
 /// default tenant, which can be activated but never renamed or removed.
@@ -67,7 +72,7 @@ struct TenantsView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(tenant.name)
+                    Text(tenantDisplayName(tenant, localizer: localizer))
                         .font(.headline.weight(.bold))
                     Text(tenant.kind == .customer ? localizer.t.tenantsKindCustomer : localizer.t.tenantsKindPersonal)
                         .font(.caption)

@@ -454,7 +454,7 @@ struct SettingsView: View {
                             Text(localizer.t.settingsTenants)
                                 .font(.body.weight(.medium))
                                 .foregroundStyle(.primary)
-                            Text(tenantStore.activeTenant.name)
+                            Text(tenantDisplayName(tenantStore.activeTenant, localizer: localizer))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

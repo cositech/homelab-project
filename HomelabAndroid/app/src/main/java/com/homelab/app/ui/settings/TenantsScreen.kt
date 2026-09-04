@@ -28,6 +28,11 @@ import com.homelab.app.domain.model.TenantKind
  * this screen only via its entry point in Settings; every tenant it lists always includes the
  * default one, which can be activated but never renamed or removed.
  */
+
+/** The default tenant's stored name is the fixed English `"Default"`; render it localized. */
+@Composable
+fun tenantDisplayName(tenant: Tenant): String =
+    if (tenant.isDefault) stringResource(R.string.home_default_badge) else tenant.name
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TenantsScreen(
@@ -165,7 +170,7 @@ private fun TenantRow(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = tenant.name,
+                        text = tenantDisplayName(tenant),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -243,7 +248,7 @@ private fun TenantEditDialog(
     onConfirm: (String, TenantKind) -> Unit
 ) {
     var name by rememberSaveable { mutableStateOf(initialName) }
-    var kind by remember { mutableStateOf(initialKind) }
+    var kind by rememberSaveable { mutableStateOf(initialKind) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

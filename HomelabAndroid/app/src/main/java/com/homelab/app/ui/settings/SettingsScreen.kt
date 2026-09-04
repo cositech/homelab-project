@@ -286,7 +286,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = tenantSelection.activeTenant.name,
+                                text = tenantDisplayName(tenantSelection.activeTenant),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
