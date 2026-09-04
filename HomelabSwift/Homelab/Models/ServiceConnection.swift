@@ -288,6 +288,9 @@ struct TenantSelection: Codable, Equatable, Sendable {
 }
 
 struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
+    /// Prefix of every `credentialRef` minted since Phase 4. Pre-Phase-4 references used `credential:v1:`.
+    static let credentialRefV2Prefix = "credential:v2:"
+
     let id: UUID
     let type: ServiceType
     var label: String
@@ -350,7 +353,10 @@ struct ServiceInstance: Codable, Identifiable, Equatable, Hashable {
         let resolvedTLSPolicy = tlsPolicy ?? (allowSelfSigned ? .insecureCompatibility : .system)
         self.allowSelfSigned = resolvedTLSPolicy.mode == .insecureCompatibility
         self.password = password?.trimmedNilIfEmpty
-        self.credentialRef = credentialRef ?? "credential:v1:\(id.uuidString.lowercased())"
+        // Tenant-namespaced: a Keychain entry is never addressed the same way across tenants, even
+        // for byte-identical secrets. Pre-Phase-4 instances keep their `credential:v1:` reference
+        // until `ServicesStore` re-keys them (see `normalizedInstance`).
+        self.credentialRef = credentialRef ?? "\(Self.credentialRefV2Prefix)\(self.tenantRef):\(id.uuidString.lowercased())"
         self.tlsPolicy = resolvedTLSPolicy
     }
 

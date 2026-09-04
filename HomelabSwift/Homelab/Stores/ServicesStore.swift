@@ -1472,14 +1472,32 @@ final class ServicesStore {
     private func normalizedInstance(_ instance: ServiceInstance) -> ServiceInstance {
         let normalizedUrl = normalizeServiceURL(instance.url, type: instance.type)
         let normalizedFallback = normalizeOptionalURL(instance.fallbackUrl, type: instance.type)
-        if normalizedUrl == instance.url && normalizedFallback == instance.fallbackUrl {
+        let migratedCredentialRef = Self.migratedCredentialRef(for: instance)
+        if normalizedUrl == instance.url && normalizedFallback == instance.fallbackUrl
+            && migratedCredentialRef == instance.credentialRef {
             return instance
         }
-        return instance.updating(
+        var updated = instance.updating(
             url: normalizedUrl,
             fallbackUrl: normalizedFallback,
             allowSelfSigned: instance.allowSelfSigned
         )
+        // `updating(...)` always preserves the existing credentialRef, so the migrated value is
+        // applied afterward. `loadServiceState()` already hydrated the secret fields from whatever
+        // reference the instance carried on disk; the next `persistState()` re-saves the envelope
+        // under this new tenant-namespaced reference and deletes the stale one.
+        updated.credentialRef = migratedCredentialRef
+        return updated
+    }
+
+    /// Re-keys a pre-Phase-4 `credential:v1:` reference into the tenant-namespaced
+    /// `ServiceInstance.credentialRefV2Prefix` format, in the instance's own tenant. A reference
+    /// that already carries the v2 prefix is left untouched (idempotent).
+    private static func migratedCredentialRef(for instance: ServiceInstance) -> String {
+        guard !instance.credentialRef.hasPrefix(ServiceInstance.credentialRefV2Prefix) else {
+            return instance.credentialRef
+        }
+        return "\(ServiceInstance.credentialRefV2Prefix)\(instance.tenantRef):\(instance.id.uuidString.lowercased())"
     }
 
     private func stripKnownUniFiAPIPath(from raw: String) -> String {

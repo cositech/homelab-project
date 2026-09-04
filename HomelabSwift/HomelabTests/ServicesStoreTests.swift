@@ -156,6 +156,51 @@ final class ServicesStoreTests: XCTestCase {
         XCTAssertNil(reloaded.instance(id: untenanted.id)?.siteRef)
     }
 
+    func testSavedInstanceMintsATenantNamespacedV2CredentialReference() async {
+        let store = ServicesStore()
+        let instance = ServiceInstance(
+            id: UUID(uuidString: "40000000-0000-0000-0000-000000000003")!,
+            type: .portainer,
+            label: "Acme Portainer",
+            url: "https://portainer.acme.internal",
+            tenantRef: "acme",
+            apiKey: "acme-key"
+        )
+
+        await store.saveInstance(instance)
+
+        let ref = store.instance(id: instance.id)?.credentialRef
+        XCTAssertEqual(ref, "credential:v2:acme:\(instance.id.uuidString.lowercased())")
+    }
+
+    func testInitializeMigratesALegacyCredentialReferenceAndDropsTheOldEntry() async {
+        let legacyId = UUID(uuidString: "40000000-0000-0000-0000-000000000004")!
+        let legacyRef = "credential:v1:\(legacyId.uuidString.lowercased())"
+        let legacyInstance = ServiceInstance(
+            id: legacyId,
+            type: .gitea,
+            label: "Legacy Gitea",
+            url: "https://gitea.acme.internal",
+            tenantRef: "acme",
+            token: "legacy-token",
+            credentialRef: legacyRef
+        )
+        KeychainService.saveServiceState(
+            ServiceStateV2(instances: [legacyInstance], preferredInstanceIdByType: [:])
+        )
+        XCTAssertTrue(backend.contains(service: KeychainService.service, account: legacyRef))
+
+        let store = ServicesStore()
+        await store.initialize()
+        store.stopPeriodicHealthChecks()
+
+        let migrated = store.instance(id: legacyId)
+        XCTAssertEqual(migrated?.credentialRef, "credential:v2:acme:\(legacyId.uuidString.lowercased())")
+        XCTAssertEqual(migrated?.token, "legacy-token")
+        XCTAssertFalse(backend.contains(service: KeychainService.service, account: legacyRef))
+        XCTAssertTrue(backend.contains(service: KeychainService.service, account: migrated!.credentialRef))
+    }
+
     func testUnauthorizedNotificationMarksOnlyAffectedInstanceUnreachable() async {
         let store = ServicesStore()
         let first = ServiceInstance(
@@ -223,6 +268,10 @@ private final class InMemoryKeychainBackend: KeychainBackend, @unchecked Sendabl
 
     func delete(service: String, account: String) {
         storage.removeValue(forKey: key(service: service, account: account))
+    }
+
+    func contains(service: String, account: String) -> Bool {
+        storage[key(service: service, account: account)] != nil
     }
 
     private func key(service: String, account: String) -> String {
