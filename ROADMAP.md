@@ -74,13 +74,13 @@ Exit gate: policy and audit contract tests, one Android/iOS reference-provider m
 
 See `docs/architecture/PHASE4_CORRELATION_MSP.md` for the design.
 
-- [ ] Canonical asset model: cross-provider identity resolution (hostname, IP, MAC, serial, cloud id) into stable asset keys, read-only
+- [x] Canonical asset model: cross-provider identity resolution (hostname, IP, MAC, serial, cloud id) into stable asset keys, read-only
 - [ ] Site and tenant contracts: `Tenant`, `Site`, `Customer` value objects; every provider instance, asset, health record, alert and action request carries a `tenantRef`
 - [ ] Tenant-scoped storage and queries: operations snapshots, search, the Phase-3 audit ledger and durable action queue partition by tenant; no cross-tenant reads
 - [ ] Per-tenant credential isolation: the Phase-1 `credentialRef` indirection is kept but tenant-namespaced (migration re-keys existing references into `default`); Keystore/Keychain entries and TLS trust never shared across tenants
 - [ ] Cross-provider correlation views: group health, alerts and assets by canonical asset and by site/customer; surface "same host, three providers" rollups
 - [ ] Tenant switcher and scoping UI on both clients; global workspace defaults to the active tenant, with an explicit all-tenants mode for single-tenant installs
-- [ ] Policy extension: `ControlledActionPolicy` gains a tenant-membership check; an actor may only execute against instances in tenants they belong to
+- [~] Policy extension: `ControlledActionPolicy` gains a tenant-membership check; an actor may only execute against instances in tenants they belong to — gate, coordinator threading and `tenantRef`-stamped audit records landed; callers still pass an empty membership set until the tenant store exists
 - [ ] Migration and back-compat: existing single-tenant installs map to an implicit `default` tenant with no user-visible change
 
 Exit gate: canonical-asset and tenant-isolation contract tests, a cross-provider correlation reference (one host seen by Proxmox + a monitor + a patch provider), Android/iOS compilation and unit tests, Phase-1 credential-isolation invariants, Phase-3 policy/audit invariants, CodeQL and dependency review pass. No cross-tenant data path may exist in storage, query, credential or action code.

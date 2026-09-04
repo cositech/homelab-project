@@ -1,5 +1,6 @@
 package com.homelab.app.domain.action
 
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.domain.provider.ProviderCapability
 import java.io.IOException
 import java.util.UUID
@@ -66,7 +67,8 @@ object ControlledActionPolicy {
     fun evaluate(
         request: ControlledActionRequest,
         actorRole: ActionRole,
-        providerCapabilities: Set<ProviderCapability>
+        providerCapabilities: Set<ProviderCapability>,
+        actorTenants: Set<String> = emptySet()
     ): ActionPolicyDecision {
         val requiredRole = when (request.risk) {
             ActionRisk.LOW, ActionRisk.MEDIUM -> ActionRole.OPERATOR
@@ -88,6 +90,17 @@ object ControlledActionPolicy {
             return ActionPolicyDecision(
                 ActionPolicyOutcome.DENIED,
                 invalidReason,
+                requiredRole,
+                confirmationRequired
+            )
+        }
+        // Tenant-membership gate: when the actor's membership set is configured (MSP mode),
+        // the target instance's tenant must be one the actor belongs to. An empty set means
+        // membership is not configured (single-tenant install) and the gate is a no-op.
+        if (actorTenants.isNotEmpty() && Tenant.refOrDefault(request.tenantRef) !in actorTenants) {
+            return ActionPolicyDecision(
+                ActionPolicyOutcome.DENIED,
+                "tenant-membership-required",
                 requiredRole,
                 confirmationRequired
             )
@@ -141,6 +154,7 @@ enum class ActionExecutionState {
 @Serializable
 data class ActionAuditRecord(
     val auditId: String, val requestId: String, val providerRef: String,
+    val tenantRef: String = Tenant.DEFAULT_ID,
     val action: String, val targetRef: String, val risk: ActionRisk,
     val actorRole: ActionRole, val idempotencyKey: String,
     val state: ActionExecutionState, val reasonCode: String,
@@ -247,6 +261,7 @@ class ControlledActionCoordinator(
         request: ControlledActionRequest,
         actorRole: ActionRole,
         providerCapabilities: Set<ProviderCapability>,
+        actorTenants: Set<String> = emptySet(),
         operation: suspend () -> Unit
     ): ActionAuditRecord = queue.withLock {
         recoverLocked()
@@ -263,7 +278,7 @@ class ControlledActionCoordinator(
             return@withLock result
         }
 
-        val decision = ControlledActionPolicy.evaluate(request, actorRole, providerCapabilities)
+        val decision = ControlledActionPolicy.evaluate(request, actorRole, providerCapabilities, actorTenants)
         when (decision.outcome) {
             ActionPolicyOutcome.DENIED, ActionPolicyOutcome.CONFIRMATION_REQUIRED -> {
                 val result = audit(request, actorRole, ActionExecutionState.REJECTED, decision.reasonCode)
@@ -432,7 +447,8 @@ class ControlledActionCoordinator(
         state: ActionExecutionState,
         reasonCode: String
     ): ActionAuditRecord = ActionAuditRecord(
-        UUID.randomUUID().toString(), request.id, request.providerRef, request.action,
+        UUID.randomUUID().toString(), request.id, request.providerRef,
+        Tenant.refOrDefault(request.tenantRef), request.action,
         request.targetRef, request.risk, actorRole, request.idempotencyKey,
         state, reasonCode, now()
     ).also(ledger::append)
@@ -440,6 +456,7 @@ class ControlledActionCoordinator(
     private fun ControlledActionRequest.sanitizedForPersistence() = copy(parameters = emptyMap())
 
     private fun ControlledActionRequest.hasSameIdentity(other: ControlledActionRequest) =
-        providerRef == other.providerRef && tenantRef == other.tenantRef &&
+        providerRef == other.providerRef &&
+            Tenant.refOrDefault(tenantRef) == Tenant.refOrDefault(other.tenantRef) &&
             action == other.action && targetRef == other.targetRef && risk == other.risk
 }
