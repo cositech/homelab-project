@@ -1,7 +1,9 @@
 package com.homelab.app.domain.provider
 
+import com.homelab.app.domain.asset.CanonicalAsset
 import com.homelab.app.util.ServiceType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 enum class ProviderCapability {
@@ -72,7 +74,14 @@ data class OperationsSnapshot(
     val alerts: List<ProviderEvent> = emptyList(),
     val assets: List<ProviderResource> = emptyList(),
     val diagnostics: List<ProviderDiagnostic> = emptyList(),
-    val refreshedAtEpochMillis: Long = System.currentTimeMillis()
+    val refreshedAtEpochMillis: Long = System.currentTimeMillis(),
+    /**
+     * Phase 4 cross-provider rollup: [assets] regrouped by canonical host. Not `@Serializable`
+     * (the asset model is deliberately kept pure/serialization-free), so it's excluded here rather
+     * than persisted or transmitted with the rest of the snapshot.
+     */
+    @Transient
+    val correlatedAssets: List<CanonicalAsset> = emptyList()
 ) {
     fun search(query: String): OperationsSearchResults {
         val needle = query.trim().lowercase()

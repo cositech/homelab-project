@@ -3,6 +3,9 @@ package com.homelab.app.ui.operations
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.data.local.TenantStore
+import com.homelab.app.domain.asset.CanonicalAsset
+import com.homelab.app.domain.asset.CanonicalAssetResolver
+import com.homelab.app.domain.asset.resolveAcrossTenants
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.ObservabilityRepository
@@ -199,13 +202,31 @@ class OperationsViewModel @Inject constructor(
             )
         }
 
+        val dedupedAssets = assets.distinctBy { "${it.providerId}:${it.instanceId}:${it.resourceType}:${it.resourceId}" }
+            .sortedWith(compareBy<ProviderResource> { it.resourceType }.thenBy { it.name.lowercase() })
+
         return OperationsSnapshot(
             health = health.sortedWith(compareBy<ProviderHealth> { healthRank(it.state) }.thenBy { it.providerId }),
             alerts = alerts.distinctBy { it.eventId }.sortedWith(compareBy<ProviderEvent> { severityRank(it.severity) }.thenByDescending { it.occurredAtEpochMillis }),
-            assets = assets.distinctBy { "${it.providerId}:${it.instanceId}:${it.resourceType}:${it.resourceId}" }.sortedWith(compareBy<ProviderResource> { it.resourceType }.thenBy { it.name.lowercase() }),
+            assets = dedupedAssets,
             diagnostics = diagnostics.sortedWith(compareBy<ProviderDiagnostic> { healthRank(it.state) }.thenBy { it.displayName.lowercase() }),
-            refreshedAtEpochMillis = observedAt
+            refreshedAtEpochMillis = observedAt,
+            correlatedAssets = buildCorrelatedAssets(instances, dedupedAssets)
         )
+    }
+
+    /** Cross-provider rollup of [assets], correlated ones first. See [resolveAcrossTenants] for the tenant-isolation rule. */
+    private fun buildCorrelatedAssets(
+        instances: List<ServiceInstance>,
+        assets: List<ProviderResource>
+    ): List<CanonicalAsset> {
+        val tenantByInstanceId = instances.associate { it.id to it.tenantRef }
+        return CanonicalAssetResolver.resolveAcrossTenants(assets, tenantByInstanceId)
+            .sortedWith(
+                compareByDescending<CanonicalAsset> { it.isCorrelated }
+                    .thenByDescending { it.providerIds.size }
+                    .thenBy { it.displayName.lowercase() }
+            )
     }
 
     private suspend fun appendProxmox(

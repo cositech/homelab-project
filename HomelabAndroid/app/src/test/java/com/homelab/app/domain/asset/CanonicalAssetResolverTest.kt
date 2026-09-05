@@ -216,4 +216,46 @@ class CanonicalAssetResolverTest {
         assertEquals("acme", assets.single().tenantRef)
         assertFalse(assets.single().isCorrelated)
     }
+
+    @Test
+    fun `resolveAcrossTenants merges two providers sharing an FQDN within one tenant`() {
+        val proxmox = ProviderResource("proxmox", "inst-proxmox", "host", "1", "web01.acme.internal")
+        val netbox = ProviderResource("netbox", "inst-netbox", "host", "42", "web01.acme.internal")
+
+        val assets = CanonicalAssetResolver.resolveAcrossTenants(
+            assets = listOf(proxmox, netbox),
+            tenantRefByInstanceId = mapOf("inst-proxmox" to "acme", "inst-netbox" to "acme")
+        )
+
+        assertEquals(1, assets.size)
+        assertTrue(assets.single().isCorrelated)
+        assertEquals("acme", assets.single().tenantRef)
+    }
+
+    @Test
+    fun `resolveAcrossTenants never merges the same identity across two different tenants`() {
+        val proxmox = ProviderResource("proxmox", "inst-proxmox", "host", "1", "web01.acme.internal")
+        val netbox = ProviderResource("netbox", "inst-netbox", "host", "42", "web01.acme.internal")
+
+        val assets = CanonicalAssetResolver.resolveAcrossTenants(
+            assets = listOf(proxmox, netbox),
+            tenantRefByInstanceId = mapOf("inst-proxmox" to "acme", "inst-netbox" to "globex")
+        )
+
+        assertEquals(2, assets.size)
+        assertTrue(assets.none { it.isCorrelated })
+        assertEquals(setOf("acme", "globex"), assets.map { it.tenantRef }.toSet())
+    }
+
+    @Test
+    fun `resolveAcrossTenants falls back to the default tenant for an unmapped instance`() {
+        val orphan = ProviderResource("proxmox", "inst-unknown", "host", "1", "pve1")
+
+        val assets = CanonicalAssetResolver.resolveAcrossTenants(
+            assets = listOf(orphan),
+            tenantRefByInstanceId = emptyMap()
+        )
+
+        assertEquals(Tenant.DEFAULT_ID, assets.single().tenantRef)
+    }
 }

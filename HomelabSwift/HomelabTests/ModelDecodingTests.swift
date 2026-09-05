@@ -3137,6 +3137,40 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ipInName.allSatisfy { $0.identity.shortHostnames.isEmpty })
         XCTAssertTrue(ipInName.allSatisfy { $0.identity.ipv4 == ["10.0.0.5"] })
     }
+
+    func testResolveAcrossTenantsIsolatesTenants() {
+        let proxmoxInstance = UUID()
+        let netboxInstance = UUID()
+        let proxmox = ProviderResource(providerId: "proxmox", instanceId: proxmoxInstance, resourceType: "host", resourceId: "1", name: "web01.acme.internal", state: nil, attributes: [:])
+        let netbox = ProviderResource(providerId: "netbox", instanceId: netboxInstance, resourceType: "host", resourceId: "42", name: "web01.acme.internal", state: nil, attributes: [:])
+
+        // Same tenant for both instances -> the shared FQDN correlates them.
+        let sameTenant = CanonicalAssetResolver.resolveAcrossTenants(
+            assets: [proxmox, netbox],
+            tenantRefByInstanceId: [proxmoxInstance: "acme", netboxInstance: "acme"]
+        )
+        XCTAssertEqual(sameTenant.count, 1)
+        XCTAssertTrue(sameTenant[0].isCorrelated)
+        XCTAssertEqual(sameTenant[0].tenantRef, "acme")
+
+        // Different tenants for the same identity -> must never merge across the boundary.
+        let differentTenants = CanonicalAssetResolver.resolveAcrossTenants(
+            assets: [proxmox, netbox],
+            tenantRefByInstanceId: [proxmoxInstance: "acme", netboxInstance: "globex"]
+        )
+        XCTAssertEqual(differentTenants.count, 2)
+        XCTAssertTrue(differentTenants.allSatisfy { !$0.isCorrelated })
+        XCTAssertEqual(Set(differentTenants.map(\.tenantRef)), ["acme", "globex"])
+
+        // An instance id absent from the map falls back to the default tenant.
+        let orphan = ProviderResource(providerId: "proxmox", instanceId: UUID(), resourceType: "host", resourceId: "1", name: "pve1", state: nil, attributes: [:])
+        let fallback = CanonicalAssetResolver.resolveAcrossTenants(assets: [orphan], tenantRefByInstanceId: [:])
+        XCTAssertEqual(fallback.single?.tenantRef, Tenant.defaultId)
+    }
+}
+
+private extension Array {
+    var single: Element? { count == 1 ? first : nil }
 }
 
 private actor ActionInvocationCounter {

@@ -567,6 +567,14 @@ struct OperationsSnapshot: Codable, Equatable, Sendable {
     var assets: [ProviderResource] = []
     var diagnostics: [ProviderDiagnostic] = []
     var refreshedAt = Date()
+    /// Phase 4 cross-provider rollup: `assets` regrouped by canonical host. Not `Codable` (the
+    /// asset model is deliberately kept pure/serialization-free), so it's left out of `CodingKeys`
+    /// rather than persisted or transmitted with the rest of the snapshot.
+    var correlatedAssets: [CanonicalAsset] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case health, alerts, assets, diagnostics, refreshedAt
+    }
 
     func search(_ query: String) -> OperationsSearchResults {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -2452,5 +2460,16 @@ enum CanonicalAssetResolver {
             ?? identity.shortHostnames.min()
             ?? members.first { !$0.name.isEmpty }?.name
             ?? members[0].ref
+    }
+
+    /// Resolves `assets` into canonical assets, partitioning by `tenantRefByInstanceId` first so a
+    /// mixed-tenant input (e.g. an all-tenants-mode operations refresh) never lets `resolve` — which
+    /// is intentionally tenant-agnostic — merge two different tenants' hosts into one asset. An
+    /// instance id absent from the map (should not happen in practice) falls back to the default tenant.
+    static func resolveAcrossTenants(assets: [ProviderResource], tenantRefByInstanceId: [UUID: String]) -> [CanonicalAsset] {
+        let grouped = Dictionary(grouping: assets) { tenantRefByInstanceId[$0.instanceId] ?? Tenant.defaultId }
+        return grouped.flatMap { tenantRef, tenantAssets in
+            resolve(tenantRef: tenantRef, observations: tenantAssets.map(AssetObservation.from))
+        }
     }
 }

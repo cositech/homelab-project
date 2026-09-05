@@ -1,5 +1,6 @@
 package com.homelab.app.domain.asset
 
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.domain.provider.ProviderResource
 
 /**
@@ -254,3 +255,16 @@ object CanonicalAssetResolver {
             ?: members.firstOrNull { it.name.isNotBlank() }?.name
             ?: members.first().ref
 }
+
+/**
+ * Resolves [assets] into canonical assets, partitioning by [tenantRefByInstanceId] first so a
+ * mixed-tenant input (e.g. an all-tenants-mode operations refresh) never lets [resolve] — which is
+ * intentionally tenant-agnostic — merge two different tenants' hosts into one asset. An instance id
+ * absent from the map (should not happen in practice) falls back to the default tenant.
+ */
+fun CanonicalAssetResolver.resolveAcrossTenants(
+    assets: List<ProviderResource>,
+    tenantRefByInstanceId: Map<String, String>
+): List<CanonicalAsset> = assets
+    .groupBy { tenantRefByInstanceId[it.instanceId] ?: Tenant.DEFAULT_ID }
+    .flatMap { (tenantRef, tenantAssets) -> resolve(tenantRef, tenantAssets.map(AssetObservation::from)) }
