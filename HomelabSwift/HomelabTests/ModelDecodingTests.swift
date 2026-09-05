@@ -2190,6 +2190,33 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(request.targetRef, "backup-job/backup-nightly")
     }
 
+    func testProxmoxControlledCloneIsMediumRiskAndMigrateIsHighRisk() {
+        XCTAssertTrue(ProxmoxControlledCloneMigrateAction.clone.requiresConfirmation)
+        XCTAssertTrue(ProxmoxControlledCloneMigrateAction.migrate.requiresConfirmation)
+        XCTAssertEqual(ProxmoxControlledCloneMigrateAction.clone.risk, .medium)
+        XCTAssertEqual(ProxmoxControlledCloneMigrateAction.migrate.risk, .high)
+    }
+
+    func testProxmoxControlledCloneRequestUsesNormalizedReferences() throws {
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let request = ProxmoxControlledCloneMigrateAction.clone.request(
+            instanceId: instanceId, node: "pve01", vmid: 101, guestType: .qemu, target: "105", confirmed: true
+        )
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "guest.clone")
+        XCTAssertEqual(request.targetRef, "qemu/101@pve01/clone/105")
+    }
+
+    func testProxmoxControlledMigrateRequestUsesNormalizedReferences() throws {
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let request = ProxmoxControlledCloneMigrateAction.migrate.request(
+            instanceId: instanceId, node: "pve01", vmid: 101, guestType: .lxc, target: "pve02", confirmed: true
+        )
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "guest.migrate")
+        XCTAssertEqual(request.targetRef, "lxc/101@pve01/migrate/pve02")
+    }
+
     func testControlledActionRetriesLowRiskTransportFailures() async {
         let counter = ActionInvocationCounter()
         let delays = RetryDelayRecorder()

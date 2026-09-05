@@ -1721,47 +1721,73 @@ struct ProxmoxGuestDetailView: View {
         actionInProgress = GuestAction.clone.id
         defer { actionInProgress = nil }
 
-        do {
-            guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
-            let resolvedName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedTargetNode = targetNode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? currentNodeName : targetNode.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedStorage = storage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : storage.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedPool = pool.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : pool.trimmingCharacters(in: .whitespacesAndNewlines)
-            let reference: ProxmoxTaskReference
-            if guestType == .qemu {
-                reference = try await client.cloneVM(
-                    node: currentNodeName,
-                    vmid: vmid,
-                    newVmid: newVmid,
-                    name: resolvedName,
-                    full: full,
-                    targetNode: resolvedTargetNode,
-                    storage: resolvedStorage,
-                    pool: resolvedPool
-                )
-            } else {
-                reference = try await client.cloneLXC(
-                    node: currentNodeName,
-                    vmid: vmid,
-                    newVmid: newVmid,
-                    name: resolvedName,
-                    full: full,
-                    targetNode: resolvedTargetNode,
-                    storage: resolvedStorage,
-                    pool: resolvedPool
+        guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
+        let resolvedName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTargetNode = targetNode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? currentNodeName : targetNode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedStorage = storage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : storage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedPool = pool.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : pool.trimmingCharacters(in: .whitespacesAndNewlines)
+        let actionNode = currentNodeName
+        let actionVmid = vmid
+        let actionGuestType = guestType
+        let referenceBox = ProxmoxActionReferenceBox()
+        let errorBox = ControlledActionErrorBox()
+        let request = ProxmoxControlledCloneMigrateAction.clone.request(
+            instanceId: instanceId,
+            node: actionNode,
+            vmid: actionVmid,
+            guestType: actionGuestType,
+            target: "\(newVmid)",
+            confirmed: true
+        )
+        let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: capabilities
+        ) {
+            do {
+                let completedReference: ProxmoxTaskReference
+                if actionGuestType == .qemu {
+                    completedReference = try await client.cloneVM(
+                        node: actionNode, vmid: actionVmid, newVmid: newVmid,
+                        name: resolvedName, full: full, targetNode: resolvedTargetNode,
+                        storage: resolvedStorage, pool: resolvedPool
+                    )
+                } else {
+                    completedReference = try await client.cloneLXC(
+                        node: actionNode, vmid: actionVmid, newVmid: newVmid,
+                        name: resolvedName, full: full, targetNode: resolvedTargetNode,
+                        storage: resolvedStorage, pool: resolvedPool
+                    )
+                }
+                await referenceBox.store(completedReference)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                await errorBox.set(error)
+                guard isAmbiguousProxmoxTransportFailure(error) else { throw error }
+                // Cloning isn't safely idempotent to retry: a lost-response retry could create a
+                // second guest at the same new vmid, or collide with the one just created.
+                throw ControlledActionOperationError(
+                    reasonCode: "proxmox-clone-outcome-indeterminate",
+                    disposition: .nonRetryable
                 )
             }
-            HapticManager.success()
-            await beginTrackingTask(
-                title: localizer.t.proxmoxClone,
-                kind: .clone,
-                reference: reference,
-                sourceNode: currentNodeName,
-                targetNode: resolvedTargetNode == currentNodeName ? nil : resolvedTargetNode
-            )
-        } catch {
-            presentActionError(error)
         }
+        guard result.state == ActionExecutionState.succeeded, let reference = await referenceBox.value() else {
+            presentActionError(await errorBox.value ?? APIError.custom(result.reasonCode))
+            return
+        }
+        HapticManager.success()
+        await beginTrackingTask(
+            title: localizer.t.proxmoxClone,
+            kind: .clone,
+            reference: reference,
+            sourceNode: actionNode,
+            targetNode: resolvedTargetNode == actionNode ? nil : resolvedTargetNode
+        )
     }
 
     private func performMigration(targetNode: String, online: Bool) async {
@@ -1769,25 +1795,62 @@ struct ProxmoxGuestDetailView: View {
         actionInProgress = GuestAction.migrate.id
         defer { actionInProgress = nil }
 
-        do {
-            guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
-            let reference: ProxmoxTaskReference
-            if guestType == .qemu {
-                reference = try await client.migrateVM(node: currentNodeName, vmid: vmid, targetNode: targetNode, online: online && isRunning)
-            } else {
-                reference = try await client.migrateLXC(node: currentNodeName, vmid: vmid, targetNode: targetNode, online: online && isRunning)
+        guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
+        let actionNode = currentNodeName
+        let actionVmid = vmid
+        let actionGuestType = guestType
+        let actionOnline = online && isRunning
+        let referenceBox = ProxmoxActionReferenceBox()
+        let errorBox = ControlledActionErrorBox()
+        let request = ProxmoxControlledCloneMigrateAction.migrate.request(
+            instanceId: instanceId,
+            node: actionNode,
+            vmid: actionVmid,
+            guestType: actionGuestType,
+            target: targetNode,
+            confirmed: true
+        )
+        let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: capabilities
+        ) {
+            do {
+                let completedReference: ProxmoxTaskReference
+                if actionGuestType == .qemu {
+                    completedReference = try await client.migrateVM(node: actionNode, vmid: actionVmid, targetNode: targetNode, online: actionOnline)
+                } else {
+                    completedReference = try await client.migrateLXC(node: actionNode, vmid: actionVmid, targetNode: targetNode, online: actionOnline)
+                }
+                await referenceBox.store(completedReference)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                await errorBox.set(error)
+                guard isAmbiguousProxmoxTransportFailure(error) else { throw error }
+                // Migrating isn't safely idempotent to retry: a lost-response retry could attempt
+                // a second relocation of a guest that's already mid-transfer or already moved.
+                throw ControlledActionOperationError(
+                    reasonCode: "proxmox-migrate-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
             }
-            HapticManager.success()
-            await beginTrackingTask(
-                title: localizer.t.proxmoxMigrate,
-                kind: .migrate,
-                reference: reference,
-                sourceNode: currentNodeName,
-                targetNode: targetNode
-            )
-        } catch {
-            presentActionError(error)
         }
+        guard result.state == ActionExecutionState.succeeded, let reference = await referenceBox.value() else {
+            presentActionError(await errorBox.value ?? APIError.custom(result.reasonCode))
+            return
+        }
+        HapticManager.success()
+        await beginTrackingTask(
+            title: localizer.t.proxmoxMigrate,
+            kind: .migrate,
+            reference: reference,
+            sourceNode: actionNode,
+            targetNode: targetNode
+        )
     }
 
     private func snapshotActionLabel(_ action: ProxmoxControlledSnapshotAction) -> String {
