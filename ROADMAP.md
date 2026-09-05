@@ -69,13 +69,16 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
     destructive action that didn't have one before (snapshot delete/rollback, firewall disable —
     Android's firewall disable confirm is new UI added here; storage-content delete and iOS's
     firewall toggle already had a confirm dialog, just not routed through the coordinator; backup
-    trigger needs none, see below). Risk: backup-job trigger and firewall enable are the "safe to
-    repeat, no confirmation" end (low); snapshot create/delete are medium; snapshot rollback,
-    storage-content delete and firewall disable are high/high/medium and require confirmation.
-    Backup-job trigger and storage-content delete both wrap transport failures as non-retryable in
-    their operation closures (neither is idempotent — a lost-response retry could fire a duplicate
-    backup run or hit an already-removed volume); the firewall toggle is deliberately left
-    retryable, since flipping a boolean option is naturally idempotent. Rewiring the iOS firewall
+    trigger needs none, see below). Risk: backup-job trigger and firewall enable need no
+    confirmation (low — a non-destructive "run now"/toggle-on); snapshot create/delete are medium;
+    snapshot rollback, storage-content delete and firewall disable are high/high/medium and require
+    confirmation. Despite being low/no-confirmation risk, backup-job trigger's operation closure
+    (like storage-content delete's) still wraps ambiguous transport failures as non-retryable:
+    neither mutation is idempotent, so a lost-response retry could fire a duplicate, overlapping
+    backup run or hit an already-removed volume — a definitive provider rejection (bad
+    credentials, unknown job/volume) is left unwrapped so it keeps its own reason and message
+    rather than being mislabeled "indeterminate". The firewall toggle is deliberately left
+    retryable throughout, since flipping a boolean option is naturally idempotent. Rewiring the iOS firewall
     toggle surfaced and fixed a real pre-existing bug: `toggleFirewall` took the already-desired new
     state into a parameter named `currentlyEnabled` and negated it, so confirming "Enable the
     firewall?" actually disabled it (and vice versa) — Android's equivalent was correct, this was

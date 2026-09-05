@@ -23,6 +23,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -395,6 +396,10 @@ class ProxmoxViewModel @Inject constructor(
 
     fun triggerBackupJob(jobId: String) {
         viewModelScope.launch {
+            // The coordinator records only a bounded reason code; keep the original provider
+            // exception so a definitive rejection (bad credentials, unknown job, provider
+            // conflict) still shows its real message instead of a generic one.
+            var operationError: Exception? = null
             try {
                 val request = ProxmoxBackupJobAction.TRIGGER.controlledRequest(instanceId, jobId, confirmed = false)
                 val result = controlledActionCoordinator.execute(
@@ -408,26 +413,35 @@ class ProxmoxViewModel @Inject constructor(
                         throw error
                     } catch (error: ActionOperationException) {
                         throw error
-                    } catch (error: Exception) {
-                        // Triggering the job is not idempotent - a retry after a lost response
-                        // could fire a second, overlapping vzdump run for the same job, so a
-                        // transport failure must not trigger an automatic coordinator-level retry.
+                    } catch (error: IOException) {
+                        // Genuine transport failure: we don't know whether the request reached
+                        // the server, so triggering the job again isn't idempotent - a retry
+                        // could fire a second, overlapping vzdump run for the same job.
+                        operationError = error
                         throw ActionOperationException(
                             "proxmox-backup-job-outcome-indeterminate",
                             ActionFailureDisposition.NON_RETRYABLE,
                             error
                         )
+                    } catch (error: Exception) {
+                        // A definitive provider response (e.g. an HTTP error) - not
+                        // indeterminate, so let the coordinator's default classification
+                        // (non-retryable, keyed by the real exception type) stand instead of
+                        // mislabeling a known rejection as a lost/ambiguous outcome.
+                        operationError = error
+                        throw error
                     }
                 }
                 if (result.state == ActionExecutionState.SUCCEEDED) {
                     fetchBackupJobs()
                 } else {
                     _backupJobsState.value = UiState.Error(
-                        getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                        operationError?.let { resolvedMessage(it) }
+                            ?: getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
                     ) { fetchBackupJobs() }
                 }
             } catch (e: Exception) {
-                _backupJobsState.value = UiState.Error(resolvedMessage(e)) { fetchBackupJobs() }
+                _backupJobsState.value = UiState.Error(resolvedMessage(operationError ?: e)) { fetchBackupJobs() }
             }
         }
     }
