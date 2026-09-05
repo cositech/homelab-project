@@ -980,6 +980,8 @@ struct Translations {
     let tenantsSetActive: String
     let tenantsRename: String
     let tenantsDeleteConfirmMessage: String
+    let tenantsAllMode: String
+    let operationsTenantSwitcher: String
     let settingsDisconnect: String
     let settingsDisconnectConfirm: String
     let settingsDisconnectMessage: String

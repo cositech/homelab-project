@@ -925,6 +925,8 @@ extension Translations {
         tenantsSetActive: "Définir comme actif",
         tenantsRename: "Renommer",
         tenantsDeleteConfirmMessage: "Supprimer %@ ? Cette action est irréversible.",
+        tenantsAllMode: "Tous les locataires",
+        operationsTenantSwitcher: "Changer de locataire",
         settingsDisconnect: "Déconnecter",
         settingsDisconnectConfirm: "Déconnecter",
         settingsDisconnectMessage: "Êtes-vous sûr de vouloir vous déconnecter de ce service ?",

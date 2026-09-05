@@ -277,6 +277,8 @@
     <string name="tenants_set_active">Imposta come attivo</string>
     <string name="tenants_rename">Rinomina</string>
     <string name="tenants_delete_confirm_message">Eliminare %1$s? Questa azione non può essere annullata.</string>
+    <string name="tenants_all_mode_label">Tutti i tenant</string>
+    <string name="operations_tenant_switcher">Cambia tenant</string>
     <string name="settings_not_connected">Non connesso</string>
     <string name="settings_disconnect">Disconnetti</string>
     <string name="settings_fallback_url">Fallback URL (Es. Cloudflare)</string>

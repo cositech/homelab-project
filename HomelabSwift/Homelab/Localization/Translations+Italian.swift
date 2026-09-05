@@ -923,6 +923,8 @@ extension Translations {
         tenantsSetActive: "Imposta come attivo",
         tenantsRename: "Rinomina",
         tenantsDeleteConfirmMessage: "Eliminare %@? Questa azione non può essere annullata.",
+        tenantsAllMode: "Tutti i tenant",
+        operationsTenantSwitcher: "Cambia tenant",
         settingsDisconnect: "Disconnetti",
         settingsDisconnectConfirm: "Disconnetti",
         settingsDisconnectMessage: "Sei sicuro di volerti disconnettere da questo servizio?",

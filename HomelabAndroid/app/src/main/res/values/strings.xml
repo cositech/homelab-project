@@ -263,6 +263,8 @@
     <string name="tenants_set_active">Set Active</string>
     <string name="tenants_rename">Rename</string>
     <string name="tenants_delete_confirm_message">Delete %1$s? This can\'t be undone.</string>
+    <string name="tenants_all_mode_label">All tenants</string>
+    <string name="operations_tenant_switcher">Switch tenant</string>
     <string name="settings_not_connected">Not connected</string>
     <string name="settings_disconnect">Disconnect</string>
     <string name="settings_fallback_url">Fallback URL (e.g. Cloudflare)</string>

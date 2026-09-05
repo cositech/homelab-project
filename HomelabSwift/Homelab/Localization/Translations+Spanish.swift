@@ -925,6 +925,8 @@ extension Translations {
         tenantsSetActive: "Establecer como activo",
         tenantsRename: "Renombrar",
         tenantsDeleteConfirmMessage: "¿Eliminar %@? Esta acción no se puede deshacer.",
+        tenantsAllMode: "Todos los inquilinos",
+        operationsTenantSwitcher: "Cambiar de inquilino",
         settingsDisconnect: "Desconectar",
         settingsDisconnectConfirm: "Desconectar",
         settingsDisconnectMessage: "¿Estás seguro de que quieres desconectarte de este servicio?",

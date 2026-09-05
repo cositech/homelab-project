@@ -297,6 +297,8 @@
     <string name="tenants_set_active">Aktivieren</string>
     <string name="tenants_rename">Umbenennen</string>
     <string name="tenants_delete_confirm_message">%1$s löschen? Dies kann nicht rückgängig gemacht werden.</string>
+    <string name="tenants_all_mode_label">Alle Mandanten</string>
+    <string name="operations_tenant_switcher">Mandant wechseln</string>
     <string name="settings_not_connected">Nicht verbunden</string>
     <string name="settings_disconnect">Trennen</string>
     <string name="settings_fallback_url">Fallback-URL (z.B. Cloudflare)</string>

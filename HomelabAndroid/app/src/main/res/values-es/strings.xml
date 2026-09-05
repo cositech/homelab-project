@@ -270,6 +270,8 @@
     <string name="tenants_set_active">Establecer como activo</string>
     <string name="tenants_rename">Renombrar</string>
     <string name="tenants_delete_confirm_message">¿Eliminar %1$s? Esta acción no se puede deshacer.</string>
+    <string name="tenants_all_mode_label">Todos los inquilinos</string>
+    <string name="operations_tenant_switcher">Cambiar de inquilino</string>
     <string name="settings_not_connected">No conectado</string>
     <string name="settings_disconnect">Desconectar</string>
     <string name="settings_fallback_url">URL de respaldo (p. ej. Cloudflare)</string>
