@@ -44,6 +44,7 @@ fun ProxmoxFirewallScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+    var pendingDisable by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.fetchFirewallRules()
@@ -87,14 +88,16 @@ fun ProxmoxFirewallScreen(
             FirewallToggleCard(
                 optionsState = firewallOptionsState,
                 onToggle = { enable ->
-                    viewModel.toggleFirewall(
-                        enable = enable,
-                        onSuccess = {
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Firewall ${if (enable) "enabled" else "disabled"}")
+                    if (enable) {
+                        viewModel.toggleFirewall(
+                            enable = true,
+                            onSuccess = {
+                                scope.launch { snackbarHostState.showSnackbar("Firewall enabled") }
                             }
-                        }
-                    )
+                        )
+                    } else {
+                        pendingDisable = true
+                    }
                 }
             )
 
@@ -138,6 +141,33 @@ fun ProxmoxFirewallScreen(
             }
             }
         }
+    }
+
+    if (pendingDisable) {
+        AlertDialog(
+            onDismissRequest = { pendingDisable = false },
+            title = { Text("Disable Firewall") },
+            text = { Text("Are you sure you want to disable the cluster firewall? This removes network protection for every node.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDisable = false
+                    viewModel.toggleFirewall(
+                        enable = false,
+                        confirmed = true,
+                        onSuccess = {
+                            scope.launch { snackbarHostState.showSnackbar("Firewall disabled") }
+                        }
+                    )
+                }) {
+                    Text("Disable", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDisable = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

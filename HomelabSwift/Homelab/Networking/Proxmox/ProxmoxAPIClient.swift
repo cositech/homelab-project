@@ -391,15 +391,17 @@ actor ProxmoxAPIClient {
     private func authenticatedVoidRequest(
         path: String,
         method: String = "POST",
-        body: Data? = nil
+        body: Data? = nil,
+        allowFallback: Bool = true
     ) async throws {
         await ensureFreshTicketIfNeeded()
         let h = authHeaders(forWrite: true)
+        let effectiveFallback = allowFallback ? fallbackURL : ""
         do {
-            try await engine.requestVoid(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: h, body: body)
+            try await engine.requestVoid(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: h, body: body)
         } catch {
             if isAuthError(error), !usesApiToken, await refreshTokenWithContinuation() {
-                try await engine.requestVoid(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: authHeaders(forWrite: true), body: body)
+                try await engine.requestVoid(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: authHeaders(forWrite: true), body: body)
             } else {
                 throw error
             }
@@ -427,10 +429,12 @@ actor ProxmoxAPIClient {
     private func authenticatedFormVoidRequest(
         path: String,
         method: String = "POST",
-        params: [String: String]
+        params: [String: String],
+        allowFallback: Bool = true
     ) async throws {
         await ensureFreshTicketIfNeeded()
         let body = formURLEncodedBody(from: params)
+        let effectiveFallback = allowFallback ? fallbackURL : ""
         func makeHeaders() -> [String: String] {
             var headers = authHeaders(forWrite: true)
             headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -438,10 +442,10 @@ actor ProxmoxAPIClient {
         }
 
         do {
-            try await engine.requestVoid(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: makeHeaders(), body: body)
+            try await engine.requestVoid(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: makeHeaders(), body: body)
         } catch {
             if isAuthError(error), !usesApiToken, await refreshTokenWithContinuation() {
-                try await engine.requestVoid(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: makeHeaders(), body: body)
+                try await engine.requestVoid(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: makeHeaders(), body: body)
             } else {
                 throw error
             }
@@ -836,7 +840,8 @@ actor ProxmoxAPIClient {
         let encoded = volume.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? volume
         try await authenticatedVoidRequest(
             path: "/api2/json/nodes/\(node)/storage/\(storage)/content/\(encoded)",
-            method: "DELETE"
+            method: "DELETE",
+            allowFallback: false
         )
     }
 
@@ -866,7 +871,8 @@ actor ProxmoxAPIClient {
         try await authenticatedFormVoidRequest(
             path: "/api2/json/cluster/firewall/options",
             method: "PUT",
-            params: ["enable": enabled ? "1" : "0"]
+            params: ["enable": enabled ? "1" : "0"],
+            allowFallback: false
         )
     }
 

@@ -616,7 +616,40 @@ struct ProxmoxStorageContentView: View {
     private func deleteContent(_ item: ProxmoxStorageContent) async {
         guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
         do {
-            try await client.deleteStorageContent(node: nodeName, storage: storageName, volume: item.volid)
+            let request = ProxmoxControlledStorageContentAction.delete.request(
+                instanceId: instanceId,
+                node: nodeName,
+                storage: storageName,
+                volume: item.volid,
+                confirmed: true
+            )
+            let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+            let result = await servicesStore.controlledActionCoordinator.execute(
+                request: request,
+                actorRole: .admin,
+                providerCapabilities: capabilities
+            ) {
+                do {
+                    try await client.deleteStorageContent(node: nodeName, storage: storageName, volume: item.volid)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    // Deleting storage content is not idempotent (a retry after a lost response
+                    // could hit an already-removed volume and surface a confusing provider
+                    // error), so a transport failure must not trigger an automatic
+                    // coordinator-level retry.
+                    throw ControlledActionOperationError(
+                        reasonCode: "proxmox-storage-content-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard result.state == ActionExecutionState.succeeded else {
+                showError = result.reasonCode
+                return
+            }
             await fetchContent()
         } catch {
             showError = error.localizedDescription

@@ -441,6 +441,7 @@ interface ProxmoxApi {
     suspend fun updateClusterFirewallOptions(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Body body: Map<String, String>
     ): ProxmoxApiResponse<String>
 
@@ -450,6 +451,7 @@ interface ProxmoxApi {
     suspend fun deleteStorageContent(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("storage") storage: String,
         @Path("volume", encoded = true) volume: String

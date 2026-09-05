@@ -150,6 +150,7 @@ fun ProxmoxStorageContentScreen(
                             node = node,
                             storage = storage,
                             volume = item.volid,
+                            confirmed = true,
                             onSuccess = {
                                 scope.launch {
                                     snackbarHostState.showSnackbar("Volume deleted successfully")

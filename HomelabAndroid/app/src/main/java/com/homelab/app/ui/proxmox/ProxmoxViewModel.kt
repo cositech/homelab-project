@@ -406,14 +406,43 @@ class ProxmoxViewModel @Inject constructor(
 
     // MARK: - Storage Content Actions
 
-    fun deleteStorageContent(node: String, storage: String, volume: String, onSuccess: () -> Unit = {}) {
+    fun deleteStorageContent(node: String, storage: String, volume: String, confirmed: Boolean = false, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             try {
-                proxmoxRepository.deleteStorageContent(instanceId, node, storage, volume)
-                fetchStorageContent(node, storage)
-                onSuccess()
+                val request = ProxmoxStorageContentAction.DELETE.controlledRequest(instanceId, node, storage, volume, confirmed)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    try {
+                        proxmoxRepository.deleteStorageContent(instanceId, node, storage, volume)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        // Deleting storage content is not idempotent (a retry after a lost
+                        // response could hit an already-removed volume and surface a confusing
+                        // provider error), so a transport failure must not trigger an automatic
+                        // coordinator-level retry.
+                        throw ActionOperationException(
+                            "proxmox-storage-content-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchStorageContent(node, storage)
+                    onSuccess()
+                } else {
+                    _storageContentState.value = UiState.Error(
+                        getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    ) { fetchStorageContent(node, storage) }
+                }
             } catch (e: Exception) {
-                _storageContentState.value = UiState.Error(e.message ?: "Delete failed") { fetchStorageContent(node, storage) }
+                _storageContentState.value = UiState.Error(resolvedMessage(e)) { fetchStorageContent(node, storage) }
             }
         }
     }
@@ -432,14 +461,28 @@ class ProxmoxViewModel @Inject constructor(
         }
     }
 
-    fun toggleFirewall(enable: Boolean, onSuccess: () -> Unit = {}) {
+    fun toggleFirewall(enable: Boolean, confirmed: Boolean = false, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             try {
-                proxmoxRepository.updateClusterFirewallOptions(instanceId, enable)
-                fetchFirewallOptions()
-                onSuccess()
+                val action = if (enable) ProxmoxFirewallAction.ENABLE else ProxmoxFirewallAction.DISABLE
+                val request = action.controlledRequest(instanceId, confirmed)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    proxmoxRepository.updateClusterFirewallOptions(instanceId, enable)
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchFirewallOptions()
+                    onSuccess()
+                } else {
+                    _firewallOptionsState.value = UiState.Error(
+                        getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    ) { fetchFirewallOptions() }
+                }
             } catch (e: Exception) {
-                _firewallOptionsState.value = UiState.Error(e.message ?: "Failed to toggle firewall") { fetchFirewallOptions() }
+                _firewallOptionsState.value = UiState.Error(resolvedMessage(e)) { fetchFirewallOptions() }
             }
         }
     }
@@ -973,6 +1016,57 @@ enum class ProxmoxSnapshotAction(val wireName: String, val risk: ActionRisk) {
         providerRef = "proxmox:$instanceId",
         action = wireName,
         targetRef = "${if (isQemu) "qemu" else "lxc"}/$vmid@$node/snapshot/$snapname",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+enum class ProxmoxStorageContentAction(val wireName: String, val risk: ActionRisk) {
+    DELETE("storage-content.delete", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        node: String,
+        storage: String,
+        volume: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "storage/$storage@$node/$volume",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+/** Enable is low risk and needs no confirmation, matching AdGuard Home's protection toggle; disable is medium risk. */
+enum class ProxmoxFirewallAction(val wireName: String, val risk: ActionRisk) {
+    ENABLE("firewall.enable", ActionRisk.LOW),
+    DISABLE("firewall.disable", ActionRisk.MEDIUM);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "firewall/cluster",
         risk = risk,
         requestedAt = requestedAt,
         idempotencyKey = idempotencyKey,

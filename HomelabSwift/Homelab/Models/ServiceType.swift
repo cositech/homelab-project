@@ -771,6 +771,68 @@ enum ProxmoxControlledSnapshotAction: String, CaseIterable, Equatable, Sendable 
     }
 }
 
+enum ProxmoxControlledStorageContentAction: String, CaseIterable, Equatable, Sendable {
+    case delete
+
+    var actionName: String { "storage-content.\(rawValue)" }
+    var risk: ControlledActionRisk { .high }
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        node: String,
+        storage: String,
+        volume: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "storage/\(storage)@\(node)/\(volume)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+/// Enable is low risk and needs no confirmation, matching AdGuard Home's protection toggle; disable is medium risk.
+enum ProxmoxControlledFirewallAction: String, CaseIterable, Equatable, Sendable {
+    case enable, disable
+
+    var actionName: String { "firewall.\(rawValue)" }
+
+    var risk: ControlledActionRisk {
+        self == .enable ? .low : .medium
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "firewall/cluster",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendable {
     case start, stop, restart, kill, pause, resume, remove
 
