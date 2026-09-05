@@ -843,11 +843,22 @@ class ProxmoxViewModel @Inject constructor(
                         // Genuine transport failure: we don't know whether the request reached
                         // the server, and neither clone nor migrate is safely idempotent to
                         // retry (a lost-response retry could create a second guest, or attempt a
-                        // second relocation of one already mid-transfer).
+                        // second relocation of one already mid-transfer). Migrate is high risk, so
+                        // the coordinator's own risk-tier gate already blocks automatic retry
+                        // regardless of disposition - marking it retryable here is safe and lands
+                        // it in MANUAL_REVIEW instead of a plain FAILED that would hide the fact
+                        // that the migration's real outcome is unknown. Clone is medium risk,
+                        // where retryable *would* trigger a real automatic retry, so it must stay
+                        // non-retryable to avoid creating a duplicate guest.
                         operationError = error
+                        val disposition = if (action.risk == ActionRisk.HIGH || action.risk == ActionRisk.CRITICAL) {
+                            ActionFailureDisposition.RETRYABLE
+                        } else {
+                            ActionFailureDisposition.NON_RETRYABLE
+                        }
                         throw ActionOperationException(
                             "proxmox-${action.name.lowercase()}-outcome-indeterminate",
-                            ActionFailureDisposition.NON_RETRYABLE,
+                            disposition,
                             error
                         )
                     } catch (error: Exception) {

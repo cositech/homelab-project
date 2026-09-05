@@ -1831,11 +1831,14 @@ struct ProxmoxGuestDetailView: View {
             } catch {
                 await errorBox.set(error)
                 guard isAmbiguousProxmoxTransportFailure(error) else { throw error }
-                // Migrating isn't safely idempotent to retry: a lost-response retry could attempt
-                // a second relocation of a guest that's already mid-transfer or already moved.
+                // Migrating isn't safely idempotent to retry, but migrate is high risk, so the
+                // coordinator's own risk-tier gate already blocks automatic retry regardless of
+                // disposition here - marking it retryable is safe and lands it in manual review
+                // instead of a plain failure that would hide the fact that the real outcome of a
+                // relocation already possibly in flight is unknown.
                 throw ControlledActionOperationError(
                     reasonCode: "proxmox-migrate-outcome-indeterminate",
-                    disposition: .nonRetryable
+                    disposition: .retryable
                 )
             }
         }
