@@ -59,38 +59,25 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] qBittorrent torrent and transfer lifecycle actions
   - [x] PatchMon monitored-host removal
   - [x] Radarr, Sonarr, Lidarr, Jellyseerr, Prowlarr, Gluetun and FlareSolverr media-service actions
-  - [ ] Proxmox VE non-lifecycle mutations — guest clone/migrate — plus a Proxmox Backup Server
-    backup-job trigger (this one doesn't exist as a mutation on either client yet — PBS support is
-    read-only today, so it needs new API client work, not just rewiring); these still call
-    `proxmoxRepository` / the Proxmox API client directly — _in progress: VM/LXC snapshot
-    create/delete/rollback, storage-content delete, firewall enable/disable and backup-job trigger
-    are done — all four route through the coordinator on both clients, with fallback-replay
-    suppression added on every endpoint touched (9 so far) and a confirm dialog for every
-    destructive action that didn't have one before (snapshot delete/rollback, firewall disable —
-    Android's firewall disable confirm is new UI added here; storage-content delete and iOS's
-    firewall toggle already had a confirm dialog, just not routed through the coordinator; backup
-    trigger needs none, see below). Risk: backup-job trigger and firewall enable need no
-    confirmation (low — a non-destructive "run now"/toggle-on); snapshot create/delete are medium;
-    snapshot rollback, storage-content delete and firewall disable are high/high/medium and require
-    confirmation. Despite being low/no-confirmation risk, backup-job trigger's operation closure
-    (like storage-content delete's) still wraps ambiguous transport failures as non-retryable:
-    neither mutation is idempotent, so a lost-response retry could fire a duplicate, overlapping
-    backup run or hit an already-removed volume — a definitive provider rejection (bad
-    credentials, unknown job/volume) is left unwrapped so it keeps its own reason and message
-    rather than being mislabeled "indeterminate". The firewall toggle is deliberately left
-    retryable throughout, since flipping a boolean option is naturally idempotent. Rewiring the iOS firewall
-    toggle surfaced and fixed a real pre-existing bug: `toggleFirewall` took the already-desired new
-    state into a parameter named `currentlyEnabled` and negated it, so confirming "Enable the
-    firewall?" actually disabled it (and vice versa) — Android's equivalent was correct, this was
-    iOS-only. The already-migrated lifecycle mutations (start/stop/shutdown/reboot) still lack
-    fallback-replay suppression — a pre-existing gap, not something these slices introduced, left
-    as further follow-up_
+  - [ ] Proxmox VE non-lifecycle mutations — every one now routes through the coordinator on both
+    clients (snapshot create/delete/rollback, storage-content delete, firewall enable/disable,
+    backup-job trigger, guest clone/migrate — the last one across both its call sites, including
+    the easy-to-miss "deploy from template" flow in iOS's `ProxmoxDashboard.swift`), each with its
+    own risk tier (low: backup-job trigger, firewall enable; medium: snapshot create/delete, clone;
+    high: snapshot rollback, storage-content delete, firewall disable, migrate) and fallback-replay
+    suppression added to every endpoint touched (13 total). Only a Proxmox Backup Server
+    backup-job-trigger mutation remains, and it doesn't exist as a mutation on either client yet —
+    PBS support is read-only today, so closing this needs new API client work, not just rewiring.
+    The already-migrated lifecycle mutations (start/stop/shutdown/reboot) still lack fallback-replay
+    suppression, a separate pre-existing gap not introduced by these slices. Full history of what
+    landed in each slice (including two real pre-existing bugs these migrations surfaced and fixed
+    along the way) is in the `phase3-proxmox-gap` memory, not repeated here.
   - [x] Every other provider audited — the integrations without a controlled-action surface
     (Uptime Kuma, Gitea, OPNsense, Beszel, Maltrail, Jellystat, Plex, UniFi, TrueNAS, Wakapi and
     the Phase-2 read-only observability providers) expose no mutating endpoints in this app, so
     there is nothing further to migrate
 
-Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place and every provider except the remaining Proxmox items above routes its write surface through the coordinator; `scripts/phase3-controlled-actions-audit.sh` now asserts the Proxmox snapshot actions by name (not just one coordinator call per file) — the gate closes once the same is true for the rest of the Proxmox non-lifecycle mutations.
+Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place, and every provider's write surface now routes through the coordinator except the one Proxmox Backup Server backup-job-trigger mutation, which doesn't exist as a mutation on either client yet; `scripts/phase3-controlled-actions-audit.sh` asserts every migrated Proxmox action group by name (not just one coordinator call per file) — the gate closes once the PBS mutation is built and routed the same way.
 
 ## Phase 4 — Correlation and MSP mode
 

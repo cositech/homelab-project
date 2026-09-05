@@ -1014,7 +1014,7 @@ actor ProxmoxAPIClient {
             "target": targetNode,
             "online": online ? "1" : "0"
         ]
-        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/migrate", params: params)
+        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/migrate", params: params, allowFallback: false)
     }
 
     func migrateLXC(node: String, vmid: Int, targetNode: String, online: Bool = true) async throws -> ProxmoxTaskReference {
@@ -1022,7 +1022,7 @@ actor ProxmoxAPIClient {
             "target": targetNode,
             "online": online ? "1" : "0"
         ]
-        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/migrate", params: params)
+        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/migrate", params: params, allowFallback: false)
     }
 
     // MARK: - Clone
@@ -1061,7 +1061,7 @@ actor ProxmoxAPIClient {
         if let targetNode, !targetNode.isEmpty { params["target"] = targetNode }
         if let storage, !storage.isEmpty { params["storage"] = storage }
         if let pool, !pool.isEmpty { params["pool"] = pool }
-        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/clone", params: params)
+        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/clone", params: params, allowFallback: false)
     }
 
     func cloneLXC(
@@ -1082,7 +1082,7 @@ actor ProxmoxAPIClient {
         if let targetNode, !targetNode.isEmpty { params["target"] = targetNode }
         if let storage, !storage.isEmpty { params["storage"] = storage }
         if let pool, !pool.isEmpty { params["pool"] = pool }
-        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/clone", params: params)
+        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/clone", params: params, allowFallback: false)
     }
 
     func convertVMToTemplate(node: String, vmid: Int) async throws -> ProxmoxTaskReference {

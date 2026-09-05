@@ -862,6 +862,44 @@ enum ProxmoxControlledBackupJobAction: String, CaseIterable, Equatable, Sendable
     }
 }
 
+/// Migrate is the higher-risk one: it relocates a live (or offline) guest to another node, with
+/// real operational risk if the transfer fails partway. Clone only creates a new guest and never
+/// touches the source, so it sits one tier lower.
+enum ProxmoxControlledCloneMigrateAction: String, CaseIterable, Equatable, Sendable {
+    case clone, migrate
+
+    var actionName: String { "guest.\(rawValue)" }
+
+    var risk: ControlledActionRisk {
+        self == .clone ? .medium : .high
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        node: String,
+        vmid: Int,
+        guestType: ProxmoxGuestType,
+        target: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "\(guestType.rawValue)/\(vmid)@\(node)/\(rawValue)/\(target)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendable {
     case start, stop, restart, kill, pause, resume, remove
 
@@ -1812,6 +1850,24 @@ func executeControlledMediaAction(
 actor ControlledActionErrorBox {
     private(set) var value: Error?
     func set(_ error: Error) { value = error }
+}
+
+/// `URLError` and the transport-shaped `APIError` cases are the only outcomes where we don't know
+/// whether a Proxmox request reached the server; every other `APIError` (auth, HTTP status, decode
+/// failure, etc.) is a definitive response the coordinator already classifies non-retryable on its
+/// own, so it must not be relabeled as an indeterminate transport failure. Shared by every Proxmox
+/// mutation whose retry safety depends on this distinction (backup-job trigger, clone, migrate).
+/// A free function, not a method, so it's callable from a `@Sendable` operation closure regardless
+/// of which main-actor-isolated view is running it.
+func isAmbiguousProxmoxTransportFailure(_ error: Error) -> Bool {
+    if error is URLError { return true }
+    if let apiError = error as? APIError {
+        switch apiError {
+        case .networkError, .bothURLsFailed: return true
+        default: return false
+        }
+    }
+    return false
 }
 
 enum PortainerControlledOperationFailure {

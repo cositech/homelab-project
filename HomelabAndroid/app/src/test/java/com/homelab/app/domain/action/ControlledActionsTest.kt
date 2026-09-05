@@ -28,6 +28,7 @@ import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
 import com.homelab.app.ui.proxmox.ProxmoxBackupJobAction
+import com.homelab.app.ui.proxmox.ProxmoxCloneMigrateAction
 import com.homelab.app.ui.proxmox.ProxmoxFirewallAction
 import com.homelab.app.ui.proxmox.ProxmoxGuestAction
 import com.homelab.app.ui.proxmox.ProxmoxSnapshotAction
@@ -591,6 +592,50 @@ class ControlledActionsTest {
         assertEquals("proxmox:cluster-a", request.providerRef)
         assertEquals("backup-job.trigger", request.action)
         assertEquals("backup-job/backup-nightly", request.targetRef)
+    }
+
+    @Test
+    fun `proxmox clone is medium risk and migrate is high risk`() {
+        assertTrue(ProxmoxCloneMigrateAction.CLONE.requiresConfirmation)
+        assertTrue(ProxmoxCloneMigrateAction.MIGRATE.requiresConfirmation)
+        assertEquals(ActionRisk.MEDIUM, ProxmoxCloneMigrateAction.CLONE.risk)
+        assertEquals(ActionRisk.HIGH, ProxmoxCloneMigrateAction.MIGRATE.risk)
+    }
+
+    @Test
+    fun `proxmox clone request uses normalized provider and target references`() {
+        val request = ProxmoxCloneMigrateAction.CLONE.controlledRequest(
+            instanceId = "cluster-a",
+            node = "pve01",
+            vmid = 101,
+            isQemu = true,
+            target = "105",
+            confirmed = true,
+            requestId = "request-proxmox-6",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0006"
+        )
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("guest.clone", request.action)
+        assertEquals("qemu/101@pve01/clone/105", request.targetRef)
+    }
+
+    @Test
+    fun `proxmox migrate request uses normalized provider and target references`() {
+        val request = ProxmoxCloneMigrateAction.MIGRATE.controlledRequest(
+            instanceId = "cluster-a",
+            node = "pve01",
+            vmid = 101,
+            isQemu = false,
+            target = "pve02",
+            confirmed = true,
+            requestId = "request-proxmox-7",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0007"
+        )
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("guest.migrate", request.action)
+        assertEquals("lxc/101@pve01/migrate/pve02", request.targetRef)
     }
 
     @Test
