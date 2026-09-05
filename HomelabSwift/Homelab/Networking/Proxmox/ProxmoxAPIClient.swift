@@ -371,16 +371,18 @@ actor ProxmoxAPIClient {
     private func authenticatedRequest<T: Decodable>(
         path: String,
         method: String = "GET",
-        body: Data? = nil
+        body: Data? = nil,
+        allowFallback: Bool = true
     ) async throws -> T {
         await ensureFreshTicketIfNeeded()
         let isWrite = method != "GET"
         let h = authHeaders(forWrite: isWrite)
+        let effectiveFallback = allowFallback ? fallbackURL : ""
         do {
-            return try await engine.request(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: h, body: body)
+            return try await engine.request(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: h, body: body)
         } catch {
             if isAuthError(error), !usesApiToken, await refreshTokenWithContinuation() {
-                return try await engine.request(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: authHeaders(forWrite: isWrite), body: body)
+                return try await engine.request(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: authHeaders(forWrite: isWrite), body: body)
             }
             throw error
         }
@@ -449,10 +451,12 @@ actor ProxmoxAPIClient {
     private func authenticatedFormRequest<T: Decodable>(
         path: String,
         method: String = "POST",
-        params: [String: String]
+        params: [String: String],
+        allowFallback: Bool = true
     ) async throws -> T {
         await ensureFreshTicketIfNeeded()
         let body = formURLEncodedBody(from: params)
+        let effectiveFallback = allowFallback ? fallbackURL : ""
         func makeHeaders() -> [String: String] {
             var headers = authHeaders(forWrite: true)
             headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -460,10 +464,10 @@ actor ProxmoxAPIClient {
         }
 
         do {
-            return try await engine.request(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: makeHeaders(), body: body)
+            return try await engine.request(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: makeHeaders(), body: body)
         } catch {
             if isAuthError(error), !usesApiToken, await refreshTokenWithContinuation() {
-                return try await engine.request(baseURL: baseURL, fallbackURL: fallbackURL, path: path, method: method, headers: makeHeaders(), body: body)
+                return try await engine.request(baseURL: baseURL, fallbackURL: effectiveFallback, path: path, method: method, headers: makeHeaders(), body: body)
             }
             throw error
         }
@@ -471,18 +475,20 @@ actor ProxmoxAPIClient {
 
     private func authenticatedTaskRequest(
         path: String,
-        method: String = "POST"
+        method: String = "POST",
+        allowFallback: Bool = true
     ) async throws -> ProxmoxTaskReference {
-        let response: ProxmoxAPIResponse<String> = try await authenticatedRequest(path: path, method: method)
+        let response: ProxmoxAPIResponse<String> = try await authenticatedRequest(path: path, method: method, allowFallback: allowFallback)
         return ProxmoxTaskReference(upid: response.data)
     }
 
     private func authenticatedFormTaskRequest(
         path: String,
         method: String = "POST",
-        params: [String: String]
+        params: [String: String],
+        allowFallback: Bool = true
     ) async throws -> ProxmoxTaskReference {
-        let response: ProxmoxAPIResponse<String> = try await authenticatedFormRequest(path: path, method: method, params: params)
+        let response: ProxmoxAPIResponse<String> = try await authenticatedFormRequest(path: path, method: method, params: params, allowFallback: allowFallback)
         return ProxmoxTaskReference(upid: response.data)
     }
 
@@ -721,15 +727,15 @@ actor ProxmoxAPIClient {
         var params: [String: String] = ["snapname": name]
         if let description, !description.isEmpty { params["description"] = description }
         if includeRAM { params["vmstate"] = "1" }
-        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/snapshot", params: params)
+        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/snapshot", params: params, allowFallback: false)
     }
 
     func rollbackVMSnapshot(node: String, vmid: Int, snapname: String) async throws -> ProxmoxTaskReference {
-        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/snapshot/\(snapname)/rollback")
+        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/snapshot/\(snapname)/rollback", allowFallback: false)
     }
 
     func deleteVMSnapshot(node: String, vmid: Int, snapname: String) async throws -> ProxmoxTaskReference {
-        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/snapshot/\(snapname)", method: "DELETE")
+        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/qemu/\(vmid)/snapshot/\(snapname)", method: "DELETE", allowFallback: false)
     }
 
     func getLXCSnapshots(node: String, vmid: Int) async throws -> [ProxmoxSnapshot] {
@@ -740,15 +746,15 @@ actor ProxmoxAPIClient {
     func createLXCSnapshot(node: String, vmid: Int, name: String, description: String? = nil) async throws -> ProxmoxTaskReference {
         var params: [String: String] = ["snapname": name]
         if let description, !description.isEmpty { params["description"] = description }
-        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/snapshot", params: params)
+        return try await authenticatedFormTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/snapshot", params: params, allowFallback: false)
     }
 
     func rollbackLXCSnapshot(node: String, vmid: Int, snapname: String) async throws -> ProxmoxTaskReference {
-        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/snapshot/\(snapname)/rollback")
+        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/snapshot/\(snapname)/rollback", allowFallback: false)
     }
 
     func deleteLXCSnapshot(node: String, vmid: Int, snapname: String) async throws -> ProxmoxTaskReference {
-        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/snapshot/\(snapname)", method: "DELETE")
+        try await authenticatedTaskRequest(path: "/api2/json/nodes/\(node)/lxc/\(vmid)/snapshot/\(snapname)", method: "DELETE", allowFallback: false)
     }
 
     // MARK: - Cluster Resources

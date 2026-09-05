@@ -11,6 +11,8 @@ import com.homelab.app.data.remote.dto.proxmox.*
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
 import com.homelab.app.domain.action.ActionRisk
 import com.homelab.app.domain.action.ActionRole
 import com.homelab.app.domain.action.ControlledActionCoordinator
@@ -18,6 +20,7 @@ import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -467,35 +470,53 @@ class ProxmoxViewModel @Inject constructor(
         }
     }
 
-    fun createSnapshot(node: String, vmid: Int, isQemu: Boolean, snapname: String, description: String = "") {
+    fun performSnapshotAction(
+        action: ProxmoxSnapshotAction,
+        node: String,
+        vmid: Int,
+        isQemu: Boolean,
+        snapname: String,
+        description: String = "",
+        confirmed: Boolean = false
+    ) {
         viewModelScope.launch {
             try {
-                proxmoxRepository.createSnapshot(instanceId, node, vmid, isQemu, snapname, description)
-                fetchGuestDetail(node, vmid, isQemu)
+                val request = action.controlledRequest(instanceId, node, vmid, isQemu, snapname, confirmed)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    try {
+                        when (action) {
+                            ProxmoxSnapshotAction.CREATE -> proxmoxRepository.createSnapshot(instanceId, node, vmid, isQemu, snapname, description)
+                            ProxmoxSnapshotAction.DELETE -> proxmoxRepository.deleteSnapshot(instanceId, node, vmid, isQemu, snapname)
+                            ProxmoxSnapshotAction.ROLLBACK -> proxmoxRepository.rollbackSnapshot(instanceId, node, vmid, isQemu, snapname)
+                        }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        // None of these mutations are idempotent and Proxmox exposes no token to
+                        // de-duplicate a retry, so a lost response must not trigger an automatic
+                        // coordinator-level retry that could resubmit an already-applied mutation.
+                        throw ActionOperationException(
+                            "proxmox-snapshot-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchGuestDetail(node, vmid, isQemu)
+                } else {
+                    _guestDetailState.value = UiState.Error(
+                        getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    ) { fetchGuestDetail(node, vmid, isQemu) }
+                }
             } catch (e: Exception) {
-                _guestDetailState.value = UiState.Error(e.message ?: "Snapshot creation failed") { fetchGuestDetail(node, vmid, isQemu) }
-            }
-        }
-    }
-
-    fun deleteSnapshot(node: String, vmid: Int, isQemu: Boolean, snapname: String) {
-        viewModelScope.launch {
-            try {
-                proxmoxRepository.deleteSnapshot(instanceId, node, vmid, isQemu, snapname)
-                fetchGuestDetail(node, vmid, isQemu)
-            } catch (e: Exception) {
-                _guestDetailState.value = UiState.Error(e.message ?: "Snapshot deletion failed") { fetchGuestDetail(node, vmid, isQemu) }
-            }
-        }
-    }
-
-    fun rollbackSnapshot(node: String, vmid: Int, isQemu: Boolean, snapname: String) {
-        viewModelScope.launch {
-            try {
-                proxmoxRepository.rollbackSnapshot(instanceId, node, vmid, isQemu, snapname)
-                fetchGuestDetail(node, vmid, isQemu)
-            } catch (e: Exception) {
-                _guestDetailState.value = UiState.Error(e.message ?: "Snapshot rollback failed") { fetchGuestDetail(node, vmid, isQemu) }
+                _guestDetailState.value = UiState.Error(resolvedMessage(e)) { fetchGuestDetail(node, vmid, isQemu) }
             }
         }
     }
@@ -918,6 +939,40 @@ enum class ProxmoxGuestAction(val wireName: String, val risk: ActionRisk) {
         providerRef = "proxmox:$instanceId",
         action = wireName,
         targetRef = "${if (isQemu) "qemu" else "lxc"}/$vmid@$node",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+/**
+ * Rollback is the standout dangerous one here — it actively discards every change made to the
+ * guest since the snapshot was taken, right now, irreversibly. Create/delete both add or remove a
+ * recovery point without touching the guest's current running state, so they sit one tier lower.
+ */
+enum class ProxmoxSnapshotAction(val wireName: String, val risk: ActionRisk) {
+    CREATE("snapshot.create", ActionRisk.MEDIUM),
+    DELETE("snapshot.delete", ActionRisk.MEDIUM),
+    ROLLBACK("snapshot.rollback", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        node: String,
+        vmid: Int,
+        isQemu: Boolean,
+        snapname: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "${if (isQemu) "qemu" else "lxc"}/$vmid@$node/snapshot/$snapname",
         risk = risk,
         requestedAt = requestedAt,
         idempotencyKey = idempotencyKey,

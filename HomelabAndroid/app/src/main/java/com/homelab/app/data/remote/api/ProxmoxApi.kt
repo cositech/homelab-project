@@ -302,6 +302,7 @@ interface ProxmoxApi {
     suspend fun createVMSnapshot(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Body body: Map<String, String>
@@ -311,6 +312,7 @@ interface ProxmoxApi {
     suspend fun deleteVMSnapshot(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Path("snapname", encoded = true) snapname: String
@@ -320,6 +322,7 @@ interface ProxmoxApi {
     suspend fun rollbackVMSnapshot(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Path("snapname", encoded = true) snapname: String
@@ -337,6 +340,7 @@ interface ProxmoxApi {
     suspend fun createLXCSnapshot(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Body body: Map<String, String>
@@ -346,6 +350,7 @@ interface ProxmoxApi {
     suspend fun deleteLXCSnapshot(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Path("snapname", encoded = true) snapname: String
@@ -355,6 +360,7 @@ interface ProxmoxApi {
     suspend fun rollbackLXCSnapshot(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Path("snapname", encoded = true) snapname: String

@@ -60,15 +60,22 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] PatchMon monitored-host removal
   - [x] Radarr, Sonarr, Lidarr, Jellyseerr, Prowlarr, Gluetun and FlareSolverr media-service actions
   - [ ] Proxmox VE non-lifecycle mutations — backup-job trigger, storage-content delete, firewall
-    enable/disable, VM/LXC snapshot create/delete/rollback, and guest clone/migrate — plus a
-    Proxmox Backup Server backup-job trigger; today only the guest lifecycle path routes through
-    the coordinator and these call `proxmoxRepository` / the Proxmox API client directly
+    enable/disable, and guest clone/migrate — plus a Proxmox Backup Server backup-job trigger (this
+    one doesn't exist as a mutation on either client yet — PBS support is read-only today, so it
+    needs new API client work, not just rewiring); these still call `proxmoxRepository` / the
+    Proxmox API client directly — _in progress: VM/LXC snapshot create/delete/rollback is done —
+    both clients route it through the coordinator (create/delete medium risk, rollback high risk,
+    since it discards guest state irreversibly), with fallback-replay suppression added on all six
+    snapshot endpoints and a confirm dialog for delete/rollback that didn't exist before (Android
+    had two matching string resources sitting unused since before this migration). The
+    already-migrated lifecycle mutations still lack fallback-replay suppression — a pre-existing
+    gap, not something this slice introduced, left as further follow-up_
   - [x] Every other provider audited — the integrations without a controlled-action surface
     (Uptime Kuma, Gitea, OPNsense, Beszel, Maltrail, Jellystat, Plex, UniFi, TrueNAS, Wakapi and
     the Phase-2 read-only observability providers) expose no mutating endpoints in this app, so
     there is nothing further to migrate
 
-Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place and every provider except Proxmox routes its write surface through the coordinator; the gate closes once the Proxmox non-lifecycle mutations above are migrated and `scripts/phase3-controlled-actions-audit.sh` asserts each Proxmox mutation (not just one coordinator call per file).
+Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place and every provider except the remaining Proxmox items above routes its write surface through the coordinator; `scripts/phase3-controlled-actions-audit.sh` now asserts the Proxmox snapshot actions by name (not just one coordinator call per file) — the gate closes once the same is true for the rest of the Proxmox non-lifecycle mutations.
 
 ## Phase 4 — Correlation and MSP mode
 

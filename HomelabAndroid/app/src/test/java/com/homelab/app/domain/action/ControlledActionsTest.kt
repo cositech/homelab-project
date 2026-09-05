@@ -28,6 +28,7 @@ import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
 import com.homelab.app.ui.proxmox.ProxmoxGuestAction
+import com.homelab.app.ui.proxmox.ProxmoxSnapshotAction
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -498,6 +499,37 @@ class ControlledActionsTest {
         assertTrue(ProxmoxGuestAction.SHUTDOWN.requiresConfirmation)
         assertTrue(ProxmoxGuestAction.REBOOT.requiresConfirmation)
         assertTrue(ProxmoxGuestAction.STOP.requiresConfirmation)
+    }
+
+    @Test
+    fun `proxmox snapshot request uses normalized provider and target references`() {
+        val request = ProxmoxSnapshotAction.ROLLBACK.controlledRequest(
+            instanceId = "cluster-a",
+            node = "pve01",
+            vmid = 101,
+            isQemu = true,
+            snapname = "pre-upgrade",
+            confirmed = true,
+            requestId = "request-proxmox-2",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0002"
+        )
+
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("snapshot.rollback", request.action)
+        assertEquals("qemu/101@pve01/snapshot/pre-upgrade", request.targetRef)
+        assertEquals(ActionRisk.HIGH, request.risk)
+        assertTrue(request.confirmed)
+    }
+
+    @Test
+    fun `proxmox snapshot risk controls explicit confirmation`() {
+        assertTrue(ProxmoxSnapshotAction.CREATE.requiresConfirmation)
+        assertTrue(ProxmoxSnapshotAction.DELETE.requiresConfirmation)
+        assertTrue(ProxmoxSnapshotAction.ROLLBACK.requiresConfirmation)
+        assertEquals(ActionRisk.MEDIUM, ProxmoxSnapshotAction.CREATE.risk)
+        assertEquals(ActionRisk.MEDIUM, ProxmoxSnapshotAction.DELETE.risk)
+        assertEquals(ActionRisk.HIGH, ProxmoxSnapshotAction.ROLLBACK.risk)
     }
 
     @Test
