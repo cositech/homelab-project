@@ -256,7 +256,9 @@ struct ProxmoxBackupJobsView: View {
     /// know whether the request reached the server; every other `APIError` (auth, HTTP status,
     /// decode failure, etc.) is a definitive response the coordinator already classifies
     /// non-retryable on its own, so it must not be relabeled as an indeterminate transport failure.
-    private func isAmbiguousTransportFailure(_ error: Error) -> Bool {
+    /// `nonisolated` because it's called from the coordinator's `@Sendable` operation closure,
+    /// which doesn't run on the main actor `ProxmoxBackupJobsView`'s other members are isolated to.
+    private nonisolated func isAmbiguousTransportFailure(_ error: Error) -> Bool {
         if error is URLError { return true }
         if let apiError = error as? APIError {
             switch apiError {
