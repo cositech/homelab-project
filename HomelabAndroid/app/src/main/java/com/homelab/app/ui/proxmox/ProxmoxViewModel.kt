@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.homelab.app.R
+import com.homelab.app.data.remote.HtmlResponseException
 import com.homelab.app.data.remote.dto.proxmox.*
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ServicesRepository
@@ -832,6 +833,11 @@ class ProxmoxViewModel @Inject constructor(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: HtmlResponseException) {
+                        // A definitive (if unexpected) response - the server answered, just not
+                        // with JSON - so this is not an indeterminate transport failure.
+                        operationError = error
                         throw error
                     } catch (error: IOException) {
                         // Genuine transport failure: we don't know whether the request reached
