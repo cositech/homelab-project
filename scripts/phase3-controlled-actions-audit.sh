@@ -16,6 +16,7 @@ swift_proxmox="HomelabSwift/Homelab/Views/Proxmox/ProxmoxGuestDetailView.swift"
 swift_proxmox_api="HomelabSwift/Homelab/Networking/Proxmox/ProxmoxAPIClient.swift"
 swift_proxmox_storage_ui="HomelabSwift/Homelab/Views/Proxmox/ProxmoxStorageContentView.swift"
 swift_proxmox_firewall_ui="HomelabSwift/Homelab/Views/Proxmox/ProxmoxFirewallView.swift"
+swift_proxmox_backup_ui="HomelabSwift/Homelab/Views/Proxmox/ProxmoxBackupJobsView.swift"
 android_portainer_models="HomelabAndroid/app/src/main/java/com/homelab/app/data/remote/dto/portainer/PortainerDto.kt"
 android_portainer_list="HomelabAndroid/app/src/main/java/com/homelab/app/ui/portainer/ContainerListViewModel.kt"
 android_portainer_detail="HomelabAndroid/app/src/main/java/com/homelab/app/ui/portainer/ContainerDetailViewModel.kt"
@@ -59,7 +60,7 @@ swift_technitium_ui="HomelabSwift/Homelab/Views/Technitium/TechnitiumDashboard.s
 swift_technitium_api="HomelabSwift/Homelab/Networking/Technitium/TechnitiumAPIClient.swift"
 architecture="docs/architecture/PHASE3_CONTROLLED_ACTIONS.md"
 
-for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$android_proxmox_api" "$android_proxmox_storage_ui" "$android_proxmox_firewall_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$swift_proxmox_api" "$swift_proxmox_storage_ui" "$swift_proxmox_firewall_ui" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$android_portainer_api" "$swift_portainer_api" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$android_technitium_models" "$android_technitium_view_model" "$android_technitium_ui" "$android_technitium_api" "$swift_technitium_ui" "$swift_technitium_api" "$architecture" "schemas/action.schema.json"; do
+for required_file in "$android_core" "$android_tests" "$android_di" "$android_proxmox" "$android_proxmox_ui" "$android_proxmox_api" "$android_proxmox_storage_ui" "$android_proxmox_firewall_ui" "$swift_core" "$swift_tests" "$swift_store" "$swift_proxmox" "$swift_proxmox_api" "$swift_proxmox_storage_ui" "$swift_proxmox_firewall_ui" "$swift_proxmox_backup_ui" "$android_portainer_models" "$android_portainer_list" "$android_portainer_detail" "$android_portainer_api" "$swift_portainer_api" "$swift_portainer_models" "$swift_portainer_list" "$swift_portainer_detail" "$android_adguard_models" "$android_adguard_view_model" "$swift_adguard_dashboard" "$android_pihole_models" "$android_pihole_view_model" "$android_pihole_ui" "$android_pihole_api" "$android_pihole_repository" "$android_fallback_interceptor" "$android_fallback_tests" "$swift_pihole_models" "$swift_pihole_ui" "$swift_pihole_api" "$android_healthchecks_models" "$swift_healthchecks_models" "$android_healthchecks_detail" "$android_healthchecks_editor" "$android_healthchecks_ui" "$swift_healthchecks_detail" "$swift_healthchecks_editor" "$android_technitium_models" "$android_technitium_view_model" "$android_technitium_ui" "$android_technitium_api" "$swift_technitium_ui" "$swift_technitium_api" "$architecture" "schemas/action.schema.json"; do
   test -s "$required_file"
 done
 
@@ -126,7 +127,12 @@ for pattern in 'enum class ProxmoxFirewallAction' 'firewall.enable' 'firewall.di
   grep -Fq "$pattern" "$android_proxmox"
 done
 grep -Fq 'pendingDisable' "$android_proxmox_firewall_ui"
-test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_proxmox_api")" -eq 8
+
+# Backup-job trigger: a low-risk "run now" action, same enum-by-name reasoning as above.
+for pattern in 'enum class ProxmoxBackupJobAction' 'backup-job.trigger'; do
+  grep -Fq "$pattern" "$android_proxmox"
+done
+test "$(grep -Fc '@Header("X-Homelab-No-Fallback")' "$android_proxmox_api")" -eq 9
 
 for pattern in 'enum ProxmoxControlledStorageContentAction' 'enum ProxmoxControlledFirewallAction' 'case enable, disable'; do
   grep -Fq "$pattern" "$swift_core"
@@ -136,7 +142,13 @@ for pattern in '"storage-content.delete"' '"firewall.disable"'; do
 done
 grep -Fq 'ProxmoxControlledStorageContentAction' "$swift_proxmox_storage_ui"
 grep -Fq 'ProxmoxControlledFirewallAction' "$swift_proxmox_firewall_ui"
-test "$(grep -Fc 'allowFallback: false' "$swift_proxmox_api")" -eq 8
+
+for pattern in 'enum ProxmoxControlledBackupJobAction' 'backup-job.\(rawValue)'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+grep -Fq '"backup-job.trigger"' "$swift_tests"
+grep -Fq 'ProxmoxControlledBackupJobAction' "$swift_proxmox_backup_ui"
+test "$(grep -Fc 'allowFallback: false' "$swift_proxmox_api")" -eq 9
 
 for pattern in 'container.start' 'container.stop' 'container.kill' 'ActionRisk.HIGH' 'requiresConfirmation' 'controlledRequest'; do
   grep -Fq "$pattern" "$android_portainer_models"

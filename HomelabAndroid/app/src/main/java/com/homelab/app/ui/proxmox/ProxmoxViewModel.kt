@@ -23,6 +23,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -395,11 +396,52 @@ class ProxmoxViewModel @Inject constructor(
 
     fun triggerBackupJob(jobId: String) {
         viewModelScope.launch {
+            // The coordinator records only a bounded reason code; keep the original provider
+            // exception so a definitive rejection (bad credentials, unknown job, provider
+            // conflict) still shows its real message instead of a generic one.
+            var operationError: Exception? = null
             try {
-                proxmoxRepository.triggerBackupJob(instanceId, jobId)
-                fetchBackupJobs()
+                val request = ProxmoxBackupJobAction.TRIGGER.controlledRequest(instanceId, jobId, confirmed = false)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    try {
+                        proxmoxRepository.triggerBackupJob(instanceId, jobId)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: IOException) {
+                        // Genuine transport failure: we don't know whether the request reached
+                        // the server, so triggering the job again isn't idempotent - a retry
+                        // could fire a second, overlapping vzdump run for the same job.
+                        operationError = error
+                        throw ActionOperationException(
+                            "proxmox-backup-job-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    } catch (error: Exception) {
+                        // A definitive provider response (e.g. an HTTP error) - not
+                        // indeterminate, so let the coordinator's default classification
+                        // (non-retryable, keyed by the real exception type) stand instead of
+                        // mislabeling a known rejection as a lost/ambiguous outcome.
+                        operationError = error
+                        throw error
+                    }
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchBackupJobs()
+                } else {
+                    _backupJobsState.value = UiState.Error(
+                        operationError?.let { resolvedMessage(it) }
+                            ?: getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    ) { fetchBackupJobs() }
+                }
             } catch (e: Exception) {
-                _backupJobsState.value = UiState.Error(e.message ?: "Backup trigger failed") { fetchBackupJobs() }
+                _backupJobsState.value = UiState.Error(resolvedMessage(operationError ?: e)) { fetchBackupJobs() }
             }
         }
     }
@@ -1067,6 +1109,31 @@ enum class ProxmoxFirewallAction(val wireName: String, val risk: ActionRisk) {
         providerRef = "proxmox:$instanceId",
         action = wireName,
         targetRef = "firewall/cluster",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+/** A "run now" trigger, not a destructive mutation, matching the media-service background-command precedent. */
+enum class ProxmoxBackupJobAction(val wireName: String, val risk: ActionRisk) {
+    TRIGGER("backup-job.trigger", ActionRisk.LOW);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        jobId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "backup-job/$jobId",
         risk = risk,
         requestedAt = requestedAt,
         idempotencyKey = idempotencyKey,

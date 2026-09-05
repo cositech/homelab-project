@@ -833,6 +833,35 @@ enum ProxmoxControlledFirewallAction: String, CaseIterable, Equatable, Sendable 
     }
 }
 
+/// A "run now" trigger, not a destructive mutation, matching the media-service background-command precedent.
+enum ProxmoxControlledBackupJobAction: String, CaseIterable, Equatable, Sendable {
+    case trigger
+
+    var actionName: String { "backup-job.\(rawValue)" }
+    var risk: ControlledActionRisk { .low }
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        jobId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "backup-job/\(jobId)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendable {
     case start, stop, restart, kill, pause, resume, remove
 

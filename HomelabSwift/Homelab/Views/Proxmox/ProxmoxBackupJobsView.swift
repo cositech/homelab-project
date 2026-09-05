@@ -252,22 +252,77 @@ struct ProxmoxBackupJobsView: View {
 
     // MARK: - Trigger Job
 
+    /// `URLError` and the transport-shaped `APIError` cases are the only outcomes where we don't
+    /// know whether the request reached the server; every other `APIError` (auth, HTTP status,
+    /// decode failure, etc.) is a definitive response the coordinator already classifies
+    /// non-retryable on its own, so it must not be relabeled as an indeterminate transport failure.
+    /// `nonisolated` because it's called from the coordinator's `@Sendable` operation closure,
+    /// which doesn't run on the main actor `ProxmoxBackupJobsView`'s other members are isolated to.
+    private nonisolated func isAmbiguousTransportFailure(_ error: Error) -> Bool {
+        if error is URLError { return true }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .networkError, .bothURLsFailed: return true
+            default: return false
+            }
+        }
+        return false
+    }
+
     private func triggerJob(_ job: ProxmoxBackupJob) async {
         triggeringJobId = job.id
         triggerError = nil
-        do {
-            guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else {
-                triggerError = localizer.t.proxmoxClientNotConfigured
-                triggeringJobId = nil
-                return
-            }
-            let task = try await client.triggerBackupJob(jobId: job.id)
-            triggeredTask = task
-            HapticManager.success()
-        } catch {
-            triggerError = error.localizedDescription
-            HapticManager.error()
+        guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else {
+            triggerError = localizer.t.proxmoxClientNotConfigured
+            triggeringJobId = nil
+            return
         }
+        let jobId = job.id
+        let referenceBox = ProxmoxActionReferenceBox()
+        // The coordinator records only a bounded reason code; keep the original provider error
+        // (via an actor, since the operation closure below is @Sendable) so a definitive
+        // rejection (bad credentials, unknown job, provider conflict) still shows its real
+        // message instead of a generic one.
+        let errorBox = ControlledActionErrorBox()
+        let request = ProxmoxControlledBackupJobAction.trigger.request(
+            instanceId: instanceId,
+            jobId: jobId,
+            confirmed: false
+        )
+        let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+        let result = await servicesStore.controlledActionCoordinator.execute(
+            request: request,
+            actorRole: .admin,
+            providerCapabilities: capabilities
+        ) {
+            do {
+                let completedTask = try await client.triggerBackupJob(jobId: jobId)
+                await referenceBox.store(completedTask)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as ControlledActionOperationError {
+                throw error
+            } catch {
+                await errorBox.set(error)
+                guard isAmbiguousTransportFailure(error) else { throw error }
+                // Triggering the job is not idempotent - a retry after a lost response could
+                // fire a second, overlapping vzdump run for the same job, so this ambiguous
+                // transport failure must not trigger an automatic coordinator-level retry.
+                throw ControlledActionOperationError(
+                    reasonCode: "proxmox-backup-job-outcome-indeterminate",
+                    disposition: .nonRetryable
+                )
+            }
+        }
+        guard result.state == ActionExecutionState.succeeded, let completedTask = await referenceBox.value() else {
+            let originalError = await errorBox.value
+            triggerError = originalError?.localizedDescription ?? result.reasonCode
+            triggeringJobId = nil
+            HapticManager.error()
+            return
+        }
+        triggeredTask = completedTask
+        HapticManager.success()
         triggeringJobId = nil
     }
 

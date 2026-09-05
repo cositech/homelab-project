@@ -130,6 +130,7 @@ interface ProxmoxApi {
     suspend fun triggerBackupJob(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("id", encoded = true) id: String
     ): ProxmoxApiResponse<String>
 
