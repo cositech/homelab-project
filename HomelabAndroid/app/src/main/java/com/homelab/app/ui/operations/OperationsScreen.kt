@@ -216,7 +216,12 @@ private fun TenantSwitcherChip(
 }
 
 @Composable
-private fun <T> OperationsList(values: List<T>, emptyText: String, content: @Composable (T) -> Unit) {
+private fun <T> OperationsList(
+    values: List<T>,
+    emptyText: String,
+    key: ((T) -> Any)? = null,
+    content: @Composable (T) -> Unit
+) {
     if (values.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(emptyText, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -228,7 +233,7 @@ private fun <T> OperationsList(values: List<T>, emptyText: String, content: @Com
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(values) { content(it) }
+        items(values, key = key) { content(it) }
     }
 }
 
@@ -304,13 +309,21 @@ private fun resourceHealthState(state: String?): ProviderHealthState = when (sta
  */
 @Composable
 private fun CorrelationSection(snapshot: com.homelab.app.domain.provider.OperationsSnapshot) {
+    // Keyed the same way as AssetObservation.ref (includes resourceType): a provider instance can
+    // expose two resource types under the same native id, so omitting it would let one silently
+    // overwrite the other's entry here.
     val resourceByRef = remember(snapshot) {
-        snapshot.assets.associateBy { "${it.providerId}/${it.instanceId}/${it.resourceId}" }
+        snapshot.assets.associateBy { "${it.providerId}/${it.instanceId}/${it.resourceType}/${it.resourceId}" }
     }
+    // ProviderEvent carries no resourceType, so alerts can only ever be matched on the 3-part key.
     val alertCountByRef = remember(snapshot) {
         snapshot.alerts.groupingBy { "${it.providerId}/${it.instanceId}/${it.resourceId}" }.eachCount()
     }
-    OperationsList(snapshot.correlatedAssets, "No assets discovered") { asset ->
+    OperationsList(
+        snapshot.correlatedAssets,
+        "No assets discovered",
+        key = { it.correlationId }
+    ) { asset ->
         CanonicalAssetCard(asset, resourceByRef, alertCountByRef)
     }
 }
@@ -360,7 +373,7 @@ private fun CanonicalAssetCard(
         }
         asset.observations.forEach { observation ->
             val resource = resourceByRef[observation.ref]
-            val alertCount = alertCountByRef[observation.ref] ?: 0
+            val alertCount = alertCountByRef["${observation.providerId}/${observation.instanceId}/${observation.resourceId}"] ?: 0
             OperationCard(
                 title = "${observation.providerId} · ${observation.resourceType}",
                 subtitle = observation.name,

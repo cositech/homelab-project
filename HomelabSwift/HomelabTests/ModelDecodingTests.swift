@@ -3167,6 +3167,30 @@ final class ModelDecodingTests: XCTestCase {
         let fallback = CanonicalAssetResolver.resolveAcrossTenants(assets: [orphan], tenantRefByInstanceId: [:])
         XCTAssertEqual(fallback.single?.tenantRef, Tenant.defaultId)
     }
+
+    func testResolveAcrossTenantsExcludesNonHostResourceTypes() {
+        // A Grafana dashboard sharing a Proxmox node's exact name must not merge with it, or even
+        // appear on its own: dashboards, tickets, datastores and clusters aren't hosts.
+        let proxmoxInstance = UUID()
+        let grafanaInstance = UUID()
+        let node = ProviderResource(providerId: "proxmox", instanceId: proxmoxInstance, resourceType: "node", resourceId: "1", name: "status.internal", state: nil, attributes: [:])
+        let dashboard = ProviderResource(providerId: "grafana", instanceId: grafanaInstance, resourceType: "dashboard", resourceId: "d1", name: "status.internal", state: nil, attributes: [:])
+
+        let assets = CanonicalAssetResolver.resolveAcrossTenants(
+            assets: [node, dashboard],
+            tenantRefByInstanceId: [proxmoxInstance: "default", grafanaInstance: "default"]
+        )
+
+        XCTAssertEqual(assets.count, 1)
+        XCTAssertEqual(assets[0].providerIds, ["proxmox"])
+    }
+
+    func testAssetObservationRefIncludesResourceType() {
+        let instanceId = UUID()
+        let vm = AssetObservation.from(ProviderResource(providerId: "netbox", instanceId: instanceId, resourceType: "virtual-machine", resourceId: "7", name: "vm-name", state: nil, attributes: [:]))
+        let device = AssetObservation.from(ProviderResource(providerId: "netbox", instanceId: instanceId, resourceType: "device", resourceId: "7", name: "device-name", state: nil, attributes: [:]))
+        XCTAssertNotEqual(vm.ref, device.ref)
+    }
 }
 
 private extension Array {

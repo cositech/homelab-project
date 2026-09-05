@@ -258,4 +258,27 @@ class CanonicalAssetResolverTest {
 
         assertEquals(Tenant.DEFAULT_ID, assets.single().tenantRef)
     }
+
+    @Test
+    fun `resolveAcrossTenants excludes non-host resource types from correlation`() {
+        // A Grafana dashboard sharing a Proxmox node's exact name must not merge with it, or even
+        // appear on its own: dashboards, tickets, datastores and clusters aren't hosts.
+        val node = ProviderResource("proxmox", "inst-proxmox", "node", "1", "status.internal")
+        val dashboard = ProviderResource("grafana", "inst-grafana", "dashboard", "d1", "status.internal")
+
+        val assets = CanonicalAssetResolver.resolveAcrossTenants(
+            assets = listOf(node, dashboard),
+            tenantRefByInstanceId = mapOf("inst-proxmox" to "default", "inst-grafana" to "default")
+        )
+
+        assertEquals(1, assets.size)
+        assertEquals(setOf("proxmox"), assets.single().providerIds)
+    }
+
+    @Test
+    fun `ref includes resource type so two resource types sharing a native id don't collide`() {
+        val vm = AssetObservation.from(ProviderResource("netbox", "inst-1", "virtual-machine", "7", "vm-name"))
+        val device = AssetObservation.from(ProviderResource("netbox", "inst-1", "device", "7", "device-name"))
+        assertFalse(vm.ref == device.ref)
+    }
 }

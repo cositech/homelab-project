@@ -2374,7 +2374,8 @@ struct AssetObservation: Equatable, Sendable {
     let name: String
     let identity: AssetIdentity
 
-    var ref: String { "\(providerId)/\(instanceId.uuidString.lowercased())/\(resourceId)" }
+    /// Includes `resourceType`: a provider instance can expose two resource types under the same native id.
+    var ref: String { "\(providerId)/\(instanceId.uuidString.lowercased())/\(resourceType)/\(resourceId)" }
 
     static func from(_ resource: ProviderResource) -> AssetObservation {
         AssetObservation(
@@ -2398,6 +2399,9 @@ struct CanonicalAsset: Equatable, Sendable {
 
     var providerIds: Set<String> { Set(observations.map { $0.providerId }) }
     var isCorrelated: Bool { providerIds.count > 1 }
+
+    /// `key` alone can collide across tenants (e.g. the same FQDN token in two different tenants); this is unique.
+    var correlationId: String { "\(tenantRef)|\(key)" }
 }
 
 enum CanonicalAssetResolver {
@@ -2462,12 +2466,27 @@ enum CanonicalAssetResolver {
             ?? members[0].ref
     }
 
+    /// Resource types that never represent a single addressable host, so feeding them into identity
+    /// resolution risks a false-positive merge purely on a shared dotted display name (e.g. two
+    /// unrelated things both named "status.internal"). A deny-list, not an allow-list, because at
+    /// least one provider (PegaProx) reports a resource-type string straight from its own API rather
+    /// than a fixed set the app controls, so an allow-list would silently exclude legitimate guests.
+    private static let nonHostResourceTypes: Set<String> = [
+        "provider-instance", // the connection itself, named by the user's own label, not a host
+        "dashboard", "data-source", // Grafana: visualization config, not inventory
+        "ticket", // Zammad: a support ticket
+        "datastore", // Proxmox Backup Server: a storage pool
+        "cluster" // PegaProx: a group of guests, not one host
+    ]
+
     /// Resolves `assets` into canonical assets, partitioning by `tenantRefByInstanceId` first so a
     /// mixed-tenant input (e.g. an all-tenants-mode operations refresh) never lets `resolve` — which
     /// is intentionally tenant-agnostic — merge two different tenants' hosts into one asset. An
-    /// instance id absent from the map (should not happen in practice) falls back to the default tenant.
+    /// instance id absent from the map (should not happen in practice) falls back to the default
+    /// tenant. Resources in `nonHostResourceTypes` are excluded before resolving.
     static func resolveAcrossTenants(assets: [ProviderResource], tenantRefByInstanceId: [UUID: String]) -> [CanonicalAsset] {
-        let grouped = Dictionary(grouping: assets) { tenantRefByInstanceId[$0.instanceId] ?? Tenant.defaultId }
+        let eligible = assets.filter { !nonHostResourceTypes.contains($0.resourceType) }
+        let grouped = Dictionary(grouping: eligible) { tenantRefByInstanceId[$0.instanceId] ?? Tenant.defaultId }
         return grouped.flatMap { tenantRef, tenantAssets in
             resolve(tenantRef: tenantRef, observations: tenantAssets.map(AssetObservation.from))
         }

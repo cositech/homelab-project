@@ -27,6 +27,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class OperationsUiState(
     val snapshot: OperationsSnapshot = OperationsSnapshot(),
@@ -215,13 +217,18 @@ class OperationsViewModel @Inject constructor(
         )
     }
 
-    /** Cross-provider rollup of [assets], correlated ones first. See [resolveAcrossTenants] for the tenant-isolation rule. */
-    private fun buildCorrelatedAssets(
+    /**
+     * Cross-provider rollup of [assets], correlated ones first. See [resolveAcrossTenants] for the
+     * tenant-isolation rule. The resolver's pairwise comparison is O(n²) and can run into the
+     * millions of comparisons on a large multi-cluster inventory, so this runs off the coroutine's
+     * default (main) dispatcher rather than blocking the UI thread mid-refresh.
+     */
+    private suspend fun buildCorrelatedAssets(
         instances: List<ServiceInstance>,
         assets: List<ProviderResource>
-    ): List<CanonicalAsset> {
+    ): List<CanonicalAsset> = withContext(Dispatchers.Default) {
         val tenantByInstanceId = instances.associate { it.id to it.tenantRef }
-        return CanonicalAssetResolver.resolveAcrossTenants(assets, tenantByInstanceId)
+        CanonicalAssetResolver.resolveAcrossTenants(assets, tenantByInstanceId)
             .sortedWith(
                 compareByDescending<CanonicalAsset> { it.isCorrelated }
                     .thenByDescending { it.providerIds.size }

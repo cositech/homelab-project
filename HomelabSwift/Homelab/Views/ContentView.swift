@@ -242,6 +242,14 @@ private final class OperationsWorkspace {
                 : $0.resourceType < $1.resourceType
         }
 
+        // The resolver's pairwise comparison is O(n²) and can run into the millions of comparisons
+        // on a large multi-cluster inventory, so it runs off the main actor rather than blocking the
+        // UI mid-refresh. Only Sendable values (no ServiceInstance) cross into the detached task.
+        let tenantByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.tenantRef) })
+        let correlated = await Task.detached(priority: .userInitiated) {
+            Self.correlatedAssets(assets: dedupedAssets, tenantByInstanceId: tenantByInstanceId)
+        }.value
+
         snapshot = OperationsSnapshot(
             health: health.sorted { healthRank($0.state) < healthRank($1.state) },
             alerts: uniqueAlerts.values.sorted {
@@ -252,14 +260,13 @@ private final class OperationsWorkspace {
             assets: dedupedAssets,
             diagnostics: diagnostics.sorted { healthRank($0.state) < healthRank($1.state) },
             refreshedAt: observedAt,
-            correlatedAssets: Self.correlatedAssets(instances: instances, assets: dedupedAssets)
+            correlatedAssets: correlated
         )
     }
 
     /// Cross-provider rollup of `assets`, correlated ones first. See `resolveAcrossTenants` for the
-    /// tenant-isolation rule.
-    private static func correlatedAssets(instances: [ServiceInstance], assets: [ProviderResource]) -> [CanonicalAsset] {
-        let tenantByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.tenantRef) })
+    /// tenant-isolation rule. `nonisolated` so it can run on a background task instead of the main actor.
+    private nonisolated static func correlatedAssets(assets: [ProviderResource], tenantByInstanceId: [UUID: String]) -> [CanonicalAsset] {
         let resolved = CanonicalAssetResolver.resolveAcrossTenants(assets: assets, tenantRefByInstanceId: tenantByInstanceId)
         return resolved.sorted { lhs, rhs in
             if lhs.isCorrelated != rhs.isCorrelated { return lhs.isCorrelated && !rhs.isCorrelated }
@@ -634,7 +641,24 @@ struct OperationsView: View {
                     ForEach(Array(workspace.snapshot.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset) }
                 } else if section == .correlation {
                     if workspace.snapshot.correlatedAssets.isEmpty { empty("No assets discovered") }
-                    ForEach(workspace.snapshot.correlatedAssets, id: \.key) { canonicalAssetCard($0) }
+                    // Built once per section render (not per row, per PR review) and keyed the same
+                    // way as AssetObservation.ref (includes resourceType): a provider instance can
+                    // expose two resource types under the same native id, so omitting it would let
+                    // one silently overwrite the other's entry here.
+                    let resourceByRef = Dictionary(uniqueKeysWithValues: workspace.snapshot.assets.map {
+                        ("\($0.providerId)/\($0.instanceId.uuidString.lowercased())/\($0.resourceType)/\($0.resourceId)", $0)
+                    })
+                    // ProviderEvent carries no resourceType, so alerts can only ever be matched on the 3-part key.
+                    let alertCountByRef = workspace.snapshot.alerts.reduce(into: [String: Int]()) { counts, alert in
+                        guard let resourceId = alert.resourceId else { return }
+                        let ref = "\(alert.providerId)/\(alert.instanceId.uuidString.lowercased())/\(resourceId)"
+                        counts[ref, default: 0] += 1
+                    }
+                    // Namespaced by tenantRef: in all-tenants mode two different tenants' assets can
+                    // share the same `key` (e.g. the same FQDN token), which would otherwise collide.
+                    ForEach(workspace.snapshot.correlatedAssets, id: \.correlationId) { asset in
+                        canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
+                    }
                 } else {
                     if workspace.snapshot.diagnostics.isEmpty { empty("No diagnostics available") }
                     ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0) }
@@ -663,18 +687,14 @@ struct OperationsView: View {
 
     /// Phase 4 "by asset" rollup: the same `workspace.snapshot.assets` regrouped by canonical host
     /// (`CanonicalAssetResolver`), so a host seen through several providers renders as one card
-    /// instead of several unrelated ones in the flat Assets tab.
-    private func canonicalAssetCard(_ asset: CanonicalAsset) -> some View {
-        let resourceByRef = Dictionary(uniqueKeysWithValues: workspace.snapshot.assets.map {
-            ("\($0.providerId)/\($0.instanceId.uuidString.lowercased())/\($0.resourceId)", $0)
-        })
-        let alertCountByRef = workspace.snapshot.alerts.reduce(into: [String: Int]()) { counts, alert in
-            guard let resourceId = alert.resourceId else { return }
-            let ref = "\(alert.providerId)/\(alert.instanceId.uuidString.lowercased())/\(resourceId)"
-            counts[ref, default: 0] += 1
-        }
-
-        return VStack(alignment: .leading, spacing: 6) {
+    /// instead of several unrelated ones in the flat Assets tab. `resourceByRef`/`alertCountByRef`
+    /// are built once per section render by the caller, not per row.
+    private func canonicalAssetCard(
+        _ asset: CanonicalAsset,
+        resourceByRef: [String: ProviderResource],
+        alertCountByRef: [String: Int]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(asset.displayName).font(.subheadline.bold()).lineLimit(1)
                 Spacer(minLength: 8)
@@ -688,7 +708,7 @@ struct OperationsView: View {
             }
             ForEach(asset.observations, id: \.ref) { observation in
                 let resource = resourceByRef[observation.ref]
-                let alertCount = alertCountByRef[observation.ref] ?? 0
+                let alertCount = alertCountByRef["\(observation.providerId)/\(observation.instanceId.uuidString.lowercased())/\(observation.resourceId)"] ?? 0
                 OperationsCard(
                     title: "\(observation.providerId) · \(observation.resourceType)",
                     subtitle: observation.name,
