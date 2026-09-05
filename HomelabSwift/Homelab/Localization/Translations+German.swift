@@ -925,6 +925,8 @@ extension Translations {
         tenantsSetActive: "Aktivieren",
         tenantsRename: "Umbenennen",
         tenantsDeleteConfirmMessage: "%@ löschen? Dies kann nicht rückgängig gemacht werden.",
+        tenantsAllMode: "Alle Mandanten",
+        operationsTenantSwitcher: "Mandant wechseln",
         settingsDisconnect: "Trennen",
         settingsDisconnectConfirm: "Trennen",
         settingsDisconnectMessage: "Möchten Sie diesen Dienst wirklich trennen?",

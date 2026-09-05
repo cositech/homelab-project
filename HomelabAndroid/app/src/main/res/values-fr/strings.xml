@@ -270,6 +270,8 @@
     <string name="tenants_set_active">Définir comme actif</string>
     <string name="tenants_rename">Renommer</string>
     <string name="tenants_delete_confirm_message">Supprimer %1$s ? Cette action est irréversible.</string>
+    <string name="tenants_all_mode_label">Tous les locataires</string>
+    <string name="operations_tenant_switcher">Changer de locataire</string>
     <string name="settings_not_connected">Non connecté</string>
     <string name="settings_disconnect">Déconnecter</string>
     <string name="settings_fallback_url">URL de secours (ex. Cloudflare)</string>

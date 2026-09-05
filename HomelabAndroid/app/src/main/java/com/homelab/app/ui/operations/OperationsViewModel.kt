@@ -2,6 +2,7 @@ package com.homelab.app.ui.operations
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.homelab.app.data.local.TenantStore
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ProxmoxBackupServerRepository
 import com.homelab.app.data.repository.ObservabilityRepository
@@ -10,6 +11,7 @@ import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.data.repository.UptimeKumaMonitorStatus
 import com.homelab.app.data.repository.UptimeKumaRepository
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.TenantSelection
 import com.homelab.app.domain.provider.OperationsSnapshot
 import com.homelab.app.domain.provider.ProviderDiagnostic
 import com.homelab.app.domain.provider.ProviderEvent
@@ -21,11 +23,14 @@ import com.homelab.app.util.ServiceType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -38,6 +43,7 @@ data class OperationsUiState(
 @HiltViewModel
 class OperationsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
+    private val tenantStore: TenantStore,
     private val proxmoxRepository: ProxmoxRepository,
     private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val uptimeKumaRepository: UptimeKumaRepository,
@@ -48,30 +54,58 @@ class OperationsViewModel @Inject constructor(
     val uiState: StateFlow<OperationsUiState> = _uiState.asStateFlow()
     private var refreshJob: Job? = null
 
+    val tenantSelection: StateFlow<TenantSelection> = tenantStore.selection
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TenantSelection.INITIAL)
+
     init {
-        refresh()
+        viewModelScope.launch {
+            tenantStore.selection.collect { refresh() }
+        }
     }
 
+    fun setActiveTenant(id: String) {
+        viewModelScope.launch { tenantStore.setActiveTenant(id) }
+    }
+
+    fun setAllTenantsMode(enabled: Boolean) {
+        viewModelScope.launch { tenantStore.setAllTenantsMode(enabled) }
+    }
+
+    /** Cancels any in-flight refresh so a tenant switch never races a stale scope onto the screen. */
     fun refresh() {
-        if (refreshJob?.isActive == true) return
-        refreshJob = viewModelScope.launch {
+        refreshJob?.cancel()
+        lateinit var job: Job
+        job = viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true, error = null) }
             try {
                 servicesRepository.checkAllReachability(force = true)
-                val instances = servicesRepository.allInstances.first()
+                val selection = tenantStore.current()
+                val instances = if (selection.allTenantsMode) {
+                    servicesRepository.allInstances.first()
+                } else {
+                    servicesRepository.instancesForTenant(selection.activeTenantId).first()
+                }
                 val reachability = servicesRepository.reachability.first()
                 _uiState.value = OperationsUiState(
                     snapshot = buildSnapshot(instances, reachability),
                     isRefreshing = false
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
-                _uiState.update {
-                    it.copy(isRefreshing = false, error = error.message ?: "Unable to refresh operations data")
+                if (refreshJob === job) {
+                    _uiState.update { it.copy(error = error.message ?: "Unable to refresh operations data") }
                 }
             } finally {
-                refreshJob = null
+                // Only this job's own cancellation/completion clears the flag it set — a job a
+                // tenant switch superseded must not clobber the isRefreshing the newer job set.
+                if (refreshJob === job) {
+                    refreshJob = null
+                    _uiState.update { it.copy(isRefreshing = false) }
+                }
             }
         }
+        refreshJob = job
     }
 
     private suspend fun buildSnapshot(

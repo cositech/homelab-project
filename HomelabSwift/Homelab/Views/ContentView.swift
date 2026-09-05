@@ -94,14 +94,33 @@ private final class OperationsWorkspace {
     var isRefreshing = false
     var errorMessage: String?
 
-    func refresh(using servicesStore: ServicesStore) async {
-        guard !isRefreshing else { return }
+    /// The most recent tenant selection requested while a refresh was already in flight. Replayed
+    /// once that refresh finishes so a tenant switch (or a tap on refresh) during a fetch is never
+    /// silently dropped in favor of the stale scope that was already loading.
+    private var pendingTenantSelection: TenantSelection?
+
+    func refresh(using servicesStore: ServicesStore, tenantSelection: TenantSelection) async {
+        guard !isRefreshing else {
+            pendingTenantSelection = tenantSelection
+            return
+        }
         isRefreshing = true
         errorMessage = nil
-        defer { isRefreshing = false }
 
+        await performRefresh(using: servicesStore, tenantSelection: tenantSelection)
+        isRefreshing = false
+
+        if let queued = pendingTenantSelection {
+            pendingTenantSelection = nil
+            await refresh(using: servicesStore, tenantSelection: queued)
+        }
+    }
+
+    private func performRefresh(using servicesStore: ServicesStore, tenantSelection: TenantSelection) async {
         await servicesStore.checkAllReachability(force: true)
-        let instances = servicesStore.allInstances
+        let instances = tenantSelection.allTenantsMode
+            ? servicesStore.allInstances
+            : servicesStore.instances(tenantRef: tenantSelection.activeTenantId)
         let observedAt = Date()
         var health: [ProviderHealth] = []
         var alerts: [ProviderEvent] = []
@@ -471,6 +490,8 @@ private final class OperationsWorkspace {
 
 struct OperationsView: View {
     @Environment(ServicesStore.self) private var servicesStore
+    @Environment(TenantStore.self) private var tenantStore
+    @Environment(Localizer.self) private var localizer
     @State private var workspace = OperationsWorkspace()
     @State private var section: OperationsSection = .health
     @State private var query = ""
@@ -511,14 +532,64 @@ struct OperationsView: View {
             .background(AppTheme.background)
             .navigationTitle("Operations")
             .toolbar {
+                if !tenantStore.isSingleTenant {
+                    ToolbarItem(placement: .topBarLeading) {
+                        tenantSwitcherMenu
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await workspace.refresh(using: servicesStore) } } label: { Image(systemName: "arrow.clockwise") }
+                    Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }
                         .disabled(workspace.isRefreshing)
                 }
             }
             .searchable(text: $query, prompt: "Search operations data")
-            .task { await workspace.refresh(using: servicesStore) }
+            .task { await refresh() }
+            .onChange(of: tenantStore.selection) { _, _ in
+                Task { await refresh() }
+            }
         }
+    }
+
+    private func refresh() async {
+        await workspace.refresh(using: servicesStore, tenantSelection: tenantStore.selection)
+    }
+
+    /// Compact tenant-scope affordance for the global operations chrome. Hidden on a
+    /// single-tenant install by the `!tenantStore.isSingleTenant` guard above.
+    @ViewBuilder private var tenantSwitcherMenu: some View {
+        Menu {
+            Button {
+                tenantStore.setAllTenantsMode(true)
+            } label: {
+                if tenantStore.selection.allTenantsMode {
+                    Label(localizer.t.tenantsAllMode, systemImage: "checkmark")
+                } else {
+                    Text(localizer.t.tenantsAllMode)
+                }
+            }
+            Divider()
+            ForEach(tenantStore.selection.tenants) { tenant in
+                Button {
+                    tenantStore.setActiveTenant(id: tenant.id)
+                } label: {
+                    let isSelected = !tenantStore.selection.allTenantsMode && tenant.id == tenantStore.selection.activeTenantId
+                    if isSelected {
+                        Label(tenantDisplayName(tenant, localizer: localizer), systemImage: "checkmark")
+                    } else {
+                        Text(tenantDisplayName(tenant, localizer: localizer))
+                    }
+                }
+            }
+        } label: {
+            Label(tenantSwitcherLabel, systemImage: "person.3.fill")
+        }
+        .accessibilityLabel("\(localizer.t.operationsTenantSwitcher): \(tenantSwitcherLabel)")
+    }
+
+    private var tenantSwitcherLabel: String {
+        tenantStore.selection.allTenantsMode
+            ? localizer.t.tenantsAllMode
+            : tenantDisplayName(tenantStore.selection.activeTenant, localizer: localizer)
     }
 
     @ViewBuilder private var content: some View {
@@ -552,7 +623,7 @@ struct OperationsView: View {
             }
             .padding(16)
         }
-        .refreshable { await workspace.refresh(using: servicesStore) }
+        .refreshable { await refresh() }
     }
 
     private func healthCard(_ item: ProviderHealth) -> some View {

@@ -48,6 +48,9 @@ class ServicesRepository @Inject constructor(
 
     val allInstances: Flow<List<ServiceInstance>> = serviceInstancesRepository.allInstances
     val instancesByType = serviceInstancesRepository.instancesByType
+
+    fun instancesForTenant(tenantRef: String): Flow<List<ServiceInstance>> =
+        serviceInstancesRepository.instancesForTenant(tenantRef)
     val preferredInstanceIdByType = serviceInstancesRepository.preferredInstanceIdByType
     val preferredInstancesByType = serviceInstancesRepository.preferredInstancesByType
 

@@ -12,16 +12,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,16 +40,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.homelab.app.R
+import com.homelab.app.domain.model.TenantSelection
 import com.homelab.app.domain.provider.ProviderDiagnostic
 import com.homelab.app.domain.provider.ProviderEvent
 import com.homelab.app.domain.provider.ProviderHealth
 import com.homelab.app.domain.provider.ProviderHealthState
 import com.homelab.app.domain.provider.ProviderResource
+import com.homelab.app.ui.settings.tenantDisplayName
 
 private enum class OperationsSection(val label: String) {
     HEALTH("Health"),
@@ -55,6 +66,7 @@ private enum class OperationsSection(val label: String) {
 @Composable
 fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
     var selectedSection by remember { mutableIntStateOf(0) }
     val sections = remember { OperationsSection.entries }
 
@@ -71,6 +83,11 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            TenantSwitcherChip(
+                selection = tenantSelection,
+                onSelectTenant = viewModel::setActiveTenant,
+                onSetAllTenantsMode = viewModel::setAllTenantsMode
+            )
             IconButton(onClick = viewModel::refresh, enabled = !state.isRefreshing) {
                 if (state.isRefreshing) {
                     CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
@@ -106,6 +123,92 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
             OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it) }
             OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it) }
             OperationsSection.SEARCH -> SearchSection(state.snapshot)
+        }
+    }
+}
+
+/**
+ * Compact tenant-scope affordance for the global operations chrome. Hidden on a single-tenant
+ * install (only the `default` tenant configured), same rule as [com.homelab.app.ui.components.TenantPicker].
+ */
+@Composable
+private fun TenantSwitcherChip(
+    selection: TenantSelection,
+    onSelectTenant: (String) -> Unit,
+    onSetAllTenantsMode: (Boolean) -> Unit
+) {
+    if (selection.isSingleTenant) return
+
+    var expanded by remember { mutableStateOf(false) }
+    val label = if (selection.allTenantsMode) {
+        stringResource(R.string.tenants_all_mode_label)
+    } else {
+        tenantDisplayName(selection.activeTenant)
+    }
+    val contentDescription = stringResource(R.string.operations_tenant_switcher)
+
+    Box {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            onClick = { expanded = true },
+            modifier = Modifier.padding(end = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    Icons.Default.Groups,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = stringResource(R.string.tenants_all_mode_label),
+                        fontWeight = if (selection.allTenantsMode) FontWeight.Bold else FontWeight.Normal
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onSetAllTenantsMode(true)
+                },
+                trailingIcon = {
+                    if (selection.allTenantsMode) Icon(Icons.Default.Check, contentDescription = null)
+                }
+            )
+            HorizontalDivider()
+            selection.tenants.forEach { tenant ->
+                val isSelected = !selection.allTenantsMode && tenant.id == selection.activeTenantId
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = tenantDisplayName(tenant),
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelectTenant(tenant.id)
+                    },
+                    trailingIcon = {
+                        if (isSelected) Icon(Icons.Default.Check, contentDescription = null)
+                    }
+                )
+            }
         }
     }
 }
