@@ -59,24 +59,29 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] qBittorrent torrent and transfer lifecycle actions
   - [x] PatchMon monitored-host removal
   - [x] Radarr, Sonarr, Lidarr, Jellyseerr, Prowlarr, Gluetun and FlareSolverr media-service actions
-  - [ ] Proxmox VE non-lifecycle mutations — backup-job trigger and guest clone/migrate — plus a
-    Proxmox Backup Server backup-job trigger (this one doesn't exist as a mutation on either client
-    yet — PBS support is read-only today, so it needs new API client work, not just rewiring);
-    these still call `proxmoxRepository` / the Proxmox API client directly — _in progress: VM/LXC
-    snapshot create/delete/rollback, storage-content delete and firewall enable/disable are done —
-    all three route through the coordinator on both clients, with fallback-replay suppression added
-    on every endpoint touched (8 so far) and a confirm dialog for every destructive action that
-    didn't have one before (snapshot delete/rollback, firewall disable — Android's firewall disable
-    confirm is new UI added here; storage-content delete and iOS's firewall toggle already had a
-    confirm dialog, just not routed through the coordinator). Risk: snapshot create/delete and
-    firewall enable are the reversible/low-blast-radius ends (medium and low); snapshot rollback,
-    storage-content delete and firewall disable are the higher end (high, high, medium). Rewiring
-    the iOS firewall toggle surfaced and fixed a real pre-existing bug: `toggleFirewall` took the
-    already-desired new state into a parameter named `currentlyEnabled` and negated it, so confirming
-    "Enable the firewall?" actually disabled it (and vice versa) — Android's equivalent was
-    correct, this was iOS-only. The already-migrated lifecycle mutations (start/stop/shutdown/
-    reboot) still lack fallback-replay suppression — a pre-existing gap, not something these slices
-    introduced, left as further follow-up_
+  - [ ] Proxmox VE non-lifecycle mutations — guest clone/migrate — plus a Proxmox Backup Server
+    backup-job trigger (this one doesn't exist as a mutation on either client yet — PBS support is
+    read-only today, so it needs new API client work, not just rewiring); these still call
+    `proxmoxRepository` / the Proxmox API client directly — _in progress: VM/LXC snapshot
+    create/delete/rollback, storage-content delete, firewall enable/disable and backup-job trigger
+    are done — all four route through the coordinator on both clients, with fallback-replay
+    suppression added on every endpoint touched (9 so far) and a confirm dialog for every
+    destructive action that didn't have one before (snapshot delete/rollback, firewall disable —
+    Android's firewall disable confirm is new UI added here; storage-content delete and iOS's
+    firewall toggle already had a confirm dialog, just not routed through the coordinator; backup
+    trigger needs none, see below). Risk: backup-job trigger and firewall enable are the "safe to
+    repeat, no confirmation" end (low); snapshot create/delete are medium; snapshot rollback,
+    storage-content delete and firewall disable are high/high/medium and require confirmation.
+    Backup-job trigger and storage-content delete both wrap transport failures as non-retryable in
+    their operation closures (neither is idempotent — a lost-response retry could fire a duplicate
+    backup run or hit an already-removed volume); the firewall toggle is deliberately left
+    retryable, since flipping a boolean option is naturally idempotent. Rewiring the iOS firewall
+    toggle surfaced and fixed a real pre-existing bug: `toggleFirewall` took the already-desired new
+    state into a parameter named `currentlyEnabled` and negated it, so confirming "Enable the
+    firewall?" actually disabled it (and vice versa) — Android's equivalent was correct, this was
+    iOS-only. The already-migrated lifecycle mutations (start/stop/shutdown/reboot) still lack
+    fallback-replay suppression — a pre-existing gap, not something these slices introduced, left
+    as further follow-up_
   - [x] Every other provider audited — the integrations without a controlled-action surface
     (Uptime Kuma, Gitea, OPNsense, Beszel, Maltrail, Jellystat, Plex, UniFi, TrueNAS, Wakapi and
     the Phase-2 read-only observability providers) expose no mutating endpoints in this app, so

@@ -396,10 +396,38 @@ class ProxmoxViewModel @Inject constructor(
     fun triggerBackupJob(jobId: String) {
         viewModelScope.launch {
             try {
-                proxmoxRepository.triggerBackupJob(instanceId, jobId)
-                fetchBackupJobs()
+                val request = ProxmoxBackupJobAction.TRIGGER.controlledRequest(instanceId, jobId, confirmed = false)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    try {
+                        proxmoxRepository.triggerBackupJob(instanceId, jobId)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        // Triggering the job is not idempotent - a retry after a lost response
+                        // could fire a second, overlapping vzdump run for the same job, so a
+                        // transport failure must not trigger an automatic coordinator-level retry.
+                        throw ActionOperationException(
+                            "proxmox-backup-job-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    }
+                }
+                if (result.state == ActionExecutionState.SUCCEEDED) {
+                    fetchBackupJobs()
+                } else {
+                    _backupJobsState.value = UiState.Error(
+                        getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    ) { fetchBackupJobs() }
+                }
             } catch (e: Exception) {
-                _backupJobsState.value = UiState.Error(e.message ?: "Backup trigger failed") { fetchBackupJobs() }
+                _backupJobsState.value = UiState.Error(resolvedMessage(e)) { fetchBackupJobs() }
             }
         }
     }
@@ -1067,6 +1095,31 @@ enum class ProxmoxFirewallAction(val wireName: String, val risk: ActionRisk) {
         providerRef = "proxmox:$instanceId",
         action = wireName,
         targetRef = "firewall/cluster",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+/** A "run now" trigger, not a destructive mutation, matching the media-service background-command precedent. */
+enum class ProxmoxBackupJobAction(val wireName: String, val risk: ActionRisk) {
+    TRIGGER("backup-job.trigger", ActionRisk.LOW);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        jobId: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "backup-job/$jobId",
         risk = risk,
         requestedAt = requestedAt,
         idempotencyKey = idempotencyKey,

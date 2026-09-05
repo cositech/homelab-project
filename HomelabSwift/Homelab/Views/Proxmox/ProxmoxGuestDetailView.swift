@@ -2494,7 +2494,10 @@ private enum ProxmoxControlledActionError: Error {
     case unsupportedGuestAction
 }
 
-private actor ProxmoxActionReferenceBox {
+/// Smuggles a typed result out of `ControlledActionCoordinator.execute`'s `Void`-returning
+/// operation closure. Not `private` because other Proxmox views (backup jobs, snapshots) reuse it
+/// for the same purpose.
+actor ProxmoxActionReferenceBox {
     private var reference: ProxmoxTaskReference?
 
     func store(_ reference: ProxmoxTaskReference) {

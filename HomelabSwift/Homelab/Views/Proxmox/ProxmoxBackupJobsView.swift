@@ -261,8 +261,42 @@ struct ProxmoxBackupJobsView: View {
                 triggeringJobId = nil
                 return
             }
-            let task = try await client.triggerBackupJob(jobId: job.id)
-            triggeredTask = task
+            let jobId = job.id
+            let referenceBox = ProxmoxActionReferenceBox()
+            let request = ProxmoxControlledBackupJobAction.trigger.request(
+                instanceId: instanceId,
+                jobId: jobId,
+                confirmed: false
+            )
+            let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+            let result = await servicesStore.controlledActionCoordinator.execute(
+                request: request,
+                actorRole: .admin,
+                providerCapabilities: capabilities
+            ) {
+                do {
+                    let completedTask = try await client.triggerBackupJob(jobId: jobId)
+                    await referenceBox.store(completedTask)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    // Triggering the job is not idempotent - a retry after a lost response could
+                    // fire a second, overlapping vzdump run for the same job, so a transport
+                    // failure must not trigger an automatic coordinator-level retry.
+                    throw ControlledActionOperationError(
+                        reasonCode: "proxmox-backup-job-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
+                }
+            }
+            guard result.state == ActionExecutionState.succeeded, let completedTask = await referenceBox.value() else {
+                triggerError = result.reasonCode
+                triggeringJobId = nil
+                return
+            }
+            triggeredTask = completedTask
             HapticManager.success()
         } catch {
             triggerError = error.localizedDescription

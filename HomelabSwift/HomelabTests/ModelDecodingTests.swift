@@ -2179,6 +2179,17 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(request.targetRef, "firewall/cluster")
     }
 
+    func testProxmoxControlledBackupJobTriggerIsLowRiskAndNeedsNoConfirmation() throws {
+        XCTAssertFalse(ProxmoxControlledBackupJobAction.trigger.requiresConfirmation)
+        XCTAssertEqual(ProxmoxControlledBackupJobAction.trigger.risk, .low)
+
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let request = ProxmoxControlledBackupJobAction.trigger.request(instanceId: instanceId, jobId: "backup-nightly", confirmed: false)
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "backup-job.trigger")
+        XCTAssertEqual(request.targetRef, "backup-job/backup-nightly")
+    }
+
     func testControlledActionRetriesLowRiskTransportFailures() async {
         let counter = ActionInvocationCounter()
         let delays = RetryDelayRecorder()

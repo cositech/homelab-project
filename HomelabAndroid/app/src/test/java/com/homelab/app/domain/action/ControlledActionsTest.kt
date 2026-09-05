@@ -27,6 +27,7 @@ import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
+import com.homelab.app.ui.proxmox.ProxmoxBackupJobAction
 import com.homelab.app.ui.proxmox.ProxmoxFirewallAction
 import com.homelab.app.ui.proxmox.ProxmoxGuestAction
 import com.homelab.app.ui.proxmox.ProxmoxSnapshotAction
@@ -572,6 +573,24 @@ class ControlledActionsTest {
         assertEquals("proxmox:cluster-a", request.providerRef)
         assertEquals("firewall.disable", request.action)
         assertEquals("firewall/cluster", request.targetRef)
+    }
+
+    @Test
+    fun `proxmox backup job trigger is low risk and needs no confirmation`() {
+        assertFalse(ProxmoxBackupJobAction.TRIGGER.requiresConfirmation)
+        assertEquals(ActionRisk.LOW, ProxmoxBackupJobAction.TRIGGER.risk)
+
+        val request = ProxmoxBackupJobAction.TRIGGER.controlledRequest(
+            instanceId = "cluster-a",
+            jobId = "backup-nightly",
+            confirmed = false,
+            requestId = "request-proxmox-5",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0005"
+        )
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("backup-job.trigger", request.action)
+        assertEquals("backup-job/backup-nightly", request.targetRef)
     }
 
     @Test

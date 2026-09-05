@@ -903,7 +903,7 @@ actor ProxmoxAPIClient {
 
     func triggerBackupJob(jobId: String) async throws -> ProxmoxTaskReference {
         let encodedId = jobId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? jobId
-        return try await authenticatedTaskRequest(path: "/api2/json/cluster/backup/\(encodedId)", method: "POST")
+        return try await authenticatedTaskRequest(path: "/api2/json/cluster/backup/\(encodedId)", method: "POST", allowFallback: false)
     }
 
     // MARK: - Networks
