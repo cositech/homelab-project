@@ -1824,16 +1824,30 @@ struct ProxmoxGuestDetailView: View {
                 actorRole: .admin,
                 providerCapabilities: capabilities
             ) {
-                let completedReference: ProxmoxTaskReference
-                switch (actionGuestType, action) {
-                case (.qemu, .create):   completedReference = try await client.createVMSnapshot(node: actionNode, vmid: actionVmid, name: name, description: description, includeRAM: includeRAMState)
-                case (.lxc, .create):    completedReference = try await client.createLXCSnapshot(node: actionNode, vmid: actionVmid, name: name, description: description)
-                case (.qemu, .rollback): completedReference = try await client.rollbackVMSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
-                case (.lxc, .rollback):  completedReference = try await client.rollbackLXCSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
-                case (.qemu, .delete):   completedReference = try await client.deleteVMSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
-                case (.lxc, .delete):    completedReference = try await client.deleteLXCSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                do {
+                    let completedReference: ProxmoxTaskReference
+                    switch (actionGuestType, action) {
+                    case (.qemu, .create):   completedReference = try await client.createVMSnapshot(node: actionNode, vmid: actionVmid, name: name, description: description, includeRAM: includeRAMState)
+                    case (.lxc, .create):    completedReference = try await client.createLXCSnapshot(node: actionNode, vmid: actionVmid, name: name, description: description)
+                    case (.qemu, .rollback): completedReference = try await client.rollbackVMSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                    case (.lxc, .rollback):  completedReference = try await client.rollbackLXCSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                    case (.qemu, .delete):   completedReference = try await client.deleteVMSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                    case (.lxc, .delete):    completedReference = try await client.deleteLXCSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                    }
+                    await referenceBox.store(completedReference)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ControlledActionOperationError {
+                    throw error
+                } catch {
+                    // None of these mutations are idempotent and Proxmox exposes no token to
+                    // de-duplicate a retry, so a lost response must not trigger an automatic
+                    // coordinator-level retry that could resubmit an already-applied mutation.
+                    throw ControlledActionOperationError(
+                        reasonCode: "proxmox-snapshot-outcome-indeterminate",
+                        disposition: .nonRetryable
+                    )
                 }
-                await referenceBox.store(completedReference)
             }
             guard result.state == ActionExecutionState.succeeded, let completedReference = await referenceBox.value() else {
                 actionError = result.reasonCode

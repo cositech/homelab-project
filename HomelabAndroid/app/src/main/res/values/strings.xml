@@ -1627,7 +1627,7 @@
     <string name="proxmox_confirm_action_message">This action changes the guest state and will be recorded in the local audit trail.</string>
     <string name="proxmox_delete_snapshot_confirm">Are you sure you want to delete snapshot \'%1$s\'?</string>
     <string name="proxmox_rollback_snapshot">Rollback Snapshot</string>
-    <string name="proxmox_rollback_confirm">Are you sure you want to rollback to snapshot \'%1$s\'? This will restart the VM.</string>
+    <string name="proxmox_rollback_confirm">Are you sure you want to rollback to snapshot \'%1$s\'? This will restart the %2$s.</string>
     <string name="proxmox_clone_vm">Clone VM</string>
     <string name="proxmox_clone_ct">Clone Container</string>
     <string name="proxmox_new_id">New ID</string>

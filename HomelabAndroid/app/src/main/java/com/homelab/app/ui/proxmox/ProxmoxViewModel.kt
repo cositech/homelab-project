@@ -11,6 +11,8 @@ import com.homelab.app.data.remote.dto.proxmox.*
 import com.homelab.app.data.repository.ProxmoxRepository
 import com.homelab.app.data.repository.ServicesRepository
 import com.homelab.app.domain.action.ActionExecutionState
+import com.homelab.app.domain.action.ActionFailureDisposition
+import com.homelab.app.domain.action.ActionOperationException
 import com.homelab.app.domain.action.ActionRisk
 import com.homelab.app.domain.action.ActionRole
 import com.homelab.app.domain.action.ControlledActionCoordinator
@@ -18,6 +20,7 @@ import com.homelab.app.domain.action.ControlledActionRequest
 import com.homelab.app.domain.model.ServiceInstance
 import com.homelab.app.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -484,10 +487,25 @@ class ProxmoxViewModel @Inject constructor(
                     actorRole = ActionRole.ADMIN,
                     providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
                 ) {
-                    when (action) {
-                        ProxmoxSnapshotAction.CREATE -> proxmoxRepository.createSnapshot(instanceId, node, vmid, isQemu, snapname, description)
-                        ProxmoxSnapshotAction.DELETE -> proxmoxRepository.deleteSnapshot(instanceId, node, vmid, isQemu, snapname)
-                        ProxmoxSnapshotAction.ROLLBACK -> proxmoxRepository.rollbackSnapshot(instanceId, node, vmid, isQemu, snapname)
+                    try {
+                        when (action) {
+                            ProxmoxSnapshotAction.CREATE -> proxmoxRepository.createSnapshot(instanceId, node, vmid, isQemu, snapname, description)
+                            ProxmoxSnapshotAction.DELETE -> proxmoxRepository.deleteSnapshot(instanceId, node, vmid, isQemu, snapname)
+                            ProxmoxSnapshotAction.ROLLBACK -> proxmoxRepository.rollbackSnapshot(instanceId, node, vmid, isQemu, snapname)
+                        }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        // None of these mutations are idempotent and Proxmox exposes no token to
+                        // de-duplicate a retry, so a lost response must not trigger an automatic
+                        // coordinator-level retry that could resubmit an already-applied mutation.
+                        throw ActionOperationException(
+                            "proxmox-snapshot-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
                     }
                 }
                 if (result.state == ActionExecutionState.SUCCEEDED) {

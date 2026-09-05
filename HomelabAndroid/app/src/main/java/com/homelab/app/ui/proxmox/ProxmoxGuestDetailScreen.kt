@@ -241,6 +241,7 @@ fun ProxmoxGuestDetailScreen(
                             snapshots = data.snapshots,
                             guestColor = guestColor,
                             isDark = isDark,
+                            isQemu = isQemu,
                             onCreateSnapshot = { showCreateSnapshotDialog = true },
                             onDelete = { snapname, confirmed ->
                                 viewModel.performSnapshotAction(ProxmoxSnapshotAction.DELETE, node, data.vmid, isQemu, snapname, confirmed = confirmed)
@@ -780,6 +781,7 @@ private fun GuestSnapshotsTab(
     snapshots: List<ProxmoxSnapshot>,
     guestColor: Color,
     isDark: Boolean,
+    isQemu: Boolean,
     onCreateSnapshot: () -> Unit,
     onDelete: (String, Boolean) -> Unit,
     onRollback: (String, Boolean) -> Unit
@@ -803,7 +805,11 @@ private fun GuestSnapshotsTab(
         }
         val message = when (action) {
             ProxmoxSnapshotAction.DELETE -> stringResource(R.string.proxmox_delete_snapshot_confirm, snapname)
-            ProxmoxSnapshotAction.ROLLBACK -> stringResource(R.string.proxmox_rollback_confirm, snapname)
+            ProxmoxSnapshotAction.ROLLBACK -> stringResource(
+                R.string.proxmox_rollback_confirm,
+                snapname,
+                if (isQemu) "VM" else "container"
+            )
             ProxmoxSnapshotAction.CREATE -> stringResource(R.string.proxmox_confirm_action_message)
         }
         AlertDialog(
