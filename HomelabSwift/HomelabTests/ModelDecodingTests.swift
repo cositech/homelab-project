@@ -3137,6 +3137,64 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(ipInName.allSatisfy { $0.identity.shortHostnames.isEmpty })
         XCTAssertTrue(ipInName.allSatisfy { $0.identity.ipv4 == ["10.0.0.5"] })
     }
+
+    func testResolveAcrossTenantsIsolatesTenants() {
+        let proxmoxInstance = UUID()
+        let netboxInstance = UUID()
+        let proxmox = ProviderResource(providerId: "proxmox", instanceId: proxmoxInstance, resourceType: "host", resourceId: "1", name: "web01.acme.internal", state: nil, attributes: [:])
+        let netbox = ProviderResource(providerId: "netbox", instanceId: netboxInstance, resourceType: "host", resourceId: "42", name: "web01.acme.internal", state: nil, attributes: [:])
+
+        // Same tenant for both instances -> the shared FQDN correlates them.
+        let sameTenant = CanonicalAssetResolver.resolveAcrossTenants(
+            assets: [proxmox, netbox],
+            tenantRefByInstanceId: [proxmoxInstance: "acme", netboxInstance: "acme"]
+        )
+        XCTAssertEqual(sameTenant.count, 1)
+        XCTAssertTrue(sameTenant[0].isCorrelated)
+        XCTAssertEqual(sameTenant[0].tenantRef, "acme")
+
+        // Different tenants for the same identity -> must never merge across the boundary.
+        let differentTenants = CanonicalAssetResolver.resolveAcrossTenants(
+            assets: [proxmox, netbox],
+            tenantRefByInstanceId: [proxmoxInstance: "acme", netboxInstance: "globex"]
+        )
+        XCTAssertEqual(differentTenants.count, 2)
+        XCTAssertTrue(differentTenants.allSatisfy { !$0.isCorrelated })
+        XCTAssertEqual(Set(differentTenants.map(\.tenantRef)), ["acme", "globex"])
+
+        // An instance id absent from the map falls back to the default tenant.
+        let orphan = ProviderResource(providerId: "proxmox", instanceId: UUID(), resourceType: "host", resourceId: "1", name: "pve1", state: nil, attributes: [:])
+        let fallback = CanonicalAssetResolver.resolveAcrossTenants(assets: [orphan], tenantRefByInstanceId: [:])
+        XCTAssertEqual(fallback.single?.tenantRef, Tenant.defaultId)
+    }
+
+    func testResolveAcrossTenantsExcludesNonHostResourceTypes() {
+        // A Grafana dashboard sharing a Proxmox node's exact name must not merge with it, or even
+        // appear on its own: dashboards, tickets, datastores and clusters aren't hosts.
+        let proxmoxInstance = UUID()
+        let grafanaInstance = UUID()
+        let node = ProviderResource(providerId: "proxmox", instanceId: proxmoxInstance, resourceType: "node", resourceId: "1", name: "status.internal", state: nil, attributes: [:])
+        let dashboard = ProviderResource(providerId: "grafana", instanceId: grafanaInstance, resourceType: "dashboard", resourceId: "d1", name: "status.internal", state: nil, attributes: [:])
+
+        let assets = CanonicalAssetResolver.resolveAcrossTenants(
+            assets: [node, dashboard],
+            tenantRefByInstanceId: [proxmoxInstance: "default", grafanaInstance: "default"]
+        )
+
+        XCTAssertEqual(assets.count, 1)
+        XCTAssertEqual(assets[0].providerIds, ["proxmox"])
+    }
+
+    func testAssetObservationRefIncludesResourceType() {
+        let instanceId = UUID()
+        let vm = AssetObservation.from(ProviderResource(providerId: "netbox", instanceId: instanceId, resourceType: "virtual-machine", resourceId: "7", name: "vm-name", state: nil, attributes: [:]))
+        let device = AssetObservation.from(ProviderResource(providerId: "netbox", instanceId: instanceId, resourceType: "device", resourceId: "7", name: "device-name", state: nil, attributes: [:]))
+        XCTAssertNotEqual(vm.ref, device.ref)
+    }
+}
+
+private extension Array {
+    var single: Element? { count == 1 ? first : nil }
 }
 
 private actor ActionInvocationCounter {

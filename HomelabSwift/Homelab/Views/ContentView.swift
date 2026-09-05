@@ -81,6 +81,7 @@ private enum OperationsSection: String, CaseIterable, Identifiable {
     case health = "Health"
     case alerts = "Alerts"
     case assets = "Assets"
+    case correlation = "By Asset"
     case search = "Search"
     case diagnostics = "Diagnostics"
 
@@ -235,6 +236,20 @@ private final class OperationsWorkspace {
         var uniqueAlerts: [String: ProviderEvent] = [:]
         for alert in alerts { uniqueAlerts[alert.eventId] = alert }
 
+        let dedupedAssets = uniqueAssets.values.sorted {
+            $0.resourceType == $1.resourceType
+                ? $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                : $0.resourceType < $1.resourceType
+        }
+
+        // The resolver's pairwise comparison is O(n²) and can run into the millions of comparisons
+        // on a large multi-cluster inventory, so it runs off the main actor rather than blocking the
+        // UI mid-refresh. Only Sendable values (no ServiceInstance) cross into the detached task.
+        let tenantByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.tenantRef) })
+        let correlated = await Task.detached(priority: .userInitiated) {
+            Self.correlatedAssets(assets: dedupedAssets, tenantByInstanceId: tenantByInstanceId)
+        }.value
+
         snapshot = OperationsSnapshot(
             health: health.sorted { healthRank($0.state) < healthRank($1.state) },
             alerts: uniqueAlerts.values.sorted {
@@ -242,14 +257,22 @@ private final class OperationsWorkspace {
                 let right = severityRank($1.severity)
                 return left == right ? $0.occurredAt > $1.occurredAt : left < right
             },
-            assets: uniqueAssets.values.sorted {
-                $0.resourceType == $1.resourceType
-                    ? $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                    : $0.resourceType < $1.resourceType
-            },
+            assets: dedupedAssets,
             diagnostics: diagnostics.sorted { healthRank($0.state) < healthRank($1.state) },
-            refreshedAt: observedAt
+            refreshedAt: observedAt,
+            correlatedAssets: correlated
         )
+    }
+
+    /// Cross-provider rollup of `assets`, correlated ones first. See `resolveAcrossTenants` for the
+    /// tenant-isolation rule. `nonisolated` so it can run on a background task instead of the main actor.
+    private nonisolated static func correlatedAssets(assets: [ProviderResource], tenantByInstanceId: [UUID: String]) -> [CanonicalAsset] {
+        let resolved = CanonicalAssetResolver.resolveAcrossTenants(assets: assets, tenantRefByInstanceId: tenantByInstanceId)
+        return resolved.sorted { lhs, rhs in
+            if lhs.isCorrelated != rhs.isCorrelated { return lhs.isCorrelated && !rhs.isCorrelated }
+            if lhs.providerIds.count != rhs.providerIds.count { return lhs.providerIds.count > rhs.providerIds.count }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        }
     }
 
     private func loadProxmox(
@@ -616,6 +639,26 @@ struct OperationsView: View {
                 } else if section == .assets {
                     if workspace.snapshot.assets.isEmpty { empty("No assets discovered") }
                     ForEach(Array(workspace.snapshot.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset) }
+                } else if section == .correlation {
+                    if workspace.snapshot.correlatedAssets.isEmpty { empty("No assets discovered") }
+                    // Built once per section render (not per row, per PR review) and keyed the same
+                    // way as AssetObservation.ref (includes resourceType): a provider instance can
+                    // expose two resource types under the same native id, so omitting it would let
+                    // one silently overwrite the other's entry here.
+                    let resourceByRef = Dictionary(uniqueKeysWithValues: workspace.snapshot.assets.map {
+                        ("\($0.providerId)/\($0.instanceId.uuidString.lowercased())/\($0.resourceType)/\($0.resourceId)", $0)
+                    })
+                    // ProviderEvent carries no resourceType, so alerts can only ever be matched on the 3-part key.
+                    let alertCountByRef = workspace.snapshot.alerts.reduce(into: [String: Int]()) { counts, alert in
+                        guard let resourceId = alert.resourceId else { return }
+                        let ref = "\(alert.providerId)/\(alert.instanceId.uuidString.lowercased())/\(resourceId)"
+                        counts[ref, default: 0] += 1
+                    }
+                    // Namespaced by tenantRef: in all-tenants mode two different tenants' assets can
+                    // share the same `key` (e.g. the same FQDN token), which would otherwise collide.
+                    ForEach(workspace.snapshot.correlatedAssets, id: \.correlationId) { asset in
+                        canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
+                    }
                 } else {
                     if workspace.snapshot.diagnostics.isEmpty { empty("No diagnostics available") }
                     ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0) }
@@ -635,12 +678,54 @@ struct OperationsView: View {
     }
 
     private func assetCard(_ item: ProviderResource) -> some View {
-        let state: ProviderHealthState = ["offline", "down", "unavailable", "critical"].contains(item.state?.lowercased() ?? "") ? .unavailable : ["degraded", "pending", "paused", "warning", "maintenance"].contains(item.state?.lowercased() ?? "") ? .degraded : ["online", "up", "running", "healthy"].contains(item.state?.lowercased() ?? "") ? .healthy : .unknown
-        return OperationsCard(title: item.name, subtitle: "\(item.providerId) · \(item.resourceType) · \(item.resourceId)", trailing: item.state ?? item.resourceType, state: state)
+        OperationsCard(title: item.name, subtitle: "\(item.providerId) · \(item.resourceType) · \(item.resourceId)", trailing: item.state ?? item.resourceType, state: resourceHealthState(item.state))
     }
 
     private func diagnosticCard(_ item: ProviderDiagnostic) -> some View {
         OperationsCard(title: item.displayName, subtitle: "\(item.endpoint) · TLS \(item.tlsMode.rawValue) · \(item.capabilities.count) capabilities", trailing: item.providerId, state: item.state)
+    }
+
+    /// Phase 4 "by asset" rollup: the same `workspace.snapshot.assets` regrouped by canonical host
+    /// (`CanonicalAssetResolver`), so a host seen through several providers renders as one card
+    /// instead of several unrelated ones in the flat Assets tab. `resourceByRef`/`alertCountByRef`
+    /// are built once per section render by the caller, not per row.
+    private func canonicalAssetCard(
+        _ asset: CanonicalAsset,
+        resourceByRef: [String: ProviderResource],
+        alertCountByRef: [String: Int]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(asset.displayName).font(.subheadline.bold()).lineLimit(1)
+                Spacer(minLength: 8)
+                let count = asset.providerIds.count
+                Text(count == 1 ? "1 provider" : "\(count) providers")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(asset.isCorrelated ? AppTheme.accent : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background((asset.isCorrelated ? AppTheme.accent : Color.secondary).opacity(0.15), in: Capsule())
+            }
+            ForEach(asset.observations, id: \.ref) { observation in
+                let resource = resourceByRef[observation.ref]
+                let alertCount = alertCountByRef["\(observation.providerId)/\(observation.instanceId.uuidString.lowercased())/\(observation.resourceId)"] ?? 0
+                OperationsCard(
+                    title: "\(observation.providerId) · \(observation.resourceType)",
+                    subtitle: observation.name,
+                    trailing: alertCount > 0 ? "\(alertCount) alert\(alertCount == 1 ? "" : "s")" : (resource?.state ?? observation.resourceType),
+                    state: resourceHealthState(resource?.state)
+                )
+            }
+        }
+    }
+
+    private func resourceHealthState(_ state: String?) -> ProviderHealthState {
+        switch state?.lowercased() {
+        case "offline", "down", "unavailable", "critical": return .unavailable
+        case "degraded", "pending", "paused", "warning", "maintenance": return .degraded
+        case "online", "up", "running", "healthy": return .healthy
+        default: return .unknown
+        }
     }
 
     private func empty(_ text: String) -> some View {

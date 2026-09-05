@@ -1,5 +1,6 @@
 package com.homelab.app.domain.asset
 
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.domain.provider.ProviderResource
 
 /**
@@ -158,7 +159,8 @@ data class AssetObservation(
     val name: String,
     val identity: AssetIdentity
 ) {
-    val ref: String get() = "$providerId/$instanceId/$resourceId"
+    /** Includes [resourceType]: a provider instance can expose two resource types under the same native id. */
+    val ref: String get() = "$providerId/$instanceId/$resourceType/$resourceId"
 
     companion object {
         fun from(resource: ProviderResource): AssetObservation = AssetObservation(
@@ -182,6 +184,9 @@ data class CanonicalAsset(
 ) {
     val providerIds: Set<String> get() = observations.map { it.providerId }.toSet()
     val isCorrelated: Boolean get() = providerIds.size > 1
+
+    /** [key] alone can collide across tenants (e.g. the same FQDN token in two different tenants); this is unique. */
+    val correlationId: String get() = "$tenantRef|$key"
 }
 
 object CanonicalAssetResolver {
@@ -254,3 +259,33 @@ object CanonicalAssetResolver {
             ?: members.firstOrNull { it.name.isNotBlank() }?.name
             ?: members.first().ref
 }
+
+/**
+ * Resource types that never represent a single addressable host, so feeding them into identity
+ * resolution risks a false-positive merge purely on a shared dotted display name (e.g. two
+ * unrelated things both named "status.internal"). A deny-list, not an allow-list, because at least
+ * one provider (PegaProx) reports a resource-type string straight from its own API rather than a
+ * fixed set the app controls, so an allow-list would silently exclude legitimate guests.
+ */
+private val NON_HOST_RESOURCE_TYPES = setOf(
+    "provider-instance", // the connection itself, named by the user's own label, not a host
+    "dashboard", "data-source", // Grafana: visualization config, not inventory
+    "ticket", // Zammad: a support ticket
+    "datastore", // Proxmox Backup Server: a storage pool
+    "cluster" // PegaProx: a group of guests, not one host
+)
+
+/**
+ * Resolves [assets] into canonical assets, partitioning by [tenantRefByInstanceId] first so a
+ * mixed-tenant input (e.g. an all-tenants-mode operations refresh) never lets [resolve] — which is
+ * intentionally tenant-agnostic — merge two different tenants' hosts into one asset. An instance id
+ * absent from the map (should not happen in practice) falls back to the default tenant. Resources
+ * in [NON_HOST_RESOURCE_TYPES] are excluded before resolving.
+ */
+fun CanonicalAssetResolver.resolveAcrossTenants(
+    assets: List<ProviderResource>,
+    tenantRefByInstanceId: Map<String, String>
+): List<CanonicalAsset> = assets
+    .filterNot { it.resourceType in NON_HOST_RESOURCE_TYPES }
+    .groupBy { tenantRefByInstanceId[it.instanceId] ?: Tenant.DEFAULT_ID }
+    .flatMap { (tenantRef, tenantAssets) -> resolve(tenantRef, tenantAssets.map(AssetObservation::from)) }

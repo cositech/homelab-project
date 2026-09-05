@@ -59,6 +59,7 @@ private enum class OperationsSection(val label: String) {
     HEALTH("Health"),
     ALERTS("Alerts"),
     ASSETS("Assets"),
+    CORRELATION("By Asset"),
     SEARCH("Search"),
     DIAGNOSTICS("Diagnostics")
 }
@@ -121,6 +122,7 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
             OperationsSection.HEALTH -> OperationsList(state.snapshot.health, "No provider health data") { HealthCard(it) }
             OperationsSection.ALERTS -> OperationsList(state.snapshot.alerts, "No active alerts") { AlertCard(it) }
             OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it) }
+            OperationsSection.CORRELATION -> CorrelationSection(state.snapshot)
             OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it) }
             OperationsSection.SEARCH -> SearchSection(state.snapshot)
         }
@@ -214,7 +216,12 @@ private fun TenantSwitcherChip(
 }
 
 @Composable
-private fun <T> OperationsList(values: List<T>, emptyText: String, content: @Composable (T) -> Unit) {
+private fun <T> OperationsList(
+    values: List<T>,
+    emptyText: String,
+    key: ((T) -> Any)? = null,
+    content: @Composable (T) -> Unit
+) {
     if (values.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(emptyText, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -226,7 +233,7 @@ private fun <T> OperationsList(values: List<T>, emptyText: String, content: @Com
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(values) { content(it) }
+        items(values, key = key) { content(it) }
     }
 }
 
@@ -284,14 +291,101 @@ private fun AlertCard(item: ProviderEvent) = OperationCard(
 private fun AssetCard(item: ProviderResource) = OperationCard(
     title = item.name,
     subtitle = "${item.providerId} · ${item.resourceType} · ${item.resourceId}",
-    state = when (item.state?.lowercase()) {
-        "offline", "down", "unavailable", "critical" -> ProviderHealthState.UNAVAILABLE
-        "degraded", "pending", "paused", "warning", "maintenance" -> ProviderHealthState.DEGRADED
-        "online", "up", "running", "healthy" -> ProviderHealthState.HEALTHY
-        else -> ProviderHealthState.UNKNOWN
-    },
+    state = resourceHealthState(item.state),
     trailing = item.state ?: item.resourceType
 )
+
+private fun resourceHealthState(state: String?): ProviderHealthState = when (state?.lowercase()) {
+    "offline", "down", "unavailable", "critical" -> ProviderHealthState.UNAVAILABLE
+    "degraded", "pending", "paused", "warning", "maintenance" -> ProviderHealthState.DEGRADED
+    "online", "up", "running", "healthy" -> ProviderHealthState.HEALTHY
+    else -> ProviderHealthState.UNKNOWN
+}
+
+/**
+ * Phase 4 "by asset" rollup: the same [OperationsSnapshot.assets] regrouped by canonical host
+ * (`CanonicalAssetResolver`), so a host seen through several providers renders as one card instead
+ * of several unrelated ones in the flat Assets tab.
+ */
+@Composable
+private fun CorrelationSection(snapshot: com.homelab.app.domain.provider.OperationsSnapshot) {
+    // Keyed the same way as AssetObservation.ref (includes resourceType): a provider instance can
+    // expose two resource types under the same native id, so omitting it would let one silently
+    // overwrite the other's entry here.
+    val resourceByRef = remember(snapshot) {
+        snapshot.assets.associateBy { "${it.providerId}/${it.instanceId}/${it.resourceType}/${it.resourceId}" }
+    }
+    // ProviderEvent carries no resourceType, so alerts can only ever be matched on the 3-part key.
+    val alertCountByRef = remember(snapshot) {
+        snapshot.alerts.groupingBy { "${it.providerId}/${it.instanceId}/${it.resourceId}" }.eachCount()
+    }
+    OperationsList(
+        snapshot.correlatedAssets,
+        "No assets discovered",
+        key = { it.correlationId }
+    ) { asset ->
+        CanonicalAssetCard(asset, resourceByRef, alertCountByRef)
+    }
+}
+
+@Composable
+private fun CanonicalAssetCard(
+    asset: com.homelab.app.domain.asset.CanonicalAsset,
+    resourceByRef: Map<String, ProviderResource>,
+    alertCountByRef: Map<String, Int>
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = asset.displayName,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = if (asset.isCorrelated) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                }
+            ) {
+                val count = asset.providerIds.size
+                Text(
+                    text = if (count == 1) "1 provider" else "$count providers",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (asset.isCorrelated) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+        asset.observations.forEach { observation ->
+            val resource = resourceByRef[observation.ref]
+            val alertCount = alertCountByRef["${observation.providerId}/${observation.instanceId}/${observation.resourceId}"] ?: 0
+            OperationCard(
+                title = "${observation.providerId} · ${observation.resourceType}",
+                subtitle = observation.name,
+                state = resourceHealthState(resource?.state),
+                trailing = when {
+                    alertCount > 0 -> if (alertCount == 1) "1 alert" else "$alertCount alerts"
+                    else -> resource?.state ?: observation.resourceType
+                }
+            )
+        }
+    }
+}
 
 @Composable
 private fun DiagnosticCard(item: ProviderDiagnostic) = OperationCard(
