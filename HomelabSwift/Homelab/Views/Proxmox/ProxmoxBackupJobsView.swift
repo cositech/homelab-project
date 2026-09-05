@@ -252,23 +252,6 @@ struct ProxmoxBackupJobsView: View {
 
     // MARK: - Trigger Job
 
-    /// `URLError` and the transport-shaped `APIError` cases are the only outcomes where we don't
-    /// know whether the request reached the server; every other `APIError` (auth, HTTP status,
-    /// decode failure, etc.) is a definitive response the coordinator already classifies
-    /// non-retryable on its own, so it must not be relabeled as an indeterminate transport failure.
-    /// `nonisolated` because it's called from the coordinator's `@Sendable` operation closure,
-    /// which doesn't run on the main actor `ProxmoxBackupJobsView`'s other members are isolated to.
-    private nonisolated func isAmbiguousTransportFailure(_ error: Error) -> Bool {
-        if error is URLError { return true }
-        if let apiError = error as? APIError {
-            switch apiError {
-            case .networkError, .bothURLsFailed: return true
-            default: return false
-            }
-        }
-        return false
-    }
-
     private func triggerJob(_ job: ProxmoxBackupJob) async {
         triggeringJobId = job.id
         triggerError = nil
@@ -304,7 +287,7 @@ struct ProxmoxBackupJobsView: View {
                 throw error
             } catch {
                 await errorBox.set(error)
-                guard isAmbiguousTransportFailure(error) else { throw error }
+                guard isAmbiguousProxmoxTransportFailure(error) else { throw error }
                 // Triggering the job is not idempotent - a retry after a lost response could
                 // fire a second, overlapping vzdump run for the same job, so this ambiguous
                 // transport failure must not trigger an automatic coordinator-level retry.

@@ -464,6 +464,7 @@ interface ProxmoxApi {
     suspend fun cloneVM(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Body body: Map<String, String>
@@ -473,6 +474,7 @@ interface ProxmoxApi {
     suspend fun migrateVM(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Body body: Map<String, String>
@@ -482,6 +484,7 @@ interface ProxmoxApi {
     suspend fun cloneLXC(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Body body: Map<String, String>
@@ -491,6 +494,7 @@ interface ProxmoxApi {
     suspend fun migrateLXC(
         @Header("X-Homelab-Service") service: String = "Proxmox",
         @Header("X-Homelab-Instance-Id") instanceId: String,
+        @Header("X-Homelab-No-Fallback") noFallback: String = "true",
         @Path("node") node: String,
         @Path("vmid") vmid: Int,
         @Body body: Map<String, String>

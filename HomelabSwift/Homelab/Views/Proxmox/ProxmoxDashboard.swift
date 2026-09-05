@@ -2295,30 +2295,70 @@ struct ProxmoxCreateGuestView: View {
                     return
                 }
                 let resolvedName = cloneDraft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                switch template.guestType {
-                case .qemu:
-                    reference = try await client.cloneVM(
-                        node: template.nodeName,
-                        vmid: template.vmid,
-                        newVmid: vmid,
-                        name: resolvedName.isEmpty ? nil : resolvedName,
-                        full: cloneDraft.fullClone,
-                        targetNode: cloneDraft.targetNodeName,
-                        storage: cloneDraft.targetStorage.isEmpty ? nil : cloneDraft.targetStorage,
-                        pool: cloneDraft.poolName.isEmpty ? nil : cloneDraft.poolName
-                    )
-                case .lxc:
-                    reference = try await client.cloneLXC(
-                        node: template.nodeName,
-                        vmid: template.vmid,
-                        newVmid: vmid,
-                        name: resolvedName.isEmpty ? nil : resolvedName,
-                        full: cloneDraft.fullClone,
-                        targetNode: cloneDraft.targetNodeName,
-                        storage: cloneDraft.targetStorage.isEmpty ? nil : cloneDraft.targetStorage,
-                        pool: cloneDraft.poolName.isEmpty ? nil : cloneDraft.poolName
-                    )
+                let sourceNode = template.nodeName
+                let sourceVmid = template.vmid
+                let sourceGuestType = template.guestType
+                let cloneFull = cloneDraft.fullClone
+                let cloneTargetNode = cloneDraft.targetNodeName
+                let cloneTargetStorage = cloneDraft.targetStorage
+                let clonePool = cloneDraft.poolName
+                let referenceBox = ProxmoxActionReferenceBox()
+                let errorBox = ControlledActionErrorBox()
+                let request = ProxmoxControlledCloneMigrateAction.clone.request(
+                    instanceId: instanceId,
+                    node: sourceNode,
+                    vmid: sourceVmid,
+                    guestType: sourceGuestType,
+                    target: "\(vmid)",
+                    confirmed: true
+                )
+                let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+                let result = await servicesStore.controlledActionCoordinator.execute(
+                    request: request,
+                    actorRole: .admin,
+                    providerCapabilities: capabilities
+                ) {
+                    do {
+                        let completedReference: ProxmoxTaskReference
+                        switch sourceGuestType {
+                        case .qemu:
+                            completedReference = try await client.cloneVM(
+                                node: sourceNode, vmid: sourceVmid, newVmid: vmid,
+                                name: resolvedName.isEmpty ? nil : resolvedName,
+                                full: cloneFull, targetNode: cloneTargetNode,
+                                storage: cloneTargetStorage.isEmpty ? nil : cloneTargetStorage,
+                                pool: clonePool.isEmpty ? nil : clonePool
+                            )
+                        case .lxc:
+                            completedReference = try await client.cloneLXC(
+                                node: sourceNode, vmid: sourceVmid, newVmid: vmid,
+                                name: resolvedName.isEmpty ? nil : resolvedName,
+                                full: cloneFull, targetNode: cloneTargetNode,
+                                storage: cloneTargetStorage.isEmpty ? nil : cloneTargetStorage,
+                                pool: clonePool.isEmpty ? nil : clonePool
+                            )
+                        }
+                        await referenceBox.store(completedReference)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch let error as ControlledActionOperationError {
+                        throw error
+                    } catch {
+                        await errorBox.set(error)
+                        guard isAmbiguousProxmoxTransportFailure(error) else { throw error }
+                        // Cloning isn't safely idempotent to retry: a lost-response retry could
+                        // create a second guest at the same new vmid.
+                        throw ControlledActionOperationError(
+                            reasonCode: "proxmox-clone-outcome-indeterminate",
+                            disposition: .nonRetryable
+                        )
+                    }
                 }
+                guard result.state == ActionExecutionState.succeeded, let completedReference = await referenceBox.value() else {
+                    actionError = (await errorBox.value)?.localizedDescription ?? result.reasonCode
+                    return
+                }
+                reference = completedReference
                 guestType = template.guestType
                 guestNode = cloneDraft.targetNodeName.isEmpty ? template.nodeName : cloneDraft.targetNodeName
                 guestVmid = vmid

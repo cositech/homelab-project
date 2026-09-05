@@ -742,23 +742,15 @@ class ProxmoxViewModel @Inject constructor(
         targetStorage: String? = null,
         onSuccess: () -> Unit = {}
     ) {
-        viewModelScope.launch {
-            _actionResultState.value = UiState.Loading
-            try {
-                val body = mutableMapOf(
-                    "newid" to newId.toString(),
-                    "name" to name,
-                    "full" to if (fullClone) "1" else "0"
-                )
-                if (!targetNode.isNullOrBlank()) body["target"] = targetNode
-                if (!targetStorage.isNullOrBlank()) body["storage"] = targetStorage
-
-                val upid = proxmoxRepository.cloneVM(instanceId, node, vmid, body)
-                _actionResultState.value = UiState.Success(upid)
-                onSuccess()
-            } catch (e: Exception) {
-                _actionResultState.value = UiState.Error(e.message ?: "Clone failed")
-            }
+        val body = mutableMapOf(
+            "newid" to newId.toString(),
+            "name" to name,
+            "full" to if (fullClone) "1" else "0"
+        )
+        if (!targetNode.isNullOrBlank()) body["target"] = targetNode
+        if (!targetStorage.isNullOrBlank()) body["storage"] = targetStorage
+        runGuestOperation(ProxmoxCloneMigrateAction.CLONE, node, vmid, isQemu = true, target = newId.toString(), onSuccess = onSuccess) {
+            proxmoxRepository.cloneVM(instanceId, node, vmid, body)
         }
     }
 
@@ -771,22 +763,14 @@ class ProxmoxViewModel @Inject constructor(
         targetStorage: String? = null,
         onSuccess: () -> Unit = {}
     ) {
-        viewModelScope.launch {
-            _actionResultState.value = UiState.Loading
-            try {
-                val body = mutableMapOf(
-                    "newid" to newId.toString(),
-                    "hostname" to name
-                )
-                if (!targetNode.isNullOrBlank()) body["target"] = targetNode
-                if (!targetStorage.isNullOrBlank()) body["storage"] = targetStorage
-
-                val upid = proxmoxRepository.cloneLXC(instanceId, node, vmid, body)
-                _actionResultState.value = UiState.Success(upid)
-                onSuccess()
-            } catch (e: Exception) {
-                _actionResultState.value = UiState.Error(e.message ?: "Clone failed")
-            }
+        val body = mutableMapOf(
+            "newid" to newId.toString(),
+            "hostname" to name
+        )
+        if (!targetNode.isNullOrBlank()) body["target"] = targetNode
+        if (!targetStorage.isNullOrBlank()) body["storage"] = targetStorage
+        runGuestOperation(ProxmoxCloneMigrateAction.CLONE, node, vmid, isQemu = false, target = newId.toString(), onSuccess = onSuccess) {
+            proxmoxRepository.cloneLXC(instanceId, node, vmid, body)
         }
     }
 
@@ -797,19 +781,12 @@ class ProxmoxViewModel @Inject constructor(
         online: Boolean = false,
         onSuccess: () -> Unit = {}
     ) {
-        viewModelScope.launch {
-            _actionResultState.value = UiState.Loading
-            try {
-                val body = mutableMapOf(
-                    "target" to targetNode,
-                    "online" to if (online) "1" else "0"
-                )
-                val upid = proxmoxRepository.migrateVM(instanceId, node, vmid, body)
-                _actionResultState.value = UiState.Success(upid)
-                onSuccess()
-            } catch (e: Exception) {
-                _actionResultState.value = UiState.Error(e.message ?: "Migration failed")
-            }
+        val body = mutableMapOf(
+            "target" to targetNode,
+            "online" to if (online) "1" else "0"
+        )
+        runGuestOperation(ProxmoxCloneMigrateAction.MIGRATE, node, vmid, isQemu = true, target = targetNode, onSuccess = onSuccess) {
+            proxmoxRepository.migrateVM(instanceId, node, vmid, body)
         }
     }
 
@@ -819,15 +796,73 @@ class ProxmoxViewModel @Inject constructor(
         targetNode: String,
         onSuccess: () -> Unit = {}
     ) {
+        val body = mutableMapOf("target" to targetNode)
+        runGuestOperation(ProxmoxCloneMigrateAction.MIGRATE, node, vmid, isQemu = false, target = targetNode, onSuccess = onSuccess) {
+            proxmoxRepository.migrateLXC(instanceId, node, vmid, body)
+        }
+    }
+
+    /**
+     * Shared coordinator wiring for [cloneVM]/[cloneLXC]/[migrateVM]/[migrateLXC]. The dialog's own
+     * "Clone"/"Migrate" confirm button is already the explicit user gesture (same treatment as
+     * snapshot create and storage-content delete), so this always passes `confirmed = true`.
+     */
+    private fun runGuestOperation(
+        action: ProxmoxCloneMigrateAction,
+        node: String,
+        vmid: Int,
+        isQemu: Boolean,
+        target: String,
+        onSuccess: () -> Unit,
+        operation: suspend () -> String
+    ) {
         viewModelScope.launch {
             _actionResultState.value = UiState.Loading
+            var operationError: Exception? = null
+            var upid: String? = null
             try {
-                val body = mutableMapOf("target" to targetNode)
-                val upid = proxmoxRepository.migrateLXC(instanceId, node, vmid, body)
-                _actionResultState.value = UiState.Success(upid)
-                onSuccess()
+                val request = action.controlledRequest(instanceId, node, vmid, isQemu, target, confirmed = true)
+                val result = controlledActionCoordinator.execute(
+                    request = request,
+                    actorRole = ActionRole.ADMIN,
+                    providerCapabilities = proxmoxRepository.providerDescriptor.capabilities
+                ) {
+                    try {
+                        upid = operation()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ActionOperationException) {
+                        throw error
+                    } catch (error: IOException) {
+                        // Genuine transport failure: we don't know whether the request reached
+                        // the server, and neither clone nor migrate is safely idempotent to
+                        // retry (a lost-response retry could create a second guest, or attempt a
+                        // second relocation of one already mid-transfer).
+                        operationError = error
+                        throw ActionOperationException(
+                            "proxmox-${action.name.lowercase()}-outcome-indeterminate",
+                            ActionFailureDisposition.NON_RETRYABLE,
+                            error
+                        )
+                    } catch (error: Exception) {
+                        // A definitive provider response (e.g. an HTTP error) - not
+                        // indeterminate, so let the coordinator's default classification stand.
+                        operationError = error
+                        throw error
+                    }
+                }
+                val completedUpid = upid
+                if (result.state == ActionExecutionState.SUCCEEDED && completedUpid != null) {
+                    _actionResultState.value = UiState.Success(completedUpid)
+                    onSuccess()
+                } else {
+                    _actionResultState.value = UiState.Error(
+                        operationError?.let { resolvedMessage(it) }
+                            ?: getApplication<Application>().getString(R.string.error_action_failed, result.reasonCode)
+                    )
+                }
             } catch (e: Exception) {
-                _actionResultState.value = UiState.Error(e.message ?: "Migration failed")
+                _actionResultState.value = UiState.Error(resolvedMessage(operationError ?: e))
             }
         }
     }
@@ -1134,6 +1169,39 @@ enum class ProxmoxBackupJobAction(val wireName: String, val risk: ActionRisk) {
         providerRef = "proxmox:$instanceId",
         action = wireName,
         targetRef = "backup-job/$jobId",
+        risk = risk,
+        requestedAt = requestedAt,
+        idempotencyKey = idempotencyKey,
+        confirmed = confirmed
+    )
+}
+
+/**
+ * Migrate is the higher-risk one: it relocates a live (or offline) guest to another node, with
+ * real operational risk if the transfer fails partway. Clone only creates a new guest and never
+ * touches the source, so it sits one tier lower.
+ */
+enum class ProxmoxCloneMigrateAction(val wireName: String, val risk: ActionRisk) {
+    CLONE("guest.clone", ActionRisk.MEDIUM),
+    MIGRATE("guest.migrate", ActionRisk.HIGH);
+
+    val requiresConfirmation: Boolean get() = risk != ActionRisk.LOW
+
+    fun controlledRequest(
+        instanceId: String,
+        node: String,
+        vmid: Int,
+        isQemu: Boolean,
+        target: String,
+        confirmed: Boolean,
+        requestId: String = UUID.randomUUID().toString(),
+        requestedAt: String = Instant.now().toString(),
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ) = ControlledActionRequest(
+        id = requestId,
+        providerRef = "proxmox:$instanceId",
+        action = wireName,
+        targetRef = "${if (isQemu) "qemu" else "lxc"}/$vmid@$node/${name.lowercase()}/$target",
         risk = risk,
         requestedAt = requestedAt,
         idempotencyKey = idempotencyKey,
