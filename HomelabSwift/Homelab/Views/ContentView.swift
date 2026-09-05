@@ -606,7 +606,7 @@ struct OperationsView: View {
             }
             .padding(16)
         }
-        .refreshable { await workspace.refresh(using: servicesStore) }
+        .refreshable { await refresh() }
     }
 
     private func healthCard(_ item: ProviderHealth) -> some View {
