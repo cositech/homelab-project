@@ -93,11 +93,16 @@ class OperationsViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                _uiState.update {
-                    it.copy(isRefreshing = false, error = error.message ?: "Unable to refresh operations data")
+                if (refreshJob === job) {
+                    _uiState.update { it.copy(error = error.message ?: "Unable to refresh operations data") }
                 }
             } finally {
-                if (refreshJob === job) refreshJob = null
+                // Only this job's own cancellation/completion clears the flag it set — a job a
+                // tenant switch superseded must not clobber the isRefreshing the newer job set.
+                if (refreshJob === job) {
+                    refreshJob = null
+                    _uiState.update { it.copy(isRefreshing = false) }
+                }
             }
         }
         refreshJob = job

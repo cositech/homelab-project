@@ -94,12 +94,29 @@ private final class OperationsWorkspace {
     var isRefreshing = false
     var errorMessage: String?
 
+    /// The most recent tenant selection requested while a refresh was already in flight. Replayed
+    /// once that refresh finishes so a tenant switch (or a tap on refresh) during a fetch is never
+    /// silently dropped in favor of the stale scope that was already loading.
+    private var pendingTenantSelection: TenantSelection?
+
     func refresh(using servicesStore: ServicesStore, tenantSelection: TenantSelection) async {
-        guard !isRefreshing else { return }
+        guard !isRefreshing else {
+            pendingTenantSelection = tenantSelection
+            return
+        }
         isRefreshing = true
         errorMessage = nil
-        defer { isRefreshing = false }
 
+        await performRefresh(using: servicesStore, tenantSelection: tenantSelection)
+        isRefreshing = false
+
+        if let queued = pendingTenantSelection {
+            pendingTenantSelection = nil
+            await refresh(using: servicesStore, tenantSelection: queued)
+        }
+    }
+
+    private func performRefresh(using servicesStore: ServicesStore, tenantSelection: TenantSelection) async {
         await servicesStore.checkAllReachability(force: true)
         let instances = tenantSelection.allTenantsMode
             ? servicesStore.allInstances
