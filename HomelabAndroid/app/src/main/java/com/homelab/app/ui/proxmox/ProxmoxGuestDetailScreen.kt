@@ -242,8 +242,12 @@ fun ProxmoxGuestDetailScreen(
                             guestColor = guestColor,
                             isDark = isDark,
                             onCreateSnapshot = { showCreateSnapshotDialog = true },
-                            onDelete = { viewModel.deleteSnapshot(node, data.vmid, isQemu, it) },
-                            onRollback = { viewModel.rollbackSnapshot(node, data.vmid, isQemu, it) }
+                            onDelete = { snapname, confirmed ->
+                                viewModel.performSnapshotAction(ProxmoxSnapshotAction.DELETE, node, data.vmid, isQemu, snapname, confirmed = confirmed)
+                            },
+                            onRollback = { snapname, confirmed ->
+                                viewModel.performSnapshotAction(ProxmoxSnapshotAction.ROLLBACK, node, data.vmid, isQemu, snapname, confirmed = confirmed)
+                            }
                         )
                         2 -> GuestConsoleTab(
                             node = node,
@@ -292,7 +296,15 @@ fun ProxmoxGuestDetailScreen(
                     TextButton(
                         onClick = {
                             if (snapshotName.isNotBlank()) {
-                                viewModel.createSnapshot(node, vmid, isQemu, snapshotName.trim(), snapshotDescription.trim())
+                                viewModel.performSnapshotAction(
+                                    action = ProxmoxSnapshotAction.CREATE,
+                                    node = node,
+                                    vmid = vmid,
+                                    isQemu = isQemu,
+                                    snapname = snapshotName.trim(),
+                                    description = snapshotDescription.trim(),
+                                    confirmed = true
+                                )
                                 snapshotName = ""
                                 snapshotDescription = ""
                                 showCreateSnapshotDialog = false
@@ -769,9 +781,53 @@ private fun GuestSnapshotsTab(
     guestColor: Color,
     isDark: Boolean,
     onCreateSnapshot: () -> Unit,
-    onDelete: (String) -> Unit,
-    onRollback: (String) -> Unit
+    onDelete: (String, Boolean) -> Unit,
+    onRollback: (String, Boolean) -> Unit
 ) {
+    var pendingAction by remember { mutableStateOf<Pair<ProxmoxSnapshotAction, String>?>(null) }
+    fun requestAction(action: ProxmoxSnapshotAction, snapname: String) {
+        if (action.requiresConfirmation) {
+            pendingAction = action to snapname
+        } else when (action) {
+            ProxmoxSnapshotAction.DELETE -> onDelete(snapname, false)
+            ProxmoxSnapshotAction.ROLLBACK -> onRollback(snapname, false)
+            ProxmoxSnapshotAction.CREATE -> Unit
+        }
+    }
+
+    pendingAction?.let { (action, snapname) ->
+        val title = when (action) {
+            ProxmoxSnapshotAction.DELETE -> stringResource(R.string.proxmox_delete_snapshot)
+            ProxmoxSnapshotAction.ROLLBACK -> stringResource(R.string.proxmox_rollback_snapshot)
+            ProxmoxSnapshotAction.CREATE -> stringResource(R.string.proxmox_snapshot_create)
+        }
+        val message = when (action) {
+            ProxmoxSnapshotAction.DELETE -> stringResource(R.string.proxmox_delete_snapshot_confirm, snapname)
+            ProxmoxSnapshotAction.ROLLBACK -> stringResource(R.string.proxmox_rollback_confirm, snapname)
+            ProxmoxSnapshotAction.CREATE -> stringResource(R.string.proxmox_confirm_action_message)
+        }
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(title) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAction = null
+                    when (action) {
+                        ProxmoxSnapshotAction.DELETE -> onDelete(snapname, true)
+                        ProxmoxSnapshotAction.ROLLBACK -> onRollback(snapname, true)
+                        ProxmoxSnapshotAction.CREATE -> Unit
+                    }
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     PullToRefreshBox(
         isRefreshing = false,
         onRefresh = {},
@@ -804,8 +860,8 @@ private fun GuestSnapshotsTab(
                     SnapshotRow(
                         snapshot = snapshot,
                         isDark = isDark,
-                        onDelete = { onDelete(snapshot.name) },
-                        onRollback = { onRollback(snapshot.name) }
+                        onDelete = { requestAction(ProxmoxSnapshotAction.DELETE, snapshot.name) },
+                        onRollback = { requestAction(ProxmoxSnapshotAction.ROLLBACK, snapshot.name) }
                     )
                 }
             }

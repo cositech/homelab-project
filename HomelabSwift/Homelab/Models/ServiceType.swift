@@ -730,6 +730,47 @@ enum ProxmoxControlledGuestAction: String, CaseIterable, Equatable, Sendable {
     }
 }
 
+/// Rollback is the standout dangerous one here — it actively discards every change made to the
+/// guest since the snapshot was taken, right now, irreversibly. Create/delete both add or remove a
+/// recovery point without touching the guest's current running state, so they sit one tier lower.
+enum ProxmoxControlledSnapshotAction: String, CaseIterable, Equatable, Sendable {
+    case create, delete, rollback
+
+    var actionName: String { "snapshot.\(rawValue)" }
+
+    var risk: ControlledActionRisk {
+        switch self {
+        case .create, .delete: return .medium
+        case .rollback: return .high
+        }
+    }
+
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        node: String,
+        vmid: Int,
+        guestType: ProxmoxGuestType,
+        snapname: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "\(guestType.rawValue)/\(vmid)@\(node)/snapshot/\(snapname)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
 enum PortainerControlledContainerAction: String, CaseIterable, Equatable, Sendable {
     case start, stop, restart, kill, pause, resume, remove
 

@@ -50,6 +50,7 @@ struct ProxmoxGuestDetailView: View {
     @State private var state: LoadableState<Void> = .idle
     @State private var actionInProgress: String?
     @State private var confirmAction: GuestAction?
+    @State private var confirmSnapshotAction: (action: ProxmoxControlledSnapshotAction, name: String)?
     @State private var actionError: String?
     @State private var showSnapshotCreate = false
     @State private var showBackupSheet = false
@@ -206,6 +207,20 @@ struct ProxmoxGuestDetailView: View {
                 if let action = confirmAction {
                     Task { await performAction(action) }
                 }
+            }
+        } message: {
+            Text(localizer.t.proxmoxConfirmMessage)
+        }
+        .alert(localizer.t.proxmoxConfirmAction, isPresented: .init(
+            get: { confirmSnapshotAction != nil },
+            set: { if !$0 { confirmSnapshotAction = nil } }
+        )) {
+            Button(localizer.t.cancel, role: .cancel) { confirmSnapshotAction = nil }
+            Button(confirmSnapshotAction.map { snapshotActionLabel($0.action) } ?? "", role: .destructive) {
+                if let pending = confirmSnapshotAction {
+                    Task { await performSnapshotAction(pending.action, name: pending.name) }
+                }
+                confirmSnapshotAction = nil
             }
         } message: {
             Text(localizer.t.proxmoxConfirmMessage)
@@ -1444,7 +1459,7 @@ struct ProxmoxGuestDetailView: View {
                         // Rollback
                         Button {
                             HapticManager.medium()
-                            Task { await rollbackSnapshot(snapshot.name) }
+                            confirmSnapshotAction = (.rollback, snapshot.name)
                         } label: {
                             Image(systemName: "arrow.uturn.backward")
                                 .font(.caption)
@@ -1458,7 +1473,7 @@ struct ProxmoxGuestDetailView: View {
                         // Delete
                         Button {
                             HapticManager.medium()
-                            Task { await deleteSnapshot(snapshot.name) }
+                            confirmSnapshotAction = (.delete, snapshot.name)
                         } label: {
                             Image(systemName: "trash")
                                 .font(.caption)
@@ -1547,10 +1562,10 @@ struct ProxmoxGuestDetailView: View {
 
                 Section {
                     Button(localizer.t.proxmoxCreateSnapshot) {
-                        Task {
-                            showSnapshotCreate = false
-                            await createSnapshot()
-                        }
+                        let name = newSnapshotName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !name.isEmpty else { return }
+                        showSnapshotCreate = false
+                        Task { await performSnapshotAction(.create, name: name) }
                     }
                     .disabled(newSnapshotName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
@@ -1775,74 +1790,61 @@ struct ProxmoxGuestDetailView: View {
         }
     }
 
-    private func createSnapshot() async {
-        let name = newSnapshotName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        actionInProgress = "snapshot-create"
-        defer { actionInProgress = nil }
-
-        do {
-            guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
-            let reference: ProxmoxTaskReference
-            if guestType == .qemu {
-                reference = try await client.createVMSnapshot(node: currentNodeName, vmid: vmid, name: name, description: newSnapshotDesc, includeRAM: includeRAM)
-            } else {
-                reference = try await client.createLXCSnapshot(node: currentNodeName, vmid: vmid, name: name, description: newSnapshotDesc)
-            }
-            HapticManager.success()
-            await beginTrackingTask(
-                title: localizer.t.proxmoxCreateSnapshot,
-                kind: .snapshot,
-                reference: reference,
-                sourceNode: currentNodeName
-            )
-        } catch {
-            presentActionError(error)
+    private func snapshotActionLabel(_ action: ProxmoxControlledSnapshotAction) -> String {
+        switch action {
+        case .create: return localizer.t.proxmoxCreateSnapshot
+        case .delete: return localizer.t.proxmoxDeleteSnapshot
+        case .rollback: return localizer.t.proxmoxRollbackSnapshot
         }
     }
 
-    private func rollbackSnapshot(_ snapname: String) async {
-        actionInProgress = "snapshot-rollback-\(snapname)"
+    private func performSnapshotAction(_ action: ProxmoxControlledSnapshotAction, name: String) async {
+        actionInProgress = "snapshot-\(action.rawValue)-\(name)"
         defer { actionInProgress = nil }
 
         do {
             guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
-            let reference: ProxmoxTaskReference
-            if guestType == .qemu {
-                reference = try await client.rollbackVMSnapshot(node: currentNodeName, vmid: vmid, snapname: snapname)
-            } else {
-                reference = try await client.rollbackLXCSnapshot(node: currentNodeName, vmid: vmid, snapname: snapname)
-            }
-            HapticManager.success()
-            await beginTrackingTask(
-                title: localizer.t.proxmoxRollbackSnapshot,
-                kind: .snapshot,
-                reference: reference,
-                sourceNode: currentNodeName
+            let actionNode = currentNodeName
+            let actionVmid = vmid
+            let actionGuestType = guestType
+            let description = newSnapshotDesc
+            let includeRAMState = includeRAM
+            let referenceBox = ProxmoxActionReferenceBox()
+            let request = action.request(
+                instanceId: instanceId,
+                node: actionNode,
+                vmid: actionVmid,
+                guestType: actionGuestType,
+                snapname: name,
+                confirmed: true
             )
-        } catch {
-            presentActionError(error)
-        }
-    }
-
-    private func deleteSnapshot(_ snapname: String) async {
-        actionInProgress = "snapshot-delete-\(snapname)"
-        defer { actionInProgress = nil }
-
-        do {
-            guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
-            let reference: ProxmoxTaskReference
-            if guestType == .qemu {
-                reference = try await client.deleteVMSnapshot(node: currentNodeName, vmid: vmid, snapname: snapname)
-            } else {
-                reference = try await client.deleteLXCSnapshot(node: currentNodeName, vmid: vmid, snapname: snapname)
+            let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+            let result = await servicesStore.controlledActionCoordinator.execute(
+                request: request,
+                actorRole: .admin,
+                providerCapabilities: capabilities
+            ) {
+                let completedReference: ProxmoxTaskReference
+                switch (actionGuestType, action) {
+                case (.qemu, .create):   completedReference = try await client.createVMSnapshot(node: actionNode, vmid: actionVmid, name: name, description: description, includeRAM: includeRAMState)
+                case (.lxc, .create):    completedReference = try await client.createLXCSnapshot(node: actionNode, vmid: actionVmid, name: name, description: description)
+                case (.qemu, .rollback): completedReference = try await client.rollbackVMSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                case (.lxc, .rollback):  completedReference = try await client.rollbackLXCSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                case (.qemu, .delete):   completedReference = try await client.deleteVMSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                case (.lxc, .delete):    completedReference = try await client.deleteLXCSnapshot(node: actionNode, vmid: actionVmid, snapname: name)
+                }
+                await referenceBox.store(completedReference)
+            }
+            guard result.state == ActionExecutionState.succeeded, let completedReference = await referenceBox.value() else {
+                actionError = result.reasonCode
+                return
             }
             HapticManager.success()
             await beginTrackingTask(
-                title: localizer.t.proxmoxDeleteSnapshot,
+                title: snapshotActionLabel(action),
                 kind: .snapshot,
-                reference: reference,
-                sourceNode: currentNodeName
+                reference: completedReference,
+                sourceNode: actionNode
             )
         } catch {
             presentActionError(error)

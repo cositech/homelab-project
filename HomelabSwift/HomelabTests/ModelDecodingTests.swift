@@ -2114,6 +2114,38 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ProxmoxControlledGuestAction.stop.risk, .high)
     }
 
+    func testProxmoxControlledSnapshotRequestUsesNormalizedReferences() throws {
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let requestId = try XCTUnwrap(UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        let idempotencyKey = try XCTUnwrap(UUID(uuidString: "12345678-1234-1234-1234-123456789abc"))
+        let request = ProxmoxControlledSnapshotAction.rollback.request(
+            instanceId: instanceId,
+            node: "pve01",
+            vmid: 101,
+            guestType: .qemu,
+            snapname: "pre-upgrade",
+            confirmed: true,
+            requestId: requestId,
+            requestedAt: Date(timeIntervalSince1970: 0),
+            idempotencyKey: idempotencyKey
+        )
+
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "snapshot.rollback")
+        XCTAssertEqual(request.targetRef, "qemu/101@pve01/snapshot/pre-upgrade")
+        XCTAssertEqual(request.risk, .high)
+        XCTAssertTrue(request.confirmed)
+    }
+
+    func testProxmoxControlledSnapshotRiskClasses() {
+        XCTAssertTrue(ProxmoxControlledSnapshotAction.create.requiresConfirmation)
+        XCTAssertTrue(ProxmoxControlledSnapshotAction.delete.requiresConfirmation)
+        XCTAssertTrue(ProxmoxControlledSnapshotAction.rollback.requiresConfirmation)
+        XCTAssertEqual(ProxmoxControlledSnapshotAction.create.risk, .medium)
+        XCTAssertEqual(ProxmoxControlledSnapshotAction.delete.risk, .medium)
+        XCTAssertEqual(ProxmoxControlledSnapshotAction.rollback.risk, .high)
+    }
+
     func testControlledActionRetriesLowRiskTransportFailures() async {
         let counter = ActionInvocationCounter()
         let delays = RetryDelayRecorder()
