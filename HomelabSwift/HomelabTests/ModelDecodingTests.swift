@@ -2146,6 +2146,39 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(ProxmoxControlledSnapshotAction.rollback.risk, .high)
     }
 
+    func testProxmoxControlledStorageContentDeleteRequestUsesNormalizedReferences() throws {
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let request = ProxmoxControlledStorageContentAction.delete.request(
+            instanceId: instanceId,
+            node: "pve01",
+            storage: "local",
+            volume: "local:iso/debian.iso",
+            confirmed: true,
+            requestId: UUID(),
+            requestedAt: Date(timeIntervalSince1970: 0),
+            idempotencyKey: UUID()
+        )
+
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "storage-content.delete")
+        XCTAssertEqual(request.targetRef, "storage/local@pve01/local:iso/debian.iso")
+        XCTAssertEqual(request.risk, .high)
+        XCTAssertTrue(ProxmoxControlledStorageContentAction.delete.requiresConfirmation)
+    }
+
+    func testProxmoxControlledFirewallRiskClassesMatchEnableLowDisableMedium() throws {
+        XCTAssertFalse(ProxmoxControlledFirewallAction.enable.requiresConfirmation)
+        XCTAssertTrue(ProxmoxControlledFirewallAction.disable.requiresConfirmation)
+        XCTAssertEqual(ProxmoxControlledFirewallAction.enable.risk, .low)
+        XCTAssertEqual(ProxmoxControlledFirewallAction.disable.risk, .medium)
+
+        let instanceId = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+        let request = ProxmoxControlledFirewallAction.disable.request(instanceId: instanceId, confirmed: true)
+        XCTAssertEqual(request.providerRef, "proxmox:11111111-2222-3333-4444-555555555555")
+        XCTAssertEqual(request.action, "firewall.disable")
+        XCTAssertEqual(request.targetRef, "firewall/cluster")
+    }
+
     func testControlledActionRetriesLowRiskTransportFailures() async {
         let counter = ActionInvocationCounter()
         let delays = RetryDelayRecorder()

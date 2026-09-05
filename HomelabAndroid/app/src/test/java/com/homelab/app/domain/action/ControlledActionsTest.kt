@@ -27,8 +27,10 @@ import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
+import com.homelab.app.ui.proxmox.ProxmoxFirewallAction
 import com.homelab.app.ui.proxmox.ProxmoxGuestAction
 import com.homelab.app.ui.proxmox.ProxmoxSnapshotAction
+import com.homelab.app.ui.proxmox.ProxmoxStorageContentAction
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -530,6 +532,46 @@ class ControlledActionsTest {
         assertEquals(ActionRisk.MEDIUM, ProxmoxSnapshotAction.CREATE.risk)
         assertEquals(ActionRisk.MEDIUM, ProxmoxSnapshotAction.DELETE.risk)
         assertEquals(ActionRisk.HIGH, ProxmoxSnapshotAction.ROLLBACK.risk)
+    }
+
+    @Test
+    fun `proxmox storage content delete request uses normalized references`() {
+        val request = ProxmoxStorageContentAction.DELETE.controlledRequest(
+            instanceId = "cluster-a",
+            node = "pve01",
+            storage = "local",
+            volume = "local:iso/debian.iso",
+            confirmed = true,
+            requestId = "request-proxmox-3",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0003"
+        )
+
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("storage-content.delete", request.action)
+        assertEquals("storage/local@pve01/local:iso/debian.iso", request.targetRef)
+        assertEquals(ActionRisk.HIGH, request.risk)
+        assertTrue(request.confirmed)
+        assertTrue(ProxmoxStorageContentAction.DELETE.requiresConfirmation)
+    }
+
+    @Test
+    fun `proxmox firewall risk classes match enable low disable medium`() {
+        assertFalse(ProxmoxFirewallAction.ENABLE.requiresConfirmation)
+        assertTrue(ProxmoxFirewallAction.DISABLE.requiresConfirmation)
+        assertEquals(ActionRisk.LOW, ProxmoxFirewallAction.ENABLE.risk)
+        assertEquals(ActionRisk.MEDIUM, ProxmoxFirewallAction.DISABLE.risk)
+
+        val request = ProxmoxFirewallAction.DISABLE.controlledRequest(
+            instanceId = "cluster-a",
+            confirmed = true,
+            requestId = "request-proxmox-4",
+            requestedAt = "1970-01-01T00:00:00Z",
+            idempotencyKey = "idempotency-key-0004"
+        )
+        assertEquals("proxmox:cluster-a", request.providerRef)
+        assertEquals("firewall.disable", request.action)
+        assertEquals("firewall/cluster", request.targetRef)
     }
 
     @Test

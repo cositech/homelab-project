@@ -71,7 +71,7 @@ struct ProxmoxFirewallView: View {
             Button(localizer.t.cancel, role: .cancel) { showToggleConfirm = nil }
             Button(showToggleConfirm == true ? localizer.t.actionStart : localizer.t.actionStop, role: .destructive) {
                 if let enable = showToggleConfirm {
-                    Task { await toggleFirewall(currentlyEnabled: enable) }
+                    Task { await toggleFirewall(enable: enable) }
                     showToggleConfirm = nil
                 }
             }
@@ -327,10 +327,23 @@ struct ProxmoxFirewallView: View {
         }
     }
 
-    private func toggleFirewall(currentlyEnabled: Bool) async {
+    private func toggleFirewall(enable: Bool) async {
         guard let client = await servicesStore.proxmoxClient(instanceId: instanceId) else { return }
         do {
-            try await client.setClusterFirewallEnable(!currentlyEnabled)
+            let action: ProxmoxControlledFirewallAction = enable ? .enable : .disable
+            let request = action.request(instanceId: instanceId, confirmed: true)
+            let capabilities = ProviderRegistry.descriptor(for: .proxmox).capabilities
+            let result = await servicesStore.controlledActionCoordinator.execute(
+                request: request,
+                actorRole: .admin,
+                providerCapabilities: capabilities
+            ) {
+                try await client.setClusterFirewallEnable(enable)
+            }
+            guard result.state == ActionExecutionState.succeeded else {
+                showError = result.reasonCode
+                return
+            }
             await fetchData()
         } catch {
             showError = error.localizedDescription
