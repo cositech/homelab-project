@@ -19,7 +19,7 @@ struct SitesView: View {
     }
 
     private var sites: [Site] {
-        siteStore.registry.sites(forTenant: tenantId)
+        siteStore.registry.sites(forTenant: tenant.id)
     }
 
     var body: some View {
@@ -59,10 +59,10 @@ struct SitesView: View {
         .navigationTitle(String(format: localizer.t.settingsSitesForTenant, tenantDisplayName(tenant, localizer: localizer)))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddSite) {
-            SiteFormView(tenantId: tenantId, siteToEdit: nil)
+            SiteFormView(tenantId: tenant.id, siteToEdit: nil)
         }
         .sheet(item: $editingSite) { site in
-            SiteFormView(tenantId: tenantId, siteToEdit: site)
+            SiteFormView(tenantId: tenant.id, siteToEdit: site)
         }
         .alert(localizer.t.delete, isPresented: .init(
             get: { sitePendingDelete != nil },

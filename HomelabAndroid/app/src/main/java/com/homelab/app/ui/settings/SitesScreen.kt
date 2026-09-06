@@ -38,7 +38,7 @@ fun SitesScreen(
     val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
     val siteRegistry by viewModel.siteRegistry.collectAsStateWithLifecycle()
     val tenant = tenantSelection.tenants.firstOrNull { it.id == tenantId } ?: Tenant.DEFAULT
-    val sites = siteRegistry.sitesForTenant(tenantId)
+    val sites = siteRegistry.sitesForTenant(tenant.id)
 
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Site?>(null) }
@@ -111,7 +111,7 @@ fun SitesScreen(
             initialName = "",
             onDismiss = { showAddDialog = false },
             onConfirm = { name ->
-                viewModel.addSite(tenantId, name)
+                viewModel.addSite(tenant.id, name)
                 showAddDialog = false
             }
         )
