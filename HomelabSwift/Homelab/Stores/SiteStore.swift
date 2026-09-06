@@ -13,7 +13,7 @@ final class SiteStore {
     private(set) var registry: SiteRegistry
 
     @ObservationIgnored private let defaults: UserDefaults
-    private static let storageKey = "site_registry_v1"
+    nonisolated static let storageKey = "site_registry_v1"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
