@@ -706,10 +706,6 @@ struct OperationsView: View {
                     // present in this refresh (single-tenant installs, and a scoped-to-one-tenant
                     // view, never show it).
                     let showTenantLabel = Set(allGroups.keys.map(\.tenantRef)).count > 1
-                    func tenantLabel(for tenantRef: String) -> String? {
-                        guard showTenantLabel, let tenant = tenantById[tenantRef] else { return nil }
-                        return tenantDisplayName(tenant, localizer: localizer)
-                    }
                     let orderedKeys = allGroups.keys.sorted { lhs, rhs in
                         let lhsSite = lhs.siteId.flatMap { siteById[$0]?.name }
                         let rhsSite = rhs.siteId.flatMap { siteById[$0]?.name }
@@ -728,7 +724,9 @@ struct OperationsView: View {
                         let assets = allGroups[key] ?? []
                         siteGroupHeader(
                             siteName: key.siteId.flatMap { siteById[$0]?.name },
-                            tenantName: tenantLabel(for: key.tenantRef),
+                            tenantName: showTenantLabel
+                                ? tenantById[key.tenantRef].map { tenantDisplayName($0, localizer: localizer) }
+                                : nil,
                             count: assets.count
                         )
                         ForEach(assets, id: \.correlationId) { asset in
