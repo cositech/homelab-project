@@ -10,6 +10,8 @@ import com.homelab.app.domain.action.DurableActionQueueEntry
 import com.homelab.app.domain.model.ServiceInstance
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,33 +41,55 @@ class ActionHistoryViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    private var refreshJob: Job? = null
+
     init {
         viewModelScope.launch {
             tenantStore.selection.collect { refresh() }
         }
     }
 
+    /** Cancels any in-flight refresh so a tenant switch never races a stale scope onto the screen. */
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        lateinit var job: Job
+        job = viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
-            val selection = tenantStore.current()
-            val audit = if (selection.allTenantsMode) {
-                controlledActionCoordinator.auditSnapshot()
-            } else {
-                controlledActionCoordinator.auditSnapshot(selection.activeTenantId)
+            try {
+                val selection = tenantStore.current()
+                val audit = if (selection.allTenantsMode) {
+                    controlledActionCoordinator.auditSnapshot()
+                } else {
+                    controlledActionCoordinator.auditSnapshot(selection.activeTenantId)
+                }
+                val pending = if (selection.allTenantsMode) {
+                    controlledActionCoordinator.pendingRecovery()
+                } else {
+                    controlledActionCoordinator.pendingRecovery(selection.activeTenantId)
+                }
+                val instancesById = servicesRepository.allInstances.first().associateBy { it.id }
+                if (refreshJob === job) {
+                    _uiState.value = UiState(
+                        auditRecords = audit.sortedByDescending { it.recordedAtEpochMillis },
+                        pendingEntries = pending.sortedByDescending { it.updatedAtEpochMillis },
+                        instancesById = instancesById,
+                        isRefreshing = false
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // Swallow: a stale read of the ledger/queue isn't worth surfacing as an error,
+                // and the next tenant-selection change or manual refresh will retry anyway.
+            } finally {
+                // Only this job's own completion/cancellation clears the flag it set - a job a
+                // tenant switch superseded must not clobber the isRefreshing a newer job set.
+                if (refreshJob === job) {
+                    refreshJob = null
+                    _uiState.update { it.copy(isRefreshing = false) }
+                }
             }
-            val pending = if (selection.allTenantsMode) {
-                controlledActionCoordinator.pendingRecovery()
-            } else {
-                controlledActionCoordinator.pendingRecovery(selection.activeTenantId)
-            }
-            val instancesById = servicesRepository.allInstances.first().associateBy { it.id }
-            _uiState.value = UiState(
-                auditRecords = audit.sortedByDescending { it.recordedAtEpochMillis },
-                pendingEntries = pending.sortedByDescending { it.updatedAtEpochMillis },
-                instancesById = instancesById,
-                isRefreshing = false
-            )
         }
+        refreshJob = job
     }
 }

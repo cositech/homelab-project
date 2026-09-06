@@ -331,7 +331,7 @@ fun SettingsScreen(
                         )
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
-                            contentDescription = stringResource(R.string.settings_action_history_title),
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

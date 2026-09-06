@@ -14,6 +14,7 @@ struct ActionHistoryView: View {
     @State private var auditRecords: [ActionAuditRecord] = []
     @State private var pendingEntries: [DurableActionQueueEntry] = []
     @State private var isRefreshing = false
+    @State private var refreshGeneration = 0
 
     var body: some View {
         ZStack {
@@ -73,9 +74,8 @@ struct ActionHistoryView: View {
                 }
             }
         }
-        .task { await refresh() }
-        .onChange(of: tenantStore.selection) { _, _ in
-            Task { await refresh() }
+        .task(id: tenantStore.selection) {
+            await refresh()
         }
     }
 
@@ -95,9 +95,15 @@ struct ActionHistoryView: View {
         Spacer(minLength: 0)
     }
 
+    /// Guarded by a generation counter, not just `.task(id:)` cancellation: a superseded refresh's
+    /// awaits can still resolve after a newer one already published its results (`Task.isCancelled`
+    /// is cooperative and these coordinator calls never check it), so only the *latest* call's
+    /// results are ever written - the same protection `OperationsViewModel.refresh` gives its own
+    /// job identity on Android.
     private func refresh() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
         isRefreshing = true
-        defer { isRefreshing = false }
         let selection = tenantStore.selection
         let coordinator = servicesStore.controlledActionCoordinator
         let audit: [ActionAuditRecord]
@@ -109,8 +115,10 @@ struct ActionHistoryView: View {
             audit = await coordinator.auditSnapshot(tenantRef: selection.activeTenantId)
             pending = await coordinator.pendingRecovery(tenantRef: selection.activeTenantId)
         }
+        guard generation == refreshGeneration else { return }
         auditRecords = audit.sorted { $0.recordedAt > $1.recordedAt }
         pendingEntries = pending.sorted { $0.updatedAt > $1.updatedAt }
+        isRefreshing = false
     }
 }
 
