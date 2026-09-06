@@ -133,13 +133,16 @@ fun ServiceLoginScreen(
         siteManuallyChosen = false
     }
     val sitesForTenant = siteRegistry.sitesForTenant(effectiveTenantId)
-    val effectiveSiteId = if (siteManuallyChosen) {
+    val rawSiteId = if (siteManuallyChosen) {
         manuallySelectedSiteId
     } else if (existingInstance?.tenantRef == effectiveTenantId) {
         existingInstance?.siteRef
     } else {
         null
     }
+    // A site deleted while this screen is open - or from underneath an instance being edited -
+    // must not silently persist a reference to it; clamp to what's actually still configured.
+    val effectiveSiteId = rawSiteId?.takeIf { id -> sitesForTenant.any { it.id == id } }
 
     val coroutineScope = rememberCoroutineScope()
     val shakeOffset = remember { Animatable(0f) }

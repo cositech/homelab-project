@@ -57,13 +57,19 @@ struct ServiceLoginView: View {
     }
 
     private var effectiveSiteId: String? {
+        let raw: String?
         if siteManuallyChosen {
-            return manuallySelectedSiteId
+            raw = manuallySelectedSiteId
+        } else if let existingInstance, existingInstance.tenantRef == effectiveTenantId {
+            raw = existingInstance.siteRef
+        } else {
+            raw = nil
         }
-        if let existingInstance, existingInstance.tenantRef == effectiveTenantId {
-            return existingInstance.siteRef
-        }
-        return nil
+        // A site deleted while this screen is open - or from underneath an instance being
+        // edited - must not silently persist a reference to it; clamp to what's actually still
+        // configured.
+        guard let raw, sitesForTenant.contains(where: { $0.id == raw }) else { return nil }
+        return raw
     }
 
     private var existingInstance: ServiceInstance? {
