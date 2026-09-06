@@ -272,6 +272,13 @@
     <string name="tenants_delete_confirm_message">Supprimer %1$s ? Cette action est irréversible.</string>
     <string name="tenants_all_mode_label">Tous les locataires</string>
     <string name="operations_tenant_switcher">Changer de locataire</string>
+    <string name="settings_action_history_title">Historique des actions</string>
+    <string name="action_history_tab_history">Historique</string>
+    <string name="action_history_tab_pending">En attente</string>
+    <string name="action_history_empty_history">Aucune action contrôlée enregistrée pour l\'instant</string>
+    <string name="action_history_empty_pending">Rien n\'attend de nouvelle tentative ou de révision manuelle</string>
+    <string name="action_history_attempt_count">Tentative %1$d</string>
+    <string name="action_history_next_attempt">Prochaine tentative : %1$s</string>
     <string name="settings_not_connected">Non connecté</string>
     <string name="settings_disconnect">Déconnecter</string>
     <string name="settings_fallback_url">URL de secours (ex. Cloudflare)</string>

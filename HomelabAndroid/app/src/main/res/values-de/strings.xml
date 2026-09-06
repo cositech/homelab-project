@@ -299,6 +299,13 @@
     <string name="tenants_delete_confirm_message">%1$s löschen? Dies kann nicht rückgängig gemacht werden.</string>
     <string name="tenants_all_mode_label">Alle Mandanten</string>
     <string name="operations_tenant_switcher">Mandant wechseln</string>
+    <string name="settings_action_history_title">Aktionsverlauf</string>
+    <string name="action_history_tab_history">Verlauf</string>
+    <string name="action_history_tab_pending">Ausstehend</string>
+    <string name="action_history_empty_history">Noch keine gesteuerten Aktionen aufgezeichnet</string>
+    <string name="action_history_empty_pending">Nichts wartet auf Wiederholung oder manuelle Prüfung</string>
+    <string name="action_history_attempt_count">Versuch %1$d</string>
+    <string name="action_history_next_attempt">Nächster Versuch: %1$s</string>
     <string name="settings_not_connected">Nicht verbunden</string>
     <string name="settings_disconnect">Trennen</string>
     <string name="settings_fallback_url">Fallback-URL (z.B. Cloudflare)</string>

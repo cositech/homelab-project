@@ -279,6 +279,13 @@
     <string name="tenants_delete_confirm_message">Eliminare %1$s? Questa azione non può essere annullata.</string>
     <string name="tenants_all_mode_label">Tutti i tenant</string>
     <string name="operations_tenant_switcher">Cambia tenant</string>
+    <string name="settings_action_history_title">Cronologia azioni</string>
+    <string name="action_history_tab_history">Cronologia</string>
+    <string name="action_history_tab_pending">In sospeso</string>
+    <string name="action_history_empty_history">Nessuna azione controllata ancora registrata</string>
+    <string name="action_history_empty_pending">Nessun elemento in attesa di nuovo tentativo o revisione manuale</string>
+    <string name="action_history_attempt_count">Tentativo %1$d</string>
+    <string name="action_history_next_attempt">Prossimo tentativo: %1$s</string>
     <string name="settings_not_connected">Non connesso</string>
     <string name="settings_disconnect">Disconnetti</string>
     <string name="settings_fallback_url">Fallback URL (Es. Cloudflare)</string>

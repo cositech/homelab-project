@@ -272,6 +272,13 @@
     <string name="tenants_delete_confirm_message">¿Eliminar %1$s? Esta acción no se puede deshacer.</string>
     <string name="tenants_all_mode_label">Todos los inquilinos</string>
     <string name="operations_tenant_switcher">Cambiar de inquilino</string>
+    <string name="settings_action_history_title">Historial de acciones</string>
+    <string name="action_history_tab_history">Historial</string>
+    <string name="action_history_tab_pending">Pendiente</string>
+    <string name="action_history_empty_history">Todavía no se han registrado acciones controladas</string>
+    <string name="action_history_empty_pending">No hay nada esperando reintento o revisión manual</string>
+    <string name="action_history_attempt_count">Intento %1$d</string>
+    <string name="action_history_next_attempt">Próximo reintento: %1$s</string>
     <string name="settings_not_connected">No conectado</string>
     <string name="settings_disconnect">Desconectar</string>
     <string name="settings_fallback_url">URL de respaldo (p. ej. Cloudflare)</string>

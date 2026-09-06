@@ -279,6 +279,9 @@ fun AppNavigation() {
                     onNavigateToTenants = {
                         navController.navigate("settings/tenants")
                     },
+                    onNavigateToActionHistory = {
+                        navController.navigate("settings/action-history")
+                    },
                     onNavigateToBackup = {
                         navController.navigate("settings/backup")
                     }
@@ -294,6 +297,12 @@ fun AppNavigation() {
                 com.homelab.app.ui.settings.TenantsScreen(
                     onNavigateBack = { navController.popBackStack() },
                     viewModel = settingsVm
+                )
+            }
+
+            composable("settings/action-history") {
+                com.homelab.app.ui.settings.ActionHistoryScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

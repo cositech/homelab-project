@@ -61,6 +61,7 @@ fun SettingsScreen(
     onNavigateToDebugLogs: () -> Unit = {},
     onNavigateToConfiguredServices: () -> Unit = {},
     onNavigateToTenants: () -> Unit = {},
+    onNavigateToActionHistory: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -296,6 +297,41 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = stringResource(R.string.settings_tenants_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // --- ACTION HISTORY ---
+            item {
+                Surface(
+                    onClick = onNavigateToActionHistory,
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = stringResource(R.string.settings_action_history_title),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_action_history_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = stringResource(R.string.settings_action_history_title),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
