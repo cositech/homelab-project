@@ -986,6 +986,7 @@ struct Translations {
     let settingsSitesForTenant: String
     let sitesAddSite: String
     let sitesEmpty: String
+    let sitesNone: String
     let settingsActionHistory: String
     let actionHistoryTabHistory: String
     let actionHistoryTabPending: String

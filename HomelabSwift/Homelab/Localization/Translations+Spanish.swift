@@ -931,6 +931,7 @@ extension Translations {
         settingsSitesForTenant: "Sitios — %@",
         sitesAddSite: "Añadir sitio",
         sitesEmpty: "Todavía no hay sitios",
+        sitesNone: "Sin sitio",
         settingsActionHistory: "Historial de acciones",
         actionHistoryTabHistory: "Historial",
         actionHistoryTabPending: "Pendiente",

@@ -89,7 +89,8 @@ class ServiceLoginViewModel @Inject constructor(
     private val calagopusRepository: CalagopusRepository,
     private val observabilityRepository: ObservabilityRepository,
     private val infrastructureOperationsRepository: InfrastructureOperationsRepository,
-    private val tenantStore: TenantStore
+    private val tenantStore: TenantStore,
+    private val siteStore: com.homelab.app.data.local.SiteStore
 ) : ViewModel() {
 
     private val existingInstanceId: String? = savedStateHandle["instanceId"]
@@ -99,6 +100,9 @@ class ServiceLoginViewModel @Inject constructor(
 
     val tenantSelection: StateFlow<TenantSelection> = tenantStore.selection
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TenantSelection.INITIAL)
+
+    val siteRegistry: StateFlow<com.homelab.app.domain.model.SiteRegistry> = siteStore.registry
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.homelab.app.domain.model.SiteRegistry.INITIAL)
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -127,7 +131,9 @@ class ServiceLoginViewModel @Inject constructor(
         proxmoxRealm: String = "pam",
         proxmoxOtp: String = "",
         proxmoxUseApiToken: Boolean = false,
-        tenantRef: String? = null
+        tenantRef: String? = null,
+        siteRef: String? = null,
+        siteExplicitlySet: Boolean = false
     ) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -879,8 +885,15 @@ class ServiceLoginViewModel @Inject constructor(
                         allowSelfSigned = allowSelfSigned,
                         tenantRef = resolvedTenantRef,
                         // A site belongs to exactly one tenant (Site.tenantRef); moving an
-                        // instance to a different tenant must not carry its old site along.
-                        siteRef = if (existing != null && existing.tenantRef == resolvedTenantRef) {
+                        // instance to a different tenant must not carry its old site along. The
+                        // caller (the login screen's site picker) resolves this the same way it
+                        // resolves the tenant - manual pick, or the existing instance's site only
+                        // if the tenant hasn't changed - and passes siteExplicitlySet so an
+                        // explicit "no site" choice (siteRef = null) isn't mistaken for "the
+                        // caller didn't set one."
+                        siteRef = if (siteExplicitlySet) {
+                            siteRef
+                        } else if (existing != null && existing.tenantRef == resolvedTenantRef) {
                             existing.siteRef
                         } else {
                             null

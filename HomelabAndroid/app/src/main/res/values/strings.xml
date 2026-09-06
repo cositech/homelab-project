@@ -269,6 +269,7 @@
     <string name="settings_sites_title_for_tenant">Sites — %1$s</string>
     <string name="sites_add_site">Add Site</string>
     <string name="sites_empty">No sites yet</string>
+    <string name="sites_none">No site</string>
     <string name="settings_action_history_title">Action History</string>
     <string name="action_history_tab_history">History</string>
     <string name="action_history_tab_pending">Pending</string>
