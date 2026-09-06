@@ -30,7 +30,8 @@ class SettingsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
     private val localPreferencesRepository: LocalPreferencesRepository,
     private val appIconManager: AppIconManager,
-    private val tenantStore: com.homelab.app.data.local.TenantStore
+    private val tenantStore: com.homelab.app.data.local.TenantStore,
+    private val siteStore: com.homelab.app.data.local.SiteStore
 ) : ViewModel() {
 
     data class UpdateBannerState(
@@ -93,6 +94,13 @@ class SettingsViewModel @Inject constructor(
             com.homelab.app.domain.model.TenantSelection.INITIAL
         )
 
+    val siteRegistry: StateFlow<com.homelab.app.domain.model.SiteRegistry> = siteStore.registry
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            com.homelab.app.domain.model.SiteRegistry.INITIAL
+        )
+
     val isPinSet: StateFlow<Boolean> = localPreferencesRepository.appPin
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
         .let { flow ->
@@ -125,6 +133,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setActiveTenant(id: String) {
         viewModelScope.launch { tenantStore.setActiveTenant(id) }
+    }
+
+    fun addSite(tenantRef: String, name: String) {
+        viewModelScope.launch { siteStore.addSite(tenantRef, name) }
+    }
+
+    fun renameSite(id: String, name: String) {
+        viewModelScope.launch { siteStore.renameSite(id, name) }
+    }
+
+    fun removeSite(id: String) {
+        viewModelScope.launch { siteStore.removeSite(id) }
     }
 
     fun setThemeMode(mode: ThemeMode) {

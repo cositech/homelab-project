@@ -181,6 +181,65 @@ struct Customer: Codable, Equatable, Sendable {
     var notes: String?
 }
 
+/// The device-local set of configured `Site`s, each scoped to exactly one tenant via
+/// `Site.tenantRef`. Unlike `TenantSelection` there is no "active site" concept - a site is an
+/// optional attribute an instance is assigned to, not something the whole app switches into.
+///
+/// All transforms are pure and return a re-`normalized()` value. Invariants held by
+/// `normalized()`: `sites` has no duplicate ids and no blank id/name. A site whose tenant no
+/// longer exists is simply unreachable through the UI (the Sites screen is reached from a tenant
+/// row) - the same lazy-orphan handling already used for a deleted tenant's instances.
+struct SiteRegistry: Codable, Equatable, Sendable {
+    var sites: [Site]
+
+    init(sites: [Site] = []) {
+        self.sites = sites
+    }
+
+    static let initial = SiteRegistry()
+
+    func sites(forTenant tenantRef: String) -> [Site] {
+        let target = Tenant.refOrDefault(tenantRef)
+        return sites.filter { $0.tenantRef == target }
+    }
+
+    func normalized() -> SiteRegistry {
+        var deduped: [String: Site] = [:]
+        var order: [String] = []
+        for site in sites {
+            let id = site.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = site.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty, !name.isEmpty else { continue }
+            if deduped[id] == nil { order.append(id) }
+            deduped[id] = Site(id: id, tenantRef: Tenant.refOrDefault(site.tenantRef), name: name)
+        }
+        return SiteRegistry(sites: order.compactMap { deduped[$0] })
+    }
+
+    /// Adds `site`, or replaces the existing entry with the same id.
+    func adding(_ site: Site) -> SiteRegistry {
+        let id = site.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return normalized() }
+        var next = sites.filter { $0.id != id }
+        next.append(Site(id: id, tenantRef: site.tenantRef, name: site.name))
+        var copy = self
+        copy.sites = next
+        return copy.normalized()
+    }
+
+    func renaming(id: String, to name: String) -> SiteRegistry {
+        var copy = self
+        copy.sites = sites.map { $0.id == id ? Site(id: $0.id, tenantRef: $0.tenantRef, name: name) : $0 }
+        return copy.normalized()
+    }
+
+    func removing(id: String) -> SiteRegistry {
+        var copy = self
+        copy.sites = sites.filter { $0.id != id }
+        return copy.normalized()
+    }
+}
+
 /// The device-local set of configured tenants plus which one is active.
 ///
 /// Every transform is pure and returns a re-`normalized()` value, so the store layer is a thin

@@ -92,6 +92,7 @@
 		7E861F79CA67DDAD2078A333 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DB66F8274714A001051F1BE /* SettingsView.swift */; };
 		7EBB5603EC5B23E166D98E33 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151F3E3C716170F5B65A688F /* SettingsStore.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E102 /* TenantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E101 /* TenantStore.swift */; };
+		65759E124727C28C2B450066 /* SiteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11F5B691E4B95197CBA686B /* SiteStore.swift */; };
 		7EF18D092660634150160E03 /* Translations+English.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F7AE0005466E2FF260B000 /* Translations+English.swift */; };
 		7FAEE452C0F73043A465DF53 /* NpmRedirectionHostCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F233D9CF75937405674EEE4 /* NpmRedirectionHostCard.swift */; };
 		825A29FD831832ED501CF764 /* HealthchecksCheckEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4ED2EF6B8B525C2387A59EC /* HealthchecksCheckEditor.swift */; };
@@ -113,6 +114,7 @@
 		91FEB90D9F7C9387B1CD8BA9 /* ConfiguredServicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98C831E84A42E73C9A480BE3 /* ConfiguredServicesView.swift */; };
 		B2C3D4E5F6A7B8C9D0E1F202 /* TenantsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F201 /* TenantsView.swift */; };
 		5A142C5ECDDC35809C1FD8E9 /* ActionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C679B406DFD8ABF3F2B1F48 /* ActionHistoryView.swift */; };
+		28208A71D323B509D182D4A1 /* SitesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E34F3745CCCB81025AC9BE /* SitesView.swift */; };
 		928B90DF3E307BB08C536CB9 /* ProxmoxConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915D9BA2E760A11C22688E74 /* ProxmoxConsoleView.swift */; };
 		94D317107C8A2E613083BE90 /* LidarrAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 720C06DC422C83CEF5E542D0 /* LidarrAPIClient.swift */; };
 		952767CF7AF01E00666D4CF6 /* MaltrailAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0726BE937688EDCEF843DA4A /* MaltrailAPIClient.swift */; };
@@ -226,6 +228,7 @@
 		1474391595DB64C568F77CE2 /* ProxmoxAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxmoxAPIClient.swift; sourceTree = "<group>"; };
 		151F3E3C716170F5B65A688F /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E101 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
+		B11F5B691E4B95197CBA686B /* SiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiteStore.swift; sourceTree = "<group>"; };
 		15D7F6591D7ABB7E8CB96944 /* GiteaAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiteaAPIClient.swift; sourceTree = "<group>"; };
 		18C16B119CB2EDEE60B4784D /* UptimeKumaDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UptimeKumaDashboard.swift; sourceTree = "<group>"; };
 		1911146A0ED528B1D912614C /* AdGuardHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdGuardHomeModels.swift; sourceTree = "<group>"; };
@@ -329,6 +332,7 @@
 		98C831E84A42E73C9A480BE3 /* ConfiguredServicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguredServicesView.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6A7B8C9D0E1F201 /* TenantsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantsView.swift; sourceTree = "<group>"; };
 		3C679B406DFD8ABF3F2B1F48 /* ActionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionHistoryView.swift; sourceTree = "<group>"; };
+		B0E34F3745CCCB81025AC9BE /* SitesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SitesView.swift; sourceTree = "<group>"; };
 		9A1C1112D8A8BF86BB78353D /* NpmUserForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NpmUserForm.swift; sourceTree = "<group>"; };
 		9B16543E222589D62D5DFD50 /* PatchmonHostDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchmonHostDetailView.swift; sourceTree = "<group>"; };
 		9CB770E60C2FE5FB6640BE98 /* EditBookmarkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditBookmarkView.swift; sourceTree = "<group>"; };
@@ -443,6 +447,7 @@
 				0DB66F8274714A001051F1BE /* SettingsView.swift */,
 				B2C3D4E5F6A7B8C9D0E1F201 /* TenantsView.swift */,
 				3C679B406DFD8ABF3F2B1F48 /* ActionHistoryView.swift */,
+				B0E34F3745CCCB81025AC9BE /* SitesView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -851,6 +856,7 @@
 				258507E3A00D686FDEF7E9CE /* ServicesStore.swift */,
 				151F3E3C716170F5B65A688F /* SettingsStore.swift */,
 				A1B2C3D4E5F6A7B8C9D0E101 /* TenantStore.swift */,
+				B11F5B691E4B95197CBA686B /* SiteStore.swift */,
 			);
 			path = Stores;
 			sourceTree = "<group>";
@@ -1496,6 +1502,7 @@
 				91FEB90D9F7C9387B1CD8BA9 /* ConfiguredServicesView.swift in Sources */,
 				B2C3D4E5F6A7B8C9D0E1F202 /* TenantsView.swift in Sources */,
 				5A142C5ECDDC35809C1FD8E9 /* ActionHistoryView.swift in Sources */,
+				28208A71D323B509D182D4A1 /* SitesView.swift in Sources */,
 				CFFCFA6F071D0F46DECAB36B /* ContainerDetailView.swift in Sources */,
 				A3E3BAB096611E807728CA89 /* ContainerListView.swift in Sources */,
 				9F77F33FFB5F27A3D1A8109E /* ContentView.swift in Sources */,
@@ -1620,6 +1627,7 @@
 				BAA4219103CC83A339C434BD /* ServicesStore.swift in Sources */,
 				7EBB5603EC5B23E166D98E33 /* SettingsStore.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E102 /* TenantStore.swift in Sources */,
+				65759E124727C28C2B450066 /* SiteStore.swift in Sources */,
 				7E861F79CA67DDAD2078A333 /* SettingsView.swift in Sources */,
 				8EADC34444DEB43F553D0513 /* SkeletonLoader.swift in Sources */,
 				D2668B335DA6FE0CD64E6594 /* SonarrAPIClient.swift in Sources */,

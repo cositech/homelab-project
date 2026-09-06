@@ -272,6 +272,10 @@
     <string name="tenants_delete_confirm_message">Supprimer %1$s ? Cette action est irréversible.</string>
     <string name="tenants_all_mode_label">Tous les locataires</string>
     <string name="operations_tenant_switcher">Changer de locataire</string>
+    <string name="settings_sites_title">Sites</string>
+    <string name="settings_sites_title_for_tenant">Sites — %1$s</string>
+    <string name="sites_add_site">Ajouter un site</string>
+    <string name="sites_empty">Aucun site pour l\'instant</string>
     <string name="settings_action_history_title">Historique des actions</string>
     <string name="action_history_tab_history">Historique</string>
     <string name="action_history_tab_pending">En attente</string>

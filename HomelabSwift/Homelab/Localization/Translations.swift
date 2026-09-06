@@ -982,6 +982,10 @@ struct Translations {
     let tenantsDeleteConfirmMessage: String
     let tenantsAllMode: String
     let operationsTenantSwitcher: String
+    let settingsSitesTitle: String
+    let settingsSitesForTenant: String
+    let sitesAddSite: String
+    let sitesEmpty: String
     let settingsActionHistory: String
     let actionHistoryTabHistory: String
     let actionHistoryTabPending: String
