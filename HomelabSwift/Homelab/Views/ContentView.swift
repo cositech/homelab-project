@@ -82,6 +82,7 @@ private enum OperationsSection: String, CaseIterable, Identifiable {
     case alerts = "Alerts"
     case assets = "Assets"
     case correlation = "By Asset"
+    case bySite = "By Site"
     case search = "Search"
     case diagnostics = "Diagnostics"
 
@@ -92,6 +93,11 @@ private enum OperationsSection: String, CaseIterable, Identifiable {
 @MainActor
 private final class OperationsWorkspace {
     var snapshot = OperationsSnapshot()
+    // Which site (if any) each instance behind the snapshot's correlated assets is assigned to -
+    // built once per refresh from the same instance list performRefresh already has in hand, so
+    // the "By Site" tab can resolve an AssetObservation.instanceId back to a siteRef without a
+    // second fetch.
+    var siteRefByInstanceId: [UUID: String?] = [:]
     var isRefreshing = false
     var errorMessage: String?
 
@@ -262,6 +268,7 @@ private final class OperationsWorkspace {
             refreshedAt: observedAt,
             correlatedAssets: correlated
         )
+        siteRefByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.siteRef) })
     }
 
     /// Cross-provider rollup of `assets`, correlated ones first. See `resolveAcrossTenants` for the
@@ -514,6 +521,7 @@ private final class OperationsWorkspace {
 struct OperationsView: View {
     @Environment(ServicesStore.self) private var servicesStore
     @Environment(TenantStore.self) private var tenantStore
+    @Environment(SiteStore.self) private var siteStore
     @Environment(Localizer.self) private var localizer
     @State private var workspace = OperationsWorkspace()
     @State private var section: OperationsSection = .health
@@ -659,6 +667,48 @@ struct OperationsView: View {
                     ForEach(workspace.snapshot.correlatedAssets, id: \.correlationId) { asset in
                         canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
                     }
+                } else if section == .bySite {
+                    let resourceByRef = Dictionary(uniqueKeysWithValues: workspace.snapshot.assets.map {
+                        ("\($0.providerId)/\($0.instanceId.uuidString.lowercased())/\($0.resourceType)/\($0.resourceId)", $0)
+                    })
+                    let alertCountByRef = workspace.snapshot.alerts.reduce(into: [String: Int]()) { counts, alert in
+                        guard let resourceId = alert.resourceId else { return }
+                        let ref = "\(alert.providerId)/\(alert.instanceId.uuidString.lowercased())/\(resourceId)"
+                        counts[ref, default: 0] += 1
+                    }
+                    let siteById = Dictionary(uniqueKeysWithValues: siteStore.registry.sites.map { ($0.id, $0) })
+                    // Grouped by the first member observation whose instance is assigned to a site
+                    // (an asset merges observations across providers, but in practice they all
+                    // belong to the same physical site); assets with no such instance fall into the
+                    // "no site" group.
+                    let allGroups = Dictionary(grouping: workspace.snapshot.correlatedAssets) { asset -> Site? in
+                        for observation in asset.observations {
+                            if let siteRef = workspace.siteRefByInstanceId[observation.instanceId] ?? nil,
+                               let site = siteById[siteRef] {
+                                return site
+                            }
+                        }
+                        return nil
+                    }
+                    let sortedAssigned = allGroups.compactMap { key, value -> (Site, [CanonicalAsset])? in
+                        guard let key else { return nil }
+                        return (key, value)
+                    }.sorted { $0.0.name.localizedCaseInsensitiveCompare($1.0.name) == .orderedAscending }
+                    let unassigned = allGroups[nil] ?? []
+
+                    if allGroups.isEmpty { empty("No assets discovered") }
+                    ForEach(sortedAssigned, id: \.0.id) { site, assets in
+                        siteGroupHeader(site, count: assets.count)
+                        ForEach(assets, id: \.correlationId) { asset in
+                            canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
+                        }
+                    }
+                    if !unassigned.isEmpty {
+                        siteGroupHeader(nil, count: unassigned.count)
+                        ForEach(unassigned, id: \.correlationId) { asset in
+                            canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
+                        }
+                    }
                 } else {
                     if workspace.snapshot.diagnostics.isEmpty { empty("No diagnostics available") }
                     ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0) }
@@ -716,6 +766,23 @@ struct OperationsView: View {
                     state: resourceHealthState(resource?.state)
                 )
             }
+        }
+    }
+
+    private func siteGroupHeader(_ site: Site?, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(AppTheme.accent)
+                Text(site?.name ?? localizer.t.sitesNone)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text("\(count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Divider()
         }
     }
 

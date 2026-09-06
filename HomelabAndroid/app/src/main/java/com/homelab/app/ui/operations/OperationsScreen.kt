@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -60,6 +61,7 @@ private enum class OperationsSection(val label: String) {
     ALERTS("Alerts"),
     ASSETS("Assets"),
     CORRELATION("By Asset"),
+    BY_SITE("By Site"),
     SEARCH("Search"),
     DIAGNOSTICS("Diagnostics")
 }
@@ -68,6 +70,7 @@ private enum class OperationsSection(val label: String) {
 fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
+    val siteRegistry by viewModel.siteRegistry.collectAsStateWithLifecycle()
     var selectedSection by remember { mutableIntStateOf(0) }
     val sections = remember { OperationsSection.entries }
 
@@ -123,6 +126,7 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
             OperationsSection.ALERTS -> OperationsList(state.snapshot.alerts, "No active alerts") { AlertCard(it) }
             OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it) }
             OperationsSection.CORRELATION -> CorrelationSection(state.snapshot)
+            OperationsSection.BY_SITE -> SiteCorrelationSection(state.snapshot, state.siteRefByInstanceId, siteRegistry)
             OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it) }
             OperationsSection.SEARCH -> SearchSection(state.snapshot)
         }
@@ -384,6 +388,91 @@ private fun CanonicalAssetCard(
                 }
             )
         }
+    }
+}
+
+/**
+ * Phase 4 "by site" rollup: the same correlated assets as [CorrelationSection], grouped by the
+ * [com.homelab.app.domain.model.Site] assigned to any of a canonical asset's member instances
+ * (an asset merges observations across providers, but in practice they all belong to the same
+ * physical site). A "no site" group collects assets with no member instance assigned to one.
+ */
+@Composable
+private fun SiteCorrelationSection(
+    snapshot: com.homelab.app.domain.provider.OperationsSnapshot,
+    siteRefByInstanceId: Map<String, String?>,
+    siteRegistry: com.homelab.app.domain.model.SiteRegistry
+) {
+    val resourceByRef = remember(snapshot) {
+        snapshot.assets.associateBy { "${it.providerId}/${it.instanceId}/${it.resourceType}/${it.resourceId}" }
+    }
+    val alertCountByRef = remember(snapshot) {
+        snapshot.alerts.groupingBy { "${it.providerId}/${it.instanceId}/${it.resourceId}" }.eachCount()
+    }
+    val siteById = remember(siteRegistry) { siteRegistry.sites.associateBy { it.id } }
+    val grouped = remember(snapshot, siteRefByInstanceId, siteById) {
+        snapshot.correlatedAssets.groupBy { asset ->
+            asset.observations.firstNotNullOfOrNull { observation ->
+                siteRefByInstanceId[observation.instanceId]?.let { siteById[it] }
+            }
+        }
+    }
+
+    if (grouped.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No assets discovered", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
+    val (unassigned, assigned) = grouped.entries.partition { it.key == null }
+    val orderedGroups = assigned.sortedBy { it.key?.name?.lowercase() } + unassigned
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        orderedGroups.forEach { (site, assets) ->
+            item(key = "site-header:${site?.id ?: "unassigned"}") {
+                SiteGroupHeader(site, assets.size)
+            }
+            items(assets, key = { it.correlationId }) { asset ->
+                CanonicalAssetCard(asset, resourceByRef, alertCountByRef)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SiteGroupHeader(site: com.homelab.app.domain.model.Site?, count: Int) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                Icons.Default.LocationOn,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = site?.name ?: stringResource(R.string.sites_none),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "$count",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        HorizontalDivider()
     }
 }
 

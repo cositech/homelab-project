@@ -41,6 +41,11 @@ import kotlinx.coroutines.withContext
 
 data class OperationsUiState(
     val snapshot: OperationsSnapshot = OperationsSnapshot(),
+    // Which site (if any) each instance behind the snapshot's correlated assets is assigned to -
+    // built once per refresh from the same instance list buildSnapshot already has in hand, so the
+    // "By Site" tab can resolve an AssetObservation.instanceId back to a siteRef without a second
+    // fetch.
+    val siteRefByInstanceId: Map<String, String?> = emptyMap(),
     val isRefreshing: Boolean = false,
     val error: String? = null
 )
@@ -49,6 +54,7 @@ data class OperationsUiState(
 class OperationsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
     private val tenantStore: TenantStore,
+    private val siteStore: com.homelab.app.data.local.SiteStore,
     private val proxmoxRepository: ProxmoxRepository,
     private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val uptimeKumaRepository: UptimeKumaRepository,
@@ -61,6 +67,9 @@ class OperationsViewModel @Inject constructor(
 
     val tenantSelection: StateFlow<TenantSelection> = tenantStore.selection
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TenantSelection.INITIAL)
+
+    val siteRegistry: StateFlow<com.homelab.app.domain.model.SiteRegistry> = siteStore.registry
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.homelab.app.domain.model.SiteRegistry.INITIAL)
 
     init {
         viewModelScope.launch {
@@ -93,6 +102,7 @@ class OperationsViewModel @Inject constructor(
                 val reachability = servicesRepository.reachability.first()
                 _uiState.value = OperationsUiState(
                     snapshot = buildSnapshot(instances, reachability),
+                    siteRefByInstanceId = instances.associate { it.id to it.siteRef },
                     isRefreshing = false
                 )
             } catch (error: CancellationException) {
