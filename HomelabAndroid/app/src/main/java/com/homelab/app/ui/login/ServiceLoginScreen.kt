@@ -135,8 +135,8 @@ fun ServiceLoginScreen(
     val sitesForTenant = siteRegistry.sitesForTenant(effectiveTenantId)
     val effectiveSiteId = if (siteManuallyChosen) {
         manuallySelectedSiteId
-    } else if (existingInstance != null && existingInstance.tenantRef == effectiveTenantId) {
-        existingInstance.siteRef
+    } else if (existingInstance?.tenantRef == effectiveTenantId) {
+        existingInstance?.siteRef
     } else {
         null
     }
