@@ -265,6 +265,13 @@
     <string name="tenants_delete_confirm_message">Delete %1$s? This can\'t be undone.</string>
     <string name="tenants_all_mode_label">All tenants</string>
     <string name="operations_tenant_switcher">Switch tenant</string>
+    <string name="settings_action_history_title">Action History</string>
+    <string name="action_history_tab_history">History</string>
+    <string name="action_history_tab_pending">Pending</string>
+    <string name="action_history_empty_history">No controlled actions recorded yet</string>
+    <string name="action_history_empty_pending">Nothing is waiting on retry or manual review</string>
+    <string name="action_history_attempt_count">Attempt %1$d</string>
+    <string name="action_history_next_attempt">Next retry: %1$s</string>
     <string name="settings_not_connected">Not connected</string>
     <string name="settings_disconnect">Disconnect</string>
     <string name="settings_fallback_url">Fallback URL (e.g. Cloudflare)</string>

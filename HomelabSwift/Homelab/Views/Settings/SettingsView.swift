@@ -40,6 +40,7 @@ struct SettingsView: View {
                             updateBannerSection
                             servicesSection
                             tenantsSection
+                            actionHistorySection
                             themeSection
                             appIconSection
 
@@ -474,6 +475,38 @@ struct SettingsView: View {
             }
             .glassCard()
         }
+    }
+
+    private var actionHistorySection: some View {
+        VStack(spacing: 0) {
+            NavigationLink {
+                ActionHistoryView()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(width: 40, height: 40)
+                        .background(AppTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Text(localizer.t.settingsActionHistory)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.textMuted)
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .glassCard()
     }
 
 
