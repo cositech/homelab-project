@@ -77,6 +77,14 @@ struct ContentView: View {
     }
 }
 
+/// A "By Site" group's identity: tenant plus site, not site alone - two different tenants' sites
+/// (or "no site" groups) must never collapse into one, mirroring why `CanonicalAsset.correlationId`
+/// namespaces by tenant.
+private struct SiteGroupKey: Hashable {
+    let tenantRef: String
+    let siteId: String?
+}
+
 private enum OperationsSection: String, CaseIterable, Identifiable {
     case health = "Health"
     case alerts = "Alerts"
@@ -677,35 +685,53 @@ struct OperationsView: View {
                         counts[ref, default: 0] += 1
                     }
                     let siteById = Dictionary(uniqueKeysWithValues: siteStore.registry.sites.map { ($0.id, $0) })
-                    // Grouped by the first member observation whose instance is assigned to a site
-                    // (an asset merges observations across providers, but in practice they all
-                    // belong to the same physical site); assets with no such instance fall into the
-                    // "no site" group.
-                    let allGroups = Dictionary(grouping: workspace.snapshot.correlatedAssets) { asset -> Site? in
+                    let tenantById = Dictionary(uniqueKeysWithValues: tenantStore.selection.tenants.map { ($0.id, $0) })
+                    // Keyed by tenant, not just site: two different tenants' sites (or "no site"
+                    // groups) must never collapse into one, and two tenants can legitimately name a
+                    // site the same thing (e.g. "Rack 1") - the same reason CanonicalAsset.correlationId
+                    // namespaces by tenant. Grouped by the first member observation whose instance is
+                    // assigned to a site (an asset merges observations across providers, but in
+                    // practice they all belong to the same physical site); assets with no such
+                    // instance fall into that tenant's "no site" group.
+                    let allGroups = Dictionary(grouping: workspace.snapshot.correlatedAssets) { asset -> SiteGroupKey in
                         for observation in asset.observations {
                             if let siteRef = workspace.siteRefByInstanceId[observation.instanceId] ?? nil,
                                let site = siteById[siteRef] {
-                                return site
+                                return SiteGroupKey(tenantRef: asset.tenantRef, siteId: site.id)
                             }
                         }
-                        return nil
+                        return SiteGroupKey(tenantRef: asset.tenantRef, siteId: nil)
                     }
-                    let sortedAssigned = allGroups.compactMap { key, value -> (Site, [CanonicalAsset])? in
-                        guard let key else { return nil }
-                        return (key, value)
-                    }.sorted { $0.0.name.localizedCaseInsensitiveCompare($1.0.name) == .orderedAscending }
-                    let unassigned = allGroups[nil] ?? []
+                    // The tenant label only needs to render when more than one tenant is actually
+                    // present in this refresh (single-tenant installs, and a scoped-to-one-tenant
+                    // view, never show it).
+                    let showTenantLabel = Set(allGroups.keys.map(\.tenantRef)).count > 1
+                    func tenantLabel(for tenantRef: String) -> String? {
+                        guard showTenantLabel, let tenant = tenantById[tenantRef] else { return nil }
+                        return tenantDisplayName(tenant, localizer: localizer)
+                    }
+                    let orderedKeys = allGroups.keys.sorted { lhs, rhs in
+                        let lhsSite = lhs.siteId.flatMap { siteById[$0]?.name }
+                        let rhsSite = rhs.siteId.flatMap { siteById[$0]?.name }
+                        if lhsSite != rhsSite {
+                            guard let lhsSite else { return false }
+                            guard let rhsSite else { return true }
+                            return lhsSite.localizedCaseInsensitiveCompare(rhsSite) == .orderedAscending
+                        }
+                        let lhsTenant = tenantById[lhs.tenantRef].map { tenantDisplayName($0, localizer: localizer) } ?? ""
+                        let rhsTenant = tenantById[rhs.tenantRef].map { tenantDisplayName($0, localizer: localizer) } ?? ""
+                        return lhsTenant.localizedCaseInsensitiveCompare(rhsTenant) == .orderedAscending
+                    }
 
                     if allGroups.isEmpty { empty("No assets discovered") }
-                    ForEach(sortedAssigned, id: \.0.id) { site, assets in
-                        siteGroupHeader(site, count: assets.count)
+                    ForEach(orderedKeys, id: \.self) { key in
+                        let assets = allGroups[key] ?? []
+                        siteGroupHeader(
+                            siteName: key.siteId.flatMap { siteById[$0]?.name },
+                            tenantName: tenantLabel(for: key.tenantRef),
+                            count: assets.count
+                        )
                         ForEach(assets, id: \.correlationId) { asset in
-                            canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
-                        }
-                    }
-                    if !unassigned.isEmpty {
-                        siteGroupHeader(nil, count: unassigned.count)
-                        ForEach(unassigned, id: \.correlationId) { asset in
                             canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
                         }
                     }
@@ -769,14 +795,23 @@ struct OperationsView: View {
         }
     }
 
-    private func siteGroupHeader(_ site: Site?, count: Int) -> some View {
+    private func siteGroupHeader(siteName: String?, tenantName: String?, count: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "location.fill")
                     .foregroundStyle(AppTheme.accent)
-                Text(site?.name ?? localizer.t.sitesNone)
-                    .font(.subheadline.weight(.bold))
-                    .lineLimit(1)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(siteName ?? localizer.t.sitesNone)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+                    if let tenantName {
+                        Text(tenantName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer(minLength: 8)
                 Text("\(count)")
                     .font(.caption)

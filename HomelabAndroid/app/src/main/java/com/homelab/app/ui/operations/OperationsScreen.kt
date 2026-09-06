@@ -126,7 +126,7 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
             OperationsSection.ALERTS -> OperationsList(state.snapshot.alerts, "No active alerts") { AlertCard(it) }
             OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it) }
             OperationsSection.CORRELATION -> CorrelationSection(state.snapshot)
-            OperationsSection.BY_SITE -> SiteCorrelationSection(state.snapshot, state.siteRefByInstanceId, siteRegistry)
+            OperationsSection.BY_SITE -> SiteCorrelationSection(state.snapshot, state.siteRefByInstanceId, siteRegistry, tenantSelection)
             OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it) }
             OperationsSection.SEARCH -> SearchSection(state.snapshot)
         }
@@ -391,6 +391,12 @@ private fun CanonicalAssetCard(
     }
 }
 
+/** Keyed by tenant, not just site: two different tenants' sites (or "no site" groups) must never
+ * collapse into one, and two tenants can legitimately name a site the same thing (e.g. "Rack 1"),
+ * mirroring how [com.homelab.app.domain.asset.CanonicalAsset.correlationId] namespaces by tenant
+ * for the exact same reason. */
+private data class SiteGroupKey(val tenantRef: String, val siteId: String?)
+
 /**
  * Phase 4 "by site" rollup: the same correlated assets as [CorrelationSection], grouped by the
  * [com.homelab.app.domain.model.Site] assigned to any of a canonical asset's member instances
@@ -401,7 +407,8 @@ private fun CanonicalAssetCard(
 private fun SiteCorrelationSection(
     snapshot: com.homelab.app.domain.provider.OperationsSnapshot,
     siteRefByInstanceId: Map<String, String?>,
-    siteRegistry: com.homelab.app.domain.model.SiteRegistry
+    siteRegistry: com.homelab.app.domain.model.SiteRegistry,
+    tenantSelection: TenantSelection
 ) {
     val resourceByRef = remember(snapshot) {
         snapshot.assets.associateBy { "${it.providerId}/${it.instanceId}/${it.resourceType}/${it.resourceId}" }
@@ -412,9 +419,10 @@ private fun SiteCorrelationSection(
     val siteById = remember(siteRegistry) { siteRegistry.sites.associateBy { it.id } }
     val grouped = remember(snapshot, siteRefByInstanceId, siteById) {
         snapshot.correlatedAssets.groupBy { asset ->
-            asset.observations.firstNotNullOfOrNull { observation ->
+            val site = asset.observations.firstNotNullOfOrNull { observation ->
                 siteRefByInstanceId[observation.instanceId]?.let { siteById[it] }
             }
+            SiteGroupKey(tenantRef = asset.tenantRef, siteId = site?.id)
         }
     }
 
@@ -425,17 +433,35 @@ private fun SiteCorrelationSection(
         return
     }
 
-    val (unassigned, assigned) = grouped.entries.partition { it.key == null }
-    val orderedGroups = assigned.sortedBy { it.key?.name?.lowercase() } + unassigned
+    // The tenant label only needs to render when more than one tenant is actually present in this
+    // refresh (single-tenant installs, and a scoped-to-one-tenant view, never show it).
+    val showTenantLabel = grouped.keys.map { it.tenantRef }.distinct().size > 1
+    // Resolved up front from a single top-level stringResource call, not via tenantDisplayName()
+    // per tenant - that helper is @Composable, and the sort comparators below are plain lambdas.
+    val defaultTenantLabel = stringResource(R.string.home_default_badge)
+    val tenantNameByRef = tenantSelection.tenants.associate { tenant ->
+        tenant.id to if (tenant.isDefault) defaultTenantLabel else tenant.name
+    }
+    val (unassigned, assigned) = grouped.entries.partition { it.key.siteId == null }
+    val orderedGroups = assigned.sortedWith(
+        compareBy(
+            { siteById[it.key.siteId]?.name?.lowercase() },
+            { tenantNameByRef[it.key.tenantRef] }
+        )
+    ) + unassigned.sortedBy { tenantNameByRef[it.key.tenantRef] }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        orderedGroups.forEach { (site, assets) ->
-            item(key = "site-header:${site?.id ?: "unassigned"}") {
-                SiteGroupHeader(site, assets.size)
+        orderedGroups.forEach { (groupKey, assets) ->
+            item(key = "site-header:${groupKey.tenantRef}:${groupKey.siteId ?: "unassigned"}") {
+                SiteGroupHeader(
+                    siteName = groupKey.siteId?.let { siteById[it]?.name },
+                    tenantName = tenantNameByRef[groupKey.tenantRef].takeIf { showTenantLabel },
+                    count = assets.size
+                )
             }
             items(assets, key = { it.correlationId }) { asset ->
                 CanonicalAssetCard(asset, resourceByRef, alertCountByRef)
@@ -445,7 +471,7 @@ private fun SiteCorrelationSection(
 }
 
 @Composable
-private fun SiteGroupHeader(site: com.homelab.app.domain.model.Site?, count: Int) {
+private fun SiteGroupHeader(siteName: String?, tenantName: String?, count: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -458,14 +484,24 @@ private fun SiteGroupHeader(site: com.homelab.app.domain.model.Site?, count: Int
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp)
             )
-            Text(
-                text = site?.name ?: stringResource(R.string.sites_none),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = siteName ?: stringResource(R.string.sites_none),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                tenantName?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             Text(
                 text = "$count",
                 style = MaterialTheme.typography.labelSmall,
