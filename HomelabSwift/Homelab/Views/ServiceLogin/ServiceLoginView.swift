@@ -6,6 +6,7 @@ struct ServiceLoginView: View {
 
     @Environment(ServicesStore.self) private var servicesStore
     @Environment(TenantStore.self) private var tenantStore
+    @Environment(SiteStore.self) private var siteStore
     @Environment(Localizer.self) private var localizer
     @Environment(\.dismiss) private var dismiss
 
@@ -42,6 +43,33 @@ struct ServiceLoginView: View {
         let candidate = manuallySelectedTenantId ?? existingInstance?.tenantRef ?? tenantStore.selection.activeTenantId
         let selection = tenantStore.selection
         return selection.tenants.contains { $0.id == candidate } ? candidate : selection.activeTenantId
+    }
+
+    // A site belongs to exactly one tenant, so a manual site pick only makes sense for the tenant
+    // it was made under - switching the tenant picker resets it (see the .onChange below), falling
+    // back to the same carry-forward rule the save path uses: the existing instance's site, but
+    // only if the tenant didn't just change out from under it.
+    @State private var manuallySelectedSiteId: String?
+    @State private var siteManuallyChosen = false
+
+    private var sitesForTenant: [Site] {
+        siteStore.registry.sites(forTenant: effectiveTenantId)
+    }
+
+    private var effectiveSiteId: String? {
+        let raw: String?
+        if siteManuallyChosen {
+            raw = manuallySelectedSiteId
+        } else if let existingInstance, existingInstance.tenantRef == effectiveTenantId {
+            raw = existingInstance.siteRef
+        } else {
+            raw = nil
+        }
+        // A site deleted while this screen is open - or from underneath an instance being
+        // edited - must not silently persist a reference to it; clamp to what's actually still
+        // configured.
+        guard let raw, sitesForTenant.contains(where: { $0.id == raw }) else { return nil }
+        return raw
     }
 
     private var existingInstance: ServiceInstance? {
@@ -195,6 +223,10 @@ struct ServiceLoginView: View {
                 NavigationStack {
                     UniFiDashboard(instanceId: UUID(), _previewData: .demo(mode: unifiAuthMode))
                 }
+            }
+            .onChange(of: effectiveTenantId) { _, _ in
+                manuallySelectedSiteId = nil
+                siteManuallyChosen = false
             }
             .onChange(of: proxmoxApiTokenEntryMode) { _, newValue in
                 guard isProxmox, proxmoxAuthMode == 1 else { return }
@@ -362,6 +394,62 @@ struct ServiceLoginView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(tenantDisplayName(selectedTenant, localizer: localizer))
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .glassCard()
+            }
+
+            // Which site (within the currently selected tenant) this instance belongs to. Hidden
+            // whenever that tenant has no configured sites - unlike the tenant picker, a single
+            // site is still a meaningful choice (assign it vs. leave unassigned), so this only
+            // self-hides on an empty list, not a list of one.
+            if !sitesForTenant.isEmpty {
+                let selectedSite = sitesForTenant.first { $0.id == effectiveSiteId }
+
+                HStack(spacing: 12) {
+                    Image(systemName: "location.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(width: 32, height: 32)
+                        .background(AppTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Text(localizer.t.settingsSitesTitle)
+                        .font(.body.weight(.medium))
+
+                    Spacer()
+
+                    Menu {
+                        Button {
+                            siteManuallyChosen = true
+                            manuallySelectedSiteId = nil
+                        } label: {
+                            if effectiveSiteId == nil {
+                                Label(localizer.t.sitesNone, systemImage: "checkmark")
+                            } else {
+                                Text(localizer.t.sitesNone)
+                            }
+                        }
+                        ForEach(sitesForTenant) { site in
+                            Button {
+                                siteManuallyChosen = true
+                                manuallySelectedSiteId = site.id
+                            } label: {
+                                if site.id == effectiveSiteId {
+                                    Label(site.name, systemImage: "checkmark")
+                                } else {
+                                    Text(site.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(selectedSite?.name ?? localizer.t.sitesNone)
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.caption2)
                         }
@@ -728,10 +816,11 @@ struct ServiceLoginView: View {
                 // for a new one — resolved once, up front, so it can't drift mid-save.
                 let resolvedTenantRef = effectiveTenantId
                 instance = instance.updating(tenantRef: resolvedTenantRef)
-                // A site belongs to exactly one tenant, so moving an instance to a different
-                // tenant must not carry its old site along. `updating(siteRef:)` treats `nil` as
-                // "leave unchanged" (it merges with `??`), so the clear is a direct assignment.
-                instance.siteRef = existingInstance?.tenantRef == resolvedTenantRef ? existingInstance?.siteRef : nil
+                // effectiveSiteId already encodes the same "clear on tenant change" rule as a
+                // fallback, plus the site picker's own explicit choice when there is one.
+                // `updating(siteRef:)` treats `nil` as "leave unchanged" (it merges with `??`), so
+                // the assignment must be direct rather than routed through that helper.
+                instance.siteRef = effectiveSiteId
                 await servicesStore.saveInstance(instance, refreshPiHoleAuth: false)
                 HapticManager.success()
                 dismiss()

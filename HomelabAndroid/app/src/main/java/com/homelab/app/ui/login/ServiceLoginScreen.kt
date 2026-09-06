@@ -78,6 +78,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homelab.app.R
 import com.homelab.app.domain.model.Tenant
 import com.homelab.app.ui.components.ServiceIcon
+import com.homelab.app.ui.components.SitePicker
 import com.homelab.app.ui.components.TenantPicker
 import com.homelab.app.util.ServiceType
 import kotlinx.coroutines.launch
@@ -93,6 +94,7 @@ fun ServiceLoginScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
+    val siteRegistry by viewModel.siteRegistry.collectAsStateWithLifecycle()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
@@ -119,6 +121,28 @@ fun ServiceLoginScreen(
         val candidate = manuallySelectedTenantId ?: existingInstance?.tenantRef ?: tenantSelection.activeTenantId
         if (tenantSelection.tenants.any { it.id == candidate }) candidate else tenantSelection.activeTenantId
     }
+
+    // A site belongs to exactly one tenant, so a manual site pick only makes sense for the tenant
+    // it was made under - switching the tenant picker resets it, falling back to the same
+    // carry-forward rule saveInstance itself uses: the existing instance's site, but only if the
+    // tenant didn't just change out from under it.
+    var manuallySelectedSiteId by remember { mutableStateOf<String?>(null) }
+    var siteManuallyChosen by remember { mutableStateOf(false) }
+    LaunchedEffect(effectiveTenantId) {
+        manuallySelectedSiteId = null
+        siteManuallyChosen = false
+    }
+    val sitesForTenant = siteRegistry.sitesForTenant(effectiveTenantId)
+    val rawSiteId = if (siteManuallyChosen) {
+        manuallySelectedSiteId
+    } else if (existingInstance?.tenantRef == effectiveTenantId) {
+        existingInstance?.siteRef
+    } else {
+        null
+    }
+    // A site deleted while this screen is open - or from underneath an instance being edited -
+    // must not silently persist a reference to it; clamp to what's actually still configured.
+    val effectiveSiteId = rawSiteId?.takeIf { id -> sitesForTenant.any { it.id == id } }
 
     val coroutineScope = rememberCoroutineScope()
     val shakeOffset = remember { Animatable(0f) }
@@ -433,7 +457,9 @@ fun ServiceLoginScreen(
                     proxmoxRealm = proxmoxRealm,
                     proxmoxOtp = proxmoxOtp,
                     proxmoxUseApiToken = proxmoxUseApiToken,
-                    tenantRef = effectiveTenantId
+                    tenantRef = effectiveTenantId,
+                    siteRef = effectiveSiteId,
+                    siteExplicitlySet = true
                 )
             }
 
@@ -481,6 +507,16 @@ fun ServiceLoginScreen(
                 tenants = tenantSelection.tenants,
                 selectedTenantId = effectiveTenantId,
                 onTenantSelected = { manuallySelectedTenantId = it.id },
+                modifier = Modifier.padding(bottom = 14.dp)
+            )
+
+            SitePicker(
+                sites = sitesForTenant,
+                selectedSiteId = effectiveSiteId,
+                onSiteSelected = { site ->
+                    siteManuallyChosen = true
+                    manuallySelectedSiteId = site?.id
+                },
                 modifier = Modifier.padding(bottom = 14.dp)
             )
 

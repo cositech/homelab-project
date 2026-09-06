@@ -929,6 +929,7 @@ extension Translations {
         settingsSitesForTenant: "Sedi — %@",
         sitesAddSite: "Aggiungi sede",
         sitesEmpty: "Nessuna sede ancora",
+        sitesNone: "Nessuna sede",
         settingsActionHistory: "Cronologia azioni",
         actionHistoryTabHistory: "Cronologia",
         actionHistoryTabPending: "In sospeso",

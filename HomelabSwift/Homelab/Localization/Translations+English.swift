@@ -929,6 +929,7 @@ extension Translations {
         settingsSitesForTenant: "Sites — %@",
         sitesAddSite: "Add Site",
         sitesEmpty: "No sites yet",
+        sitesNone: "No site",
         settingsActionHistory: "Action History",
         actionHistoryTabHistory: "History",
         actionHistoryTabPending: "Pending",
