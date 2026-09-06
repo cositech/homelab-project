@@ -876,6 +876,75 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(String(data: customer, encoding: .utf8), "\"customer\"")
     }
 
+    func testSiteRegistryPureTransforms() throws {
+        XCTAssertEqual(SiteRegistry.initial.sites, [])
+
+        let rack1 = Site(id: "rack-1", tenantRef: "acme", name: "Rack 1")
+        let added = SiteRegistry.initial.adding(rack1)
+        XCTAssertEqual(added.sites.map(\.id), ["rack-1"])
+
+        // adding with an existing id replaces that entry.
+        let replaced = added.adding(Site(id: "rack-1", tenantRef: "acme", name: "Server Room"))
+        XCTAssertEqual(replaced.sites.count, 1)
+        XCTAssertEqual(replaced.sites.first?.name, "Server Room")
+
+        // normalize drops blank ids/names and trims the rest.
+        let normalized = SiteRegistry(sites: [
+            Site(id: "", tenantRef: "acme", name: "No id"),
+            Site(id: "rack-2", tenantRef: "acme", name: "  "),
+            Site(id: "  rack-3  ", tenantRef: "  acme  ", name: "  Valid  ")
+        ]).normalized()
+        XCTAssertEqual(normalized.sites.map(\.id), ["rack-3"])
+        XCTAssertEqual(normalized.sites.first?.tenantRef, "acme")
+        XCTAssertEqual(normalized.sites.first?.name, "Valid")
+
+        // sites(forTenant:) only returns that tenant's sites.
+        let registry = SiteRegistry.initial
+            .adding(Site(id: "rack-1", tenantRef: "acme", name: "Rack 1"))
+            .adding(Site(id: "rack-2", tenantRef: "globex", name: "Rack 2"))
+            .adding(Site(id: "rack-3", tenantRef: "acme", name: "Rack 3"))
+        XCTAssertEqual(Set(registry.sites(forTenant: "acme").map(\.id)), ["rack-1", "rack-3"])
+        XCTAssertEqual(registry.sites(forTenant: "globex").map(\.id), ["rack-2"])
+        XCTAssertTrue(registry.sites(forTenant: "ghost").isEmpty)
+
+        // renaming updates only the matching site; removing drops only the matching site.
+        let renamed = registry.renaming(id: "rack-1", to: "Server Room")
+        XCTAssertEqual(renamed.sites.first { $0.id == "rack-1" }?.name, "Server Room")
+        let removed = registry.removing(id: "rack-1")
+        XCTAssertEqual(removed.sites.map(\.id).sorted(), ["rack-2", "rack-3"])
+
+        // JSON round trip.
+        let restored = try JSONDecoder().decode(
+            SiteRegistry.self,
+            from: JSONEncoder().encode(registry)
+        ).normalized()
+        XCTAssertEqual(registry, restored)
+    }
+
+    @MainActor
+    func testSiteStorePersistsRegistryAcrossInstances() {
+        let suite = "site-store-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SiteStore(defaults: defaults)
+        XCTAssertTrue(store.registry.sites.isEmpty)
+
+        store.addSite(tenantRef: "acme", name: "  Rack 1  ")
+        XCTAssertEqual(store.registry.sites.first?.name, "Rack 1")
+        XCTAssertEqual(store.registry.sites.first?.tenantRef, "acme")
+
+        let reopened = SiteStore(defaults: defaults)
+        XCTAssertEqual(reopened.registry, store.registry)
+
+        let siteId = reopened.registry.sites.first!.id
+        _ = reopened.renameSite(id: siteId, name: "Server Room")
+        XCTAssertEqual(reopened.registry.sites.first?.name, "Server Room")
+
+        _ = reopened.removeSite(id: siteId)
+        XCTAssertTrue(reopened.registry.sites.isEmpty)
+    }
+
     func testServiceInstanceMetadataCarriesTenantScopeAndDefaultsWhenAbsent() throws {
         let scoped = ServiceInstance(
             id: UUID(uuidString: "30000000-0000-0000-0000-00000000000c")!,

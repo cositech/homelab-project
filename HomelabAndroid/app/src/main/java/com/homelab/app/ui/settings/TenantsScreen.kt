@@ -37,6 +37,7 @@ fun tenantDisplayName(tenant: Tenant): String =
 @Composable
 fun TenantsScreen(
     onNavigateBack: () -> Unit,
+    onOpenSites: (String) -> Unit,
     viewModel: SettingsViewModel
 ) {
     val selection by viewModel.tenantSelection.collectAsStateWithLifecycle()
@@ -84,7 +85,8 @@ fun TenantsScreen(
                     isActive = tenant.id == selection.activeTenantId,
                     onSetActive = { viewModel.setActiveTenant(tenant.id) },
                     onRename = { renaming = tenant },
-                    onDelete = { pendingDelete = tenant }
+                    onDelete = { pendingDelete = tenant },
+                    onOpenSites = { onOpenSites(tenant.id) }
                 )
             }
         }
@@ -151,7 +153,8 @@ private fun TenantRow(
     isActive: Boolean,
     onSetActive: () -> Unit,
     onRename: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onOpenSites: () -> Unit
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -232,6 +235,13 @@ private fun TenantRow(
                     ) {
                         Text(stringResource(R.string.delete), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                }
+                OutlinedButton(
+                    onClick = onOpenSites,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text(stringResource(R.string.settings_sites_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

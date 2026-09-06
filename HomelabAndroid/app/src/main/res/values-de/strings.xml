@@ -299,6 +299,10 @@
     <string name="tenants_delete_confirm_message">%1$s löschen? Dies kann nicht rückgängig gemacht werden.</string>
     <string name="tenants_all_mode_label">Alle Mandanten</string>
     <string name="operations_tenant_switcher">Mandant wechseln</string>
+    <string name="settings_sites_title">Standorte</string>
+    <string name="settings_sites_title_for_tenant">Standorte — %1$s</string>
+    <string name="sites_add_site">Standort hinzufügen</string>
+    <string name="sites_empty">Noch keine Standorte</string>
     <string name="settings_action_history_title">Aktionsverlauf</string>
     <string name="action_history_tab_history">Verlauf</string>
     <string name="action_history_tab_pending">Ausstehend</string>

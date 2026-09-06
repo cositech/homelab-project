@@ -272,6 +272,10 @@
     <string name="tenants_delete_confirm_message">¿Eliminar %1$s? Esta acción no se puede deshacer.</string>
     <string name="tenants_all_mode_label">Todos los inquilinos</string>
     <string name="operations_tenant_switcher">Cambiar de inquilino</string>
+    <string name="settings_sites_title">Sitios</string>
+    <string name="settings_sites_title_for_tenant">Sitios — %1$s</string>
+    <string name="sites_add_site">Añadir sitio</string>
+    <string name="sites_empty">Todavía no hay sitios</string>
     <string name="settings_action_history_title">Historial de acciones</string>
     <string name="action_history_tab_history">Historial</string>
     <string name="action_history_tab_pending">Pendiente</string>

@@ -5,6 +5,7 @@ struct HomelabApp: App {
     @State private var servicesStore = ServicesStore()
     @State private var settingsStore = SettingsStore()
     @State private var tenantStore = TenantStore()
+    @State private var siteStore = SiteStore()
     @State private var localizer = Localizer()
     @State private var isUnlocked = false
     @State private var needsSetup = false
@@ -43,6 +44,7 @@ struct HomelabApp: App {
             .environment(servicesStore)
             .environment(settingsStore)
             .environment(tenantStore)
+            .environment(siteStore)
             .environment(localizer)
             .preferredColorScheme(colorScheme)
             .task {

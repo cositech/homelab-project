@@ -296,6 +296,22 @@ fun AppNavigation() {
                 val settingsVm: com.homelab.app.ui.settings.SettingsViewModel = hiltViewModel()
                 com.homelab.app.ui.settings.TenantsScreen(
                     onNavigateBack = { navController.popBackStack() },
+                    onOpenSites = { tenantId ->
+                        navController.navigate("settings/tenants/$tenantId/sites")
+                    },
+                    viewModel = settingsVm
+                )
+            }
+
+            composable(
+                route = "settings/tenants/{tenantId}/sites",
+                arguments = listOf(androidx.navigation.navArgument("tenantId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val settingsVm: com.homelab.app.ui.settings.SettingsViewModel = hiltViewModel()
+                val tenantId = backStackEntry.arguments?.getString("tenantId") ?: com.homelab.app.domain.model.Tenant.DEFAULT_ID
+                com.homelab.app.ui.settings.SitesScreen(
+                    tenantId = tenantId,
+                    onNavigateBack = { navController.popBackStack() },
                     viewModel = settingsVm
                 )
             }

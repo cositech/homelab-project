@@ -110,6 +110,12 @@ struct TenantsView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+                NavigationLink {
+                    SitesView(tenantId: tenant.id)
+                } label: {
+                    Text(localizer.t.settingsSitesTitle)
+                }
+                .buttonStyle(.bordered)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
