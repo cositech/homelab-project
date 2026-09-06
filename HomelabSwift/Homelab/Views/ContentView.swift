@@ -77,11 +77,20 @@ struct ContentView: View {
     }
 }
 
+/// A "By Site" group's identity: tenant plus site, not site alone - two different tenants' sites
+/// (or "no site" groups) must never collapse into one, mirroring why `CanonicalAsset.correlationId`
+/// namespaces by tenant.
+private struct SiteGroupKey: Hashable {
+    let tenantRef: String
+    let siteId: String?
+}
+
 private enum OperationsSection: String, CaseIterable, Identifiable {
     case health = "Health"
     case alerts = "Alerts"
     case assets = "Assets"
     case correlation = "By Asset"
+    case bySite = "By Site"
     case search = "Search"
     case diagnostics = "Diagnostics"
 
@@ -92,6 +101,11 @@ private enum OperationsSection: String, CaseIterable, Identifiable {
 @MainActor
 private final class OperationsWorkspace {
     var snapshot = OperationsSnapshot()
+    // Which site (if any) each instance behind the snapshot's correlated assets is assigned to -
+    // built once per refresh from the same instance list performRefresh already has in hand, so
+    // the "By Site" tab can resolve an AssetObservation.instanceId back to a siteRef without a
+    // second fetch.
+    var siteRefByInstanceId: [UUID: String?] = [:]
     var isRefreshing = false
     var errorMessage: String?
 
@@ -262,6 +276,7 @@ private final class OperationsWorkspace {
             refreshedAt: observedAt,
             correlatedAssets: correlated
         )
+        siteRefByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.siteRef) })
     }
 
     /// Cross-provider rollup of `assets`, correlated ones first. See `resolveAcrossTenants` for the
@@ -514,6 +529,7 @@ private final class OperationsWorkspace {
 struct OperationsView: View {
     @Environment(ServicesStore.self) private var servicesStore
     @Environment(TenantStore.self) private var tenantStore
+    @Environment(SiteStore.self) private var siteStore
     @Environment(Localizer.self) private var localizer
     @State private var workspace = OperationsWorkspace()
     @State private var section: OperationsSection = .health
@@ -659,6 +675,64 @@ struct OperationsView: View {
                     ForEach(workspace.snapshot.correlatedAssets, id: \.correlationId) { asset in
                         canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
                     }
+                } else if section == .bySite {
+                    let resourceByRef = Dictionary(uniqueKeysWithValues: workspace.snapshot.assets.map {
+                        ("\($0.providerId)/\($0.instanceId.uuidString.lowercased())/\($0.resourceType)/\($0.resourceId)", $0)
+                    })
+                    let alertCountByRef = workspace.snapshot.alerts.reduce(into: [String: Int]()) { counts, alert in
+                        guard let resourceId = alert.resourceId else { return }
+                        let ref = "\(alert.providerId)/\(alert.instanceId.uuidString.lowercased())/\(resourceId)"
+                        counts[ref, default: 0] += 1
+                    }
+                    let siteById = Dictionary(uniqueKeysWithValues: siteStore.registry.sites.map { ($0.id, $0) })
+                    let tenantById = Dictionary(uniqueKeysWithValues: tenantStore.selection.tenants.map { ($0.id, $0) })
+                    // Keyed by tenant, not just site: two different tenants' sites (or "no site"
+                    // groups) must never collapse into one, and two tenants can legitimately name a
+                    // site the same thing (e.g. "Rack 1") - the same reason CanonicalAsset.correlationId
+                    // namespaces by tenant. Grouped by the first member observation whose instance is
+                    // assigned to a site (an asset merges observations across providers, but in
+                    // practice they all belong to the same physical site); assets with no such
+                    // instance fall into that tenant's "no site" group.
+                    let allGroups = Dictionary(grouping: workspace.snapshot.correlatedAssets) { asset -> SiteGroupKey in
+                        for observation in asset.observations {
+                            if let siteRef = workspace.siteRefByInstanceId[observation.instanceId] ?? nil,
+                               let site = siteById[siteRef] {
+                                return SiteGroupKey(tenantRef: asset.tenantRef, siteId: site.id)
+                            }
+                        }
+                        return SiteGroupKey(tenantRef: asset.tenantRef, siteId: nil)
+                    }
+                    // The tenant label only needs to render when more than one tenant is actually
+                    // present in this refresh (single-tenant installs, and a scoped-to-one-tenant
+                    // view, never show it).
+                    let showTenantLabel = Set(allGroups.keys.map(\.tenantRef)).count > 1
+                    let orderedKeys = allGroups.keys.sorted { lhs, rhs in
+                        let lhsSite = lhs.siteId.flatMap { siteById[$0]?.name }
+                        let rhsSite = rhs.siteId.flatMap { siteById[$0]?.name }
+                        if lhsSite != rhsSite {
+                            guard let lhsSite else { return false }
+                            guard let rhsSite else { return true }
+                            return lhsSite.localizedCaseInsensitiveCompare(rhsSite) == .orderedAscending
+                        }
+                        let lhsTenant = tenantById[lhs.tenantRef].map { tenantDisplayName($0, localizer: localizer) } ?? ""
+                        let rhsTenant = tenantById[rhs.tenantRef].map { tenantDisplayName($0, localizer: localizer) } ?? ""
+                        return lhsTenant.localizedCaseInsensitiveCompare(rhsTenant) == .orderedAscending
+                    }
+
+                    if allGroups.isEmpty { empty("No assets discovered") }
+                    ForEach(orderedKeys, id: \.self) { key in
+                        let assets = allGroups[key] ?? []
+                        siteGroupHeader(
+                            siteName: key.siteId.flatMap { siteById[$0]?.name },
+                            tenantName: showTenantLabel
+                                ? tenantById[key.tenantRef].map { tenantDisplayName($0, localizer: localizer) }
+                                : nil,
+                            count: assets.count
+                        )
+                        ForEach(assets, id: \.correlationId) { asset in
+                            canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
+                        }
+                    }
                 } else {
                     if workspace.snapshot.diagnostics.isEmpty { empty("No diagnostics available") }
                     ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0) }
@@ -716,6 +790,32 @@ struct OperationsView: View {
                     state: resourceHealthState(resource?.state)
                 )
             }
+        }
+    }
+
+    private func siteGroupHeader(siteName: String?, tenantName: String?, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(AppTheme.accent)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(siteName ?? localizer.t.sitesNone)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+                    if let tenantName {
+                        Text(tenantName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                Text("\(count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Divider()
         }
     }
 
