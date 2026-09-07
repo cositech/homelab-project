@@ -33,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +63,7 @@ private enum class OperationsSection(val label: String) {
     ASSETS("Assets"),
     CORRELATION("By Asset"),
     BY_SITE("By Site"),
+    BY_CUSTOMER("By Customer"),
     SEARCH("Search"),
     DIAGNOSTICS("Diagnostics")
 }
@@ -71,8 +73,20 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
     val siteRegistry by viewModel.siteRegistry.collectAsStateWithLifecycle()
+    val customerRegistry by viewModel.customerRegistry.collectAsStateWithLifecycle()
     var selectedSection by remember { mutableIntStateOf(0) }
-    val sections = remember { OperationsSection.entries }
+    // "By Customer" only makes sense fanned out across every tenant - hidden the rest of the time,
+    // the same rule as every other Phase-4 all-tenants-only affordance.
+    val sections = remember(tenantSelection.allTenantsMode) {
+        if (tenantSelection.allTenantsMode) {
+            OperationsSection.entries
+        } else {
+            OperationsSection.entries.filterNot { it == OperationsSection.BY_CUSTOMER }
+        }
+    }
+    LaunchedEffect(sections) {
+        if (selectedSection >= sections.size) selectedSection = 0
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -127,6 +141,7 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
             OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it) }
             OperationsSection.CORRELATION -> CorrelationSection(state.snapshot)
             OperationsSection.BY_SITE -> SiteCorrelationSection(state.snapshot, state.siteRefByInstanceId, siteRegistry, tenantSelection)
+            OperationsSection.BY_CUSTOMER -> CustomerCorrelationSection(state.snapshot, state.tenantRefByInstanceId, tenantSelection, customerRegistry)
             OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it) }
             OperationsSection.SEARCH -> SearchSection(state.snapshot)
         }
@@ -509,6 +524,110 @@ private fun SiteGroupHeader(siteName: String?, tenantName: String?, count: Int) 
             )
         }
         HorizontalDivider()
+    }
+}
+
+/**
+ * Phase 4 "by customer" rollup: per-tenant health and alert counts on one screen, reachable only
+ * in all-tenants mode (a single-tenant view already shows everything for that one tenant). Reads
+ * the same [snapshot] every other section reads - no extra requests, no extra state - resolving
+ * each health/alert record's `instanceId` back to a tenant via [tenantRefByInstanceId].
+ */
+@Composable
+private fun CustomerCorrelationSection(
+    snapshot: com.homelab.app.domain.provider.OperationsSnapshot,
+    tenantRefByInstanceId: Map<String, String>,
+    tenantSelection: TenantSelection,
+    customerRegistry: com.homelab.app.domain.model.CustomerRegistry
+) {
+    val healthByTenant = remember(snapshot, tenantRefByInstanceId) {
+        snapshot.health.groupBy { tenantRefByInstanceId[it.instanceId] }
+    }
+    val alertCountByTenant = remember(snapshot, tenantRefByInstanceId) {
+        snapshot.alerts.groupingBy { tenantRefByInstanceId[it.instanceId] }.eachCount()
+    }
+    val defaultTenantLabel = stringResource(R.string.home_default_badge)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(tenantSelection.tenants, key = { it.id }) { tenant ->
+            val tenantName = if (tenant.isDefault) defaultTenantLabel else tenant.name
+            val health = healthByTenant[tenant.id].orEmpty()
+            TenantHealthSummaryCard(
+                tenantName = tenantName,
+                customerAccountName = customerRegistry.customerFor(tenant.id)?.accountName,
+                healthyCount = health.count { it.state == ProviderHealthState.HEALTHY },
+                degradedCount = health.count { it.state == ProviderHealthState.DEGRADED },
+                unavailableCount = health.count { it.state == ProviderHealthState.UNAVAILABLE },
+                alertCount = alertCountByTenant[tenant.id] ?: 0
+            )
+        }
+    }
+}
+
+@Composable
+private fun TenantHealthSummaryCard(
+    tenantName: String,
+    customerAccountName: String?,
+    healthyCount: Int,
+    degradedCount: Int,
+    unavailableCount: Int,
+    alertCount: Int
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = tenantName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    customerAccountName?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (alertCount > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Text(
+                            text = if (alertCount == 1) "1 alert" else "$alertCount alerts",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Healthy: $healthyCount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Degraded: $degradedCount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Unavailable: $unavailableCount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 

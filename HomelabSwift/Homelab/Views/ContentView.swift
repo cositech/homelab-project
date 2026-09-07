@@ -91,6 +91,7 @@ private enum OperationsSection: String, CaseIterable, Identifiable {
     case assets = "Assets"
     case correlation = "By Asset"
     case bySite = "By Site"
+    case byCustomer = "By Customer"
     case search = "Search"
     case diagnostics = "Diagnostics"
 
@@ -106,6 +107,10 @@ private final class OperationsWorkspace {
     // the "By Site" tab can resolve an AssetObservation.instanceId back to a siteRef without a
     // second fetch.
     var siteRefByInstanceId: [UUID: String?] = [:]
+    // Which tenant each instance behind this snapshot belongs to - built once per refresh the
+    // same way, so the "By Customer" rollup can resolve a health/alert record's instanceId back
+    // to a tenantRef without a second fetch.
+    var tenantRefByInstanceId: [UUID: String] = [:]
     var isRefreshing = false
     var errorMessage: String?
 
@@ -277,6 +282,7 @@ private final class OperationsWorkspace {
             correlatedAssets: correlated
         )
         siteRefByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.siteRef) })
+        tenantRefByInstanceId = Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0.tenantRef) })
     }
 
     /// Cross-provider rollup of `assets`, correlated ones first. See `resolveAcrossTenants` for the
@@ -530,10 +536,19 @@ struct OperationsView: View {
     @Environment(ServicesStore.self) private var servicesStore
     @Environment(TenantStore.self) private var tenantStore
     @Environment(SiteStore.self) private var siteStore
+    @Environment(CustomerStore.self) private var customerStore
     @Environment(Localizer.self) private var localizer
     @State private var workspace = OperationsWorkspace()
     @State private var section: OperationsSection = .health
     @State private var query = ""
+
+    // "By Customer" only makes sense fanned out across every tenant - hidden the rest of the
+    // time, the same rule as every other Phase-4 all-tenants-only affordance.
+    private var visibleSections: [OperationsSection] {
+        tenantStore.selection.allTenantsMode
+            ? OperationsSection.allCases
+            : OperationsSection.allCases.filter { $0 != .byCustomer }
+    }
 
     var body: some View {
         NavigationStack {
@@ -552,7 +567,7 @@ struct OperationsView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(OperationsSection.allCases) { candidate in
+                        ForEach(visibleSections) { candidate in
                             Button(candidate.rawValue) { section = candidate }
                                 .buttonStyle(.borderedProminent)
                                 .tint(section == candidate ? AppTheme.accent : Color.secondary.opacity(0.25))
@@ -585,6 +600,9 @@ struct OperationsView: View {
             .task { await refresh() }
             .onChange(of: tenantStore.selection) { _, _ in
                 Task { await refresh() }
+            }
+            .onChange(of: tenantStore.selection.allTenantsMode) { _, stillAllTenants in
+                if section == .byCustomer && !stillAllTenants { section = .health }
             }
         }
     }
@@ -733,6 +751,22 @@ struct OperationsView: View {
                             canonicalAssetCard(asset, resourceByRef: resourceByRef, alertCountByRef: alertCountByRef)
                         }
                     }
+                } else if section == .byCustomer {
+                    let healthByTenant = Dictionary(grouping: workspace.snapshot.health) { workspace.tenantRefByInstanceId[$0.instanceId] }
+                    let alertCountByTenant = workspace.snapshot.alerts.reduce(into: [String?: Int]()) { counts, alert in
+                        counts[workspace.tenantRefByInstanceId[alert.instanceId], default: 0] += 1
+                    }
+                    ForEach(tenantStore.selection.tenants) { tenant in
+                        let health = healthByTenant[tenant.id] ?? []
+                        tenantHealthSummaryCard(
+                            tenantName: tenantDisplayName(tenant, localizer: localizer),
+                            customerAccountName: customerStore.registry.customer(forTenant: tenant.id)?.accountName,
+                            healthyCount: health.filter { $0.state == .healthy }.count,
+                            degradedCount: health.filter { $0.state == .degraded }.count,
+                            unavailableCount: health.filter { $0.state == .unavailable }.count,
+                            alertCount: alertCountByTenant[tenant.id] ?? 0
+                        )
+                    }
                 } else {
                     if workspace.snapshot.diagnostics.isEmpty { empty("No diagnostics available") }
                     ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0) }
@@ -817,6 +851,48 @@ struct OperationsView: View {
             }
             Divider()
         }
+    }
+
+    private func tenantHealthSummaryCard(
+        tenantName: String,
+        customerAccountName: String?,
+        healthyCount: Int,
+        degradedCount: Int,
+        unavailableCount: Int,
+        alertCount: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tenantName)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+                    if let customerAccountName {
+                        Text(customerAccountName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                if alertCount > 0 {
+                    Text(alertCount == 1 ? "1 alert" : "\(alertCount) alerts")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.red.opacity(0.15), in: Capsule())
+                }
+            }
+            HStack(spacing: 16) {
+                Text("Healthy: \(healthyCount)").font(.caption2).foregroundStyle(.secondary)
+                Text("Degraded: \(degradedCount)").font(.caption2).foregroundStyle(.secondary)
+                Text("Unavailable: \(unavailableCount)").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func resourceHealthState(_ state: String?) -> ProviderHealthState {

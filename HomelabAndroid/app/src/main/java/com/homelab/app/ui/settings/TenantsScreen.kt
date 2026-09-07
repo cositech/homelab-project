@@ -41,9 +41,11 @@ fun TenantsScreen(
     viewModel: SettingsViewModel
 ) {
     val selection by viewModel.tenantSelection.collectAsStateWithLifecycle()
+    val customerRegistry by viewModel.customerRegistry.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Tenant?>(null) }
     var pendingDelete by remember { mutableStateOf<Tenant?>(null) }
+    var editingCustomer by remember { mutableStateOf<Tenant?>(null) }
 
     Scaffold(
         topBar = {
@@ -86,7 +88,8 @@ fun TenantsScreen(
                     onSetActive = { viewModel.setActiveTenant(tenant.id) },
                     onRename = { renaming = tenant },
                     onDelete = { pendingDelete = tenant },
-                    onOpenSites = { onOpenSites(tenant.id) }
+                    onOpenSites = { onOpenSites(tenant.id) },
+                    onEditCustomerInfo = { editingCustomer = tenant }
                 )
             }
         }
@@ -145,6 +148,17 @@ fun TenantsScreen(
             }
         )
     }
+
+    editingCustomer?.let { tenant ->
+        CustomerEditDialog(
+            existing = customerRegistry.customerFor(tenant.id),
+            onDismiss = { editingCustomer = null },
+            onConfirm = { accountName, contact, notes ->
+                viewModel.setCustomer(tenant.id, accountName, contact, notes)
+                editingCustomer = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -154,7 +168,8 @@ private fun TenantRow(
     onSetActive: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onOpenSites: () -> Unit
+    onOpenSites: () -> Unit,
+    onEditCustomerInfo: () -> Unit
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -236,12 +251,22 @@ private fun TenantRow(
                         Text(stringResource(R.string.delete), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                OutlinedButton(
-                    onClick = onOpenSites,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-                ) {
+            }
+
+            // Secondary navigation row: destinations, not actions on the tenant itself - kept
+            // apart from Set Active/Rename/Delete above so that row never has to fit more than
+            // three full-width buttons.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = onOpenSites) {
                     Text(stringResource(R.string.settings_sites_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (tenant.kind == TenantKind.CUSTOMER) {
+                    TextButton(onClick = onEditCustomerInfo) {
+                        Text(stringResource(R.string.customer_info_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
@@ -296,6 +321,67 @@ private fun TenantEditDialog(
             Button(
                 onClick = { onConfirm(name.trim(), kind) },
                 enabled = name.isNotBlank(),
+                modifier = Modifier.heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Text(stringResource(R.string.save), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    )
+}
+
+/**
+ * Editor for the [com.homelab.app.domain.model.Customer] metadata on a [TenantKind.CUSTOMER]
+ * tenant - account name, contact and notes. Saving with a blank account name is how the record is
+ * cleared (see [com.homelab.app.domain.model.CustomerRegistry.setting]).
+ */
+@Composable
+private fun CustomerEditDialog(
+    existing: com.homelab.app.domain.model.Customer?,
+    onDismiss: () -> Unit,
+    onConfirm: (accountName: String, contact: String?, notes: String?) -> Unit
+) {
+    var accountName by rememberSaveable { mutableStateOf(existing?.accountName.orEmpty()) }
+    var contact by rememberSaveable { mutableStateOf(existing?.contact.orEmpty()) }
+    var notes by rememberSaveable { mutableStateOf(existing?.notes.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.customer_info_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = accountName,
+                    onValueChange = { accountName = it },
+                    label = { Text(stringResource(R.string.customer_account_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = contact,
+                    onValueChange = { contact = it },
+                    label = { Text(stringResource(R.string.customer_contact)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text(stringResource(R.string.customer_notes)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(accountName.trim(), contact.trim().ifBlank { null }, notes.trim().ifBlank { null })
+                },
                 modifier = Modifier.heightIn(min = 48.dp),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
             ) {

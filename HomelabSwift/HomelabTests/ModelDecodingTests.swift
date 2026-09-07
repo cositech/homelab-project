@@ -945,6 +945,69 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(reopened.registry.sites.isEmpty)
     }
 
+    func testCustomerRegistryPureTransforms() throws {
+        XCTAssertEqual(CustomerRegistry.initial.customers, [])
+
+        let acme = Customer(tenantRef: "acme", accountName: "Acme", contact: nil, notes: nil)
+        let added = CustomerRegistry.initial.setting(acme)
+        XCTAssertEqual(added.customer(forTenant: "acme")?.accountName, "Acme")
+
+        // setting with an existing tenant ref replaces that entry.
+        let replaced = added.setting(Customer(tenantRef: "acme", accountName: "Acme Corp", contact: "ops@acme.test", notes: nil))
+        XCTAssertEqual(replaced.customers.count, 1)
+        XCTAssertEqual(replaced.customer(forTenant: "acme")?.accountName, "Acme Corp")
+        XCTAssertEqual(replaced.customer(forTenant: "acme")?.contact, "ops@acme.test")
+
+        // normalize drops a blank account name and trims/blanks the rest.
+        let normalized = CustomerRegistry(customers: [
+            Customer(tenantRef: "  acme  ", accountName: "  Acme  ", contact: "   ", notes: "  Some notes  ")
+        ]).normalized()
+        let stored = normalized.customer(forTenant: "acme")
+        XCTAssertEqual(stored?.tenantRef, "acme")
+        XCTAssertEqual(stored?.accountName, "Acme")
+        XCTAssertNil(stored?.contact)
+        XCTAssertEqual(stored?.notes, "Some notes")
+        XCTAssertNil(CustomerRegistry(customers: [Customer(tenantRef: "acme", accountName: "  ")]).normalized().customer(forTenant: "acme"))
+
+        // setting a blank account name effectively removes the record.
+        let cleared = replaced.setting(Customer(tenantRef: "acme", accountName: "  "))
+        XCTAssertNil(cleared.customer(forTenant: "acme"))
+
+        // removing drops only the matching tenant's record.
+        let multi = CustomerRegistry.initial
+            .setting(Customer(tenantRef: "acme", accountName: "Acme"))
+            .setting(Customer(tenantRef: "globex", accountName: "Globex"))
+        let removed = multi.removing(tenantRef: "acme")
+        XCTAssertNil(removed.customer(forTenant: "acme"))
+        XCTAssertEqual(removed.customer(forTenant: "globex")?.accountName, "Globex")
+
+        // JSON round trip.
+        let restored = try JSONDecoder().decode(
+            CustomerRegistry.self,
+            from: JSONEncoder().encode(multi)
+        ).normalized()
+        XCTAssertEqual(multi, restored)
+    }
+
+    @MainActor
+    func testCustomerStorePersistsRegistryAcrossInstances() {
+        let suite = "customer-store-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = CustomerStore(defaults: defaults)
+        XCTAssertTrue(store.registry.customers.isEmpty)
+
+        store.setCustomer(tenantRef: "acme", accountName: "  Acme Corp  ", contact: "ops@acme.test", notes: nil)
+        XCTAssertEqual(store.registry.customer(forTenant: "acme")?.accountName, "Acme Corp")
+
+        let reopened = CustomerStore(defaults: defaults)
+        XCTAssertEqual(reopened.registry, store.registry)
+
+        _ = reopened.removeCustomer(tenantRef: "acme")
+        XCTAssertTrue(reopened.registry.customers.isEmpty)
+    }
+
     func testServiceInstanceMetadataCarriesTenantScopeAndDefaultsWhenAbsent() throws {
         let scoped = ServiceInstance(
             id: UUID(uuidString: "30000000-0000-0000-0000-00000000000c")!,

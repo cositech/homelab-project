@@ -240,6 +240,66 @@ struct SiteRegistry: Codable, Equatable, Sendable {
     }
 }
 
+/// The device-local set of `Customer` records, at most one per tenant (keyed by
+/// `Customer.tenantRef`). Unlike `SiteRegistry` this is a 1:1 relationship, not a 1:many one - a
+/// tenant either has customer metadata or doesn't, so there is no "customers for tenant" list,
+/// only a single lookup.
+///
+/// All transforms are pure and return a re-`normalized()` value. Invariants held by
+/// `normalized()`: `customers` has no duplicate tenant refs and no blank account name - clearing
+/// the account name and saving is how a customer record is removed.
+struct CustomerRegistry: Codable, Equatable, Sendable {
+    var customers: [Customer]
+
+    init(customers: [Customer] = []) {
+        self.customers = customers
+    }
+
+    static let initial = CustomerRegistry()
+
+    func customer(forTenant tenantRef: String) -> Customer? {
+        let target = Tenant.refOrDefault(tenantRef)
+        return customers.first { $0.tenantRef == target }
+    }
+
+    func normalized() -> CustomerRegistry {
+        var deduped: [String: Customer] = [:]
+        var order: [String] = []
+        for customer in customers {
+            let tenantRef = Tenant.refOrDefault(customer.tenantRef)
+            let accountName = customer.accountName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !accountName.isEmpty else { continue }
+            if deduped[tenantRef] == nil { order.append(tenantRef) }
+            let contact = customer.contact?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let notes = customer.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+            deduped[tenantRef] = Customer(
+                tenantRef: tenantRef,
+                accountName: accountName,
+                contact: (contact?.isEmpty ?? true) ? nil : contact,
+                notes: (notes?.isEmpty ?? true) ? nil : notes
+            )
+        }
+        return CustomerRegistry(customers: order.compactMap { deduped[$0] })
+    }
+
+    /// Sets (or replaces) the customer record for `customer`'s tenant. A blank account name removes it.
+    func setting(_ customer: Customer) -> CustomerRegistry {
+        let tenantRef = Tenant.refOrDefault(customer.tenantRef)
+        var next = customers.filter { $0.tenantRef != tenantRef }
+        next.append(Customer(tenantRef: tenantRef, accountName: customer.accountName, contact: customer.contact, notes: customer.notes))
+        var copy = self
+        copy.customers = next
+        return copy.normalized()
+    }
+
+    func removing(tenantRef: String) -> CustomerRegistry {
+        let target = Tenant.refOrDefault(tenantRef)
+        var copy = self
+        copy.customers = customers.filter { $0.tenantRef != target }
+        return copy.normalized()
+    }
+}
+
 /// The device-local set of configured tenants plus which one is active.
 ///
 /// Every transform is pure and returns a re-`normalized()` value, so the store layer is a thin

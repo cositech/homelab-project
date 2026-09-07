@@ -284,6 +284,10 @@
     <string name="sites_add_site">Aggiungi sede</string>
     <string name="sites_empty">Nessuna sede ancora</string>
     <string name="sites_none">Nessuna sede</string>
+    <string name="customer_info_title">Info cliente</string>
+    <string name="customer_account_name">Nome account</string>
+    <string name="customer_contact">Contatto</string>
+    <string name="customer_notes">Note</string>
     <string name="settings_action_history_title">Cronologia azioni</string>
     <string name="action_history_tab_history">Cronologia</string>
     <string name="action_history_tab_pending">In sospeso</string>

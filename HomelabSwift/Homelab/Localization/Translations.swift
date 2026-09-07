@@ -987,6 +987,10 @@ struct Translations {
     let sitesAddSite: String
     let sitesEmpty: String
     let sitesNone: String
+    let customerInfoTitle: String
+    let customerAccountName: String
+    let customerContact: String
+    let customerNotes: String
     let settingsActionHistory: String
     let actionHistoryTabHistory: String
     let actionHistoryTabPending: String

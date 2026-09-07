@@ -304,6 +304,10 @@
     <string name="sites_add_site">Standort hinzufügen</string>
     <string name="sites_empty">Noch keine Standorte</string>
     <string name="sites_none">Kein Standort</string>
+    <string name="customer_info_title">Kundeninformationen</string>
+    <string name="customer_account_name">Firmenname</string>
+    <string name="customer_contact">Kontakt</string>
+    <string name="customer_notes">Notizen</string>
     <string name="settings_action_history_title">Aktionsverlauf</string>
     <string name="action_history_tab_history">Verlauf</string>
     <string name="action_history_tab_pending">Ausstehend</string>
