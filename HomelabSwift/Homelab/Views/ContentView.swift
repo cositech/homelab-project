@@ -252,8 +252,14 @@ private final class OperationsWorkspace {
         for asset in assets {
             uniqueAssets["\(asset.providerId):\(asset.instanceId):\(asset.resourceType):\(asset.resourceId)"] = asset
         }
+        // eventId alone is only ever guaranteed unique within one instance - some call sites above
+        // already embed instanceId in it (e.g. Proxmox's "health:$instanceId:$state"), others
+        // don't (e.g. Uptime Kuma's "monitor:$monitorId:down"), so two different instances - in
+        // the same tenant or, worse, two different tenants in all-tenants mode - can collide and
+        // silently drop one's alert. Dedupe on the pair instead, the same way uniqueAssets above
+        // already does.
         var uniqueAlerts: [String: ProviderEvent] = [:]
-        for alert in alerts { uniqueAlerts[alert.eventId] = alert }
+        for alert in alerts { uniqueAlerts["\(alert.instanceId):\(alert.eventId)"] = alert }
 
         let dedupedAssets = uniqueAssets.values.sorted {
             $0.resourceType == $1.resourceType

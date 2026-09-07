@@ -228,7 +228,14 @@ class OperationsViewModel @Inject constructor(
 
         return OperationsSnapshot(
             health = health.sortedWith(compareBy<ProviderHealth> { healthRank(it.state) }.thenBy { it.providerId }),
-            alerts = alerts.distinctBy { it.eventId }.sortedWith(compareBy<ProviderEvent> { severityRank(it.severity) }.thenByDescending { it.occurredAtEpochMillis }),
+            // eventId alone is only ever guaranteed unique within one instance - some call sites
+            // above already embed instanceId in it (e.g. Proxmox's "health:$instanceId:$state"),
+            // others don't (e.g. Uptime Kuma's "monitor:$monitorId:down"), so two different
+            // instances - in the same tenant or, worse, two different tenants in all-tenants mode
+            // - can collide and silently drop one's alert. Dedupe on the pair instead, the same way
+            // dedupedAssets above already does.
+            alerts = alerts.distinctBy { "${it.instanceId}:${it.eventId}" }
+                .sortedWith(compareBy<ProviderEvent> { severityRank(it.severity) }.thenByDescending { it.occurredAtEpochMillis }),
             assets = dedupedAssets,
             diagnostics = diagnostics.sortedWith(compareBy<ProviderDiagnostic> { healthRank(it.state) }.thenBy { it.displayName.lowercase() }),
             refreshedAtEpochMillis = observedAt,
