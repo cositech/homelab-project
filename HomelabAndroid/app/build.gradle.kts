@@ -65,7 +65,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.6")
+    implementation("androidx.navigation:navigation-compose:2.10.0")
 
     // Splash, Biometric, Lifecycle, AppCompat
     implementation("androidx.appcompat:appcompat:1.8.0")
