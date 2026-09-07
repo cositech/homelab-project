@@ -8,14 +8,17 @@ import com.homelab.app.domain.action.ActionAuditRecord
 import com.homelab.app.domain.action.ControlledActionCoordinator
 import com.homelab.app.domain.action.DurableActionQueueEntry
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.TenantSelection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -40,6 +43,9 @@ class ActionHistoryViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    val tenantSelection: StateFlow<TenantSelection> = tenantStore.selection
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TenantSelection.INITIAL)
 
     private var refreshJob: Job? = null
 

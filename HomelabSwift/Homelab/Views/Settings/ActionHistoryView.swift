@@ -16,6 +16,22 @@ struct ActionHistoryView: View {
     @State private var isRefreshing = false
     @State private var refreshGeneration = 0
 
+    /// Only in all-tenants mode, and only when more than one tenant is actually present among the
+    /// records on screen right now - unlike Health/Alerts/Assets, `ActionAuditRecord`/
+    /// `ControlledActionRequest` already carry `tenantRef` directly, so no instanceId indirection
+    /// is needed here, just a tenantRef -> display-name lookup (same gating rule as
+    /// `OperationsView.tenantLabelByInstanceId`).
+    private var tenantLabelByTenantRef: [String: String] {
+        let distinctTenantRefs = Set(auditRecords.map(\.tenantRef)).union(pendingEntries.compactMap(\.request.tenantRef))
+        guard tenantStore.selection.allTenantsMode, distinctTenantRefs.count > 1 else { return [:] }
+        let tenantById = Dictionary(uniqueKeysWithValues: tenantStore.selection.tenants.map { ($0.id, $0) })
+        var result: [String: String] = [:]
+        for tenantRef in distinctTenantRefs {
+            result[tenantRef] = tenantById[tenantRef].map { tenantDisplayName($0, localizer: localizer) } ?? tenantRef
+        }
+        return result
+    }
+
     var body: some View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
@@ -41,7 +57,7 @@ struct ActionHistoryView: View {
                         ScrollView {
                             LazyVStack(spacing: 8) {
                                 ForEach(auditRecords, id: \.auditId) { record in
-                                    AuditRecordRow(record: record, instancesById: servicesStore.instancesById)
+                                    AuditRecordRow(record: record, instancesById: servicesStore.instancesById, tenantLabel: tenantLabelByTenantRef[record.tenantRef])
                                 }
                             }
                             .padding(16)
@@ -54,7 +70,7 @@ struct ActionHistoryView: View {
                         ScrollView {
                             LazyVStack(spacing: 8) {
                                 ForEach(pendingEntries, id: \.request.idempotencyKey) { entry in
-                                    PendingEntryRow(entry: entry, instancesById: servicesStore.instancesById, localizer: localizer)
+                                    PendingEntryRow(entry: entry, instancesById: servicesStore.instancesById, localizer: localizer, tenantLabel: entry.request.tenantRef.flatMap { tenantLabelByTenantRef[$0] })
                                 }
                             }
                             .padding(16)
@@ -177,6 +193,7 @@ private struct RowHeader: View {
     let type: ServiceType?
     let action: String
     let risk: ControlledActionRisk
+    var tenantLabel: String? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -184,9 +201,20 @@ private struct RowHeader: View {
                 ServiceIconView(type: type, size: 26)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(label)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                    if let tenantLabel {
+                        Text(tenantLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                            .lineLimit(1)
+                    }
+                }
                 Text(action)
                     .font(.caption.monospaced())
                     .foregroundStyle(AppTheme.textSecondary)
@@ -206,11 +234,12 @@ private struct RowHeader: View {
 private struct AuditRecordRow: View {
     let record: ActionAuditRecord
     let instancesById: [UUID: ServiceInstance]
+    var tenantLabel: String? = nil
 
     var body: some View {
         let (label, type) = instanceLabel(for: record.providerRef, instancesById: instancesById)
         ActionHistoryRowCard(color: stateColor(record.state)) {
-            RowHeader(label: label, type: type, action: record.action, risk: record.risk)
+            RowHeader(label: label, type: type, action: record.action, risk: record.risk, tenantLabel: tenantLabel)
             Text(record.targetRef)
                 .font(.caption.monospaced())
                 .foregroundStyle(AppTheme.textSecondary)
@@ -237,11 +266,12 @@ private struct PendingEntryRow: View {
     let entry: DurableActionQueueEntry
     let instancesById: [UUID: ServiceInstance]
     let localizer: Localizer
+    var tenantLabel: String? = nil
 
     var body: some View {
         let (label, type) = instanceLabel(for: entry.request.providerRef, instancesById: instancesById)
         ActionHistoryRowCard(color: stateColor(entry.state)) {
-            RowHeader(label: label, type: type, action: entry.request.action, risk: entry.request.risk)
+            RowHeader(label: label, type: type, action: entry.request.action, risk: entry.request.risk, tenantLabel: tenantLabel)
             Text(entry.request.targetRef)
                 .font(.caption.monospaced())
                 .foregroundStyle(AppTheme.textSecondary)

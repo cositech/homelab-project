@@ -87,6 +87,23 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
     LaunchedEffect(sections) {
         if (selectedSection >= sections.size) selectedSection = 0
     }
+    // Only in all-tenants mode, and only when more than one tenant is actually present in this
+    // refresh - a single-tenant view (or an all-tenants refresh that happens to only touch one
+    // tenant's instances right now) has nothing to disambiguate. Empty otherwise, so every card
+    // below can unconditionally look up `tenantLabelByInstanceId[item.instanceId]` and get back
+    // null exactly when no label should render.
+    val defaultTenantLabel = stringResource(R.string.home_default_badge)
+    val tenantLabelByInstanceId = remember(tenantSelection, state.tenantRefByInstanceId, defaultTenantLabel) {
+        val distinctTenants = state.tenantRefByInstanceId.values.toSet()
+        if (!tenantSelection.allTenantsMode || distinctTenants.size <= 1) {
+            emptyMap()
+        } else {
+            val tenantById = tenantSelection.tenants.associateBy { it.id }
+            state.tenantRefByInstanceId.mapValues { (_, tenantRef) ->
+                tenantById[tenantRef]?.let { if (it.isDefault) defaultTenantLabel else it.name } ?: tenantRef
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -136,14 +153,14 @@ fun OperationsScreen(viewModel: OperationsViewModel = hiltViewModel()) {
         }
 
         when (sections[selectedSection]) {
-            OperationsSection.HEALTH -> OperationsList(state.snapshot.health, "No provider health data") { HealthCard(it) }
-            OperationsSection.ALERTS -> OperationsList(state.snapshot.alerts, "No active alerts") { AlertCard(it) }
-            OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it) }
+            OperationsSection.HEALTH -> OperationsList(state.snapshot.health, "No provider health data") { HealthCard(it, tenantLabelByInstanceId[it.instanceId]) }
+            OperationsSection.ALERTS -> OperationsList(state.snapshot.alerts, "No active alerts") { AlertCard(it, tenantLabelByInstanceId[it.instanceId]) }
+            OperationsSection.ASSETS -> OperationsList(state.snapshot.assets, "No assets discovered") { AssetCard(it, tenantLabelByInstanceId[it.instanceId]) }
             OperationsSection.CORRELATION -> CorrelationSection(state.snapshot)
             OperationsSection.BY_SITE -> SiteCorrelationSection(state.snapshot, state.siteRefByInstanceId, siteRegistry, tenantSelection)
             OperationsSection.BY_CUSTOMER -> CustomerCorrelationSection(state.snapshot, state.tenantRefByInstanceId, tenantSelection, customerRegistry)
-            OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it) }
-            OperationsSection.SEARCH -> SearchSection(state.snapshot)
+            OperationsSection.DIAGNOSTICS -> OperationsList(state.snapshot.diagnostics, "No diagnostics available") { DiagnosticCard(it, tenantLabelByInstanceId[it.instanceId]) }
+            OperationsSection.SEARCH -> SearchSection(state.snapshot, tenantLabelByInstanceId)
         }
     }
 }
@@ -257,7 +274,10 @@ private fun <T> OperationsList(
 }
 
 @Composable
-private fun SearchSection(snapshot: com.homelab.app.domain.provider.OperationsSnapshot) {
+private fun SearchSection(
+    snapshot: com.homelab.app.domain.provider.OperationsSnapshot,
+    tenantLabelByInstanceId: Map<String, String>
+) {
     var query by remember { mutableStateOf("") }
     val results = remember(snapshot, query) { snapshot.search(query) }
     Column(modifier = Modifier.fillMaxSize()) {
@@ -281,37 +301,40 @@ private fun SearchSection(snapshot: com.homelab.app.domain.provider.OperationsSn
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(results.health) { HealthCard(it) }
-                items(results.alerts) { AlertCard(it) }
-                items(results.assets) { AssetCard(it) }
-                items(results.diagnostics) { DiagnosticCard(it) }
+                items(results.health) { HealthCard(it, tenantLabelByInstanceId[it.instanceId]) }
+                items(results.alerts) { AlertCard(it, tenantLabelByInstanceId[it.instanceId]) }
+                items(results.assets) { AssetCard(it, tenantLabelByInstanceId[it.instanceId]) }
+                items(results.diagnostics) { DiagnosticCard(it, tenantLabelByInstanceId[it.instanceId]) }
             }
         }
     }
 }
 
 @Composable
-private fun HealthCard(item: ProviderHealth) = OperationCard(
+private fun HealthCard(item: ProviderHealth, tenantLabel: String? = null) = OperationCard(
     title = item.providerId,
     subtitle = item.message ?: item.state.name.lowercase(),
     state = item.state,
-    trailing = item.state.name.lowercase()
+    trailing = item.state.name.lowercase(),
+    tenantLabel = tenantLabel
 )
 
 @Composable
-private fun AlertCard(item: ProviderEvent) = OperationCard(
+private fun AlertCard(item: ProviderEvent, tenantLabel: String? = null) = OperationCard(
     title = item.message,
     subtitle = "${item.providerId} · ${item.resourceId ?: item.instanceId}",
     state = if (item.severity.equals("critical", true)) ProviderHealthState.UNAVAILABLE else ProviderHealthState.DEGRADED,
-    trailing = item.severity.lowercase()
+    trailing = item.severity.lowercase(),
+    tenantLabel = tenantLabel
 )
 
 @Composable
-private fun AssetCard(item: ProviderResource) = OperationCard(
+private fun AssetCard(item: ProviderResource, tenantLabel: String? = null) = OperationCard(
     title = item.name,
     subtitle = "${item.providerId} · ${item.resourceType} · ${item.resourceId}",
     state = resourceHealthState(item.state),
-    trailing = item.state ?: item.resourceType
+    trailing = item.state ?: item.resourceType,
+    tenantLabel = tenantLabel
 )
 
 private fun resourceHealthState(state: String?): ProviderHealthState = when (state?.lowercase()) {
@@ -632,11 +655,12 @@ private fun TenantHealthSummaryCard(
 }
 
 @Composable
-private fun DiagnosticCard(item: ProviderDiagnostic) = OperationCard(
+private fun DiagnosticCard(item: ProviderDiagnostic, tenantLabel: String? = null) = OperationCard(
     title = item.displayName,
     subtitle = "${item.endpoint} · TLS ${item.tlsMode} · ${item.capabilities.size} capabilities",
     state = item.state,
-    trailing = item.providerId
+    trailing = item.providerId,
+    tenantLabel = tenantLabel
 )
 
 @Composable
@@ -644,7 +668,8 @@ private fun OperationCard(
     title: String,
     subtitle: String,
     state: ProviderHealthState,
-    trailing: String
+    trailing: String,
+    tenantLabel: String? = null
 ) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -661,7 +686,24 @@ private fun OperationCard(
             }
             Spacer(modifier = Modifier.size(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    tenantLabel?.let {
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

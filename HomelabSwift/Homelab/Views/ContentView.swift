@@ -655,8 +655,23 @@ struct OperationsView: View {
             : tenantDisplayName(tenantStore.selection.activeTenant, localizer: localizer)
     }
 
+    // Only in all-tenants mode, and only when more than one tenant is actually present in this
+    // refresh - a single-tenant view (or an all-tenants refresh that happens to only touch one
+    // tenant's instances right now) has nothing to disambiguate. Empty otherwise, so every card
+    // can unconditionally look up `tenantLabelByInstanceId[instanceId]` and get back nil exactly
+    // when no label should render.
+    private var tenantLabelByInstanceId: [UUID: String] {
+        let distinctTenants = Set(workspace.tenantRefByInstanceId.values)
+        guard tenantStore.selection.allTenantsMode, distinctTenants.count > 1 else { return [:] }
+        let tenantById = Dictionary(uniqueKeysWithValues: tenantStore.selection.tenants.map { ($0.id, $0) })
+        return workspace.tenantRefByInstanceId.mapValues { tenantRef in
+            tenantById[tenantRef].map { tenantDisplayName($0, localizer: localizer) } ?? tenantRef
+        }
+    }
+
     @ViewBuilder private var content: some View {
         let results = workspace.snapshot.search(query)
+        let tenantLabels = tenantLabelByInstanceId
         ScrollView {
             LazyVStack(spacing: 10) {
                 if section == .search {
@@ -665,20 +680,20 @@ struct OperationsView: View {
                     } else if results.isEmpty {
                         empty("No matching operations data")
                     } else {
-                        ForEach(results.health, id: \.instanceId) { healthCard($0) }
-                        ForEach(results.alerts, id: \.eventId) { alertCard($0) }
-                        ForEach(Array(results.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset) }
-                        ForEach(results.diagnostics, id: \.instanceId) { diagnosticCard($0) }
+                        ForEach(results.health, id: \.instanceId) { healthCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
+                        ForEach(results.alerts, id: \.eventId) { alertCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
+                        ForEach(Array(results.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset, tenantLabel: tenantLabels[asset.instanceId]) }
+                        ForEach(results.diagnostics, id: \.instanceId) { diagnosticCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
                     }
                 } else if section == .health {
                     if workspace.snapshot.health.isEmpty { empty("No provider health data") }
-                    ForEach(workspace.snapshot.health, id: \.instanceId) { healthCard($0) }
+                    ForEach(workspace.snapshot.health, id: \.instanceId) { healthCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
                 } else if section == .alerts {
                     if workspace.snapshot.alerts.isEmpty { empty("No active alerts") }
-                    ForEach(workspace.snapshot.alerts, id: \.eventId) { alertCard($0) }
+                    ForEach(workspace.snapshot.alerts, id: \.eventId) { alertCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
                 } else if section == .assets {
                     if workspace.snapshot.assets.isEmpty { empty("No assets discovered") }
-                    ForEach(Array(workspace.snapshot.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset) }
+                    ForEach(Array(workspace.snapshot.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset, tenantLabel: tenantLabels[asset.instanceId]) }
                 } else if section == .correlation {
                     if workspace.snapshot.correlatedAssets.isEmpty { empty("No assets discovered") }
                     // Built once per section render (not per row, per PR review) and keyed the same
@@ -775,7 +790,7 @@ struct OperationsView: View {
                     }
                 } else {
                     if workspace.snapshot.diagnostics.isEmpty { empty("No diagnostics available") }
-                    ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0) }
+                    ForEach(workspace.snapshot.diagnostics, id: \.instanceId) { diagnosticCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
                 }
             }
             .padding(16)
@@ -783,20 +798,20 @@ struct OperationsView: View {
         .refreshable { await refresh() }
     }
 
-    private func healthCard(_ item: ProviderHealth) -> some View {
-        OperationsCard(title: item.providerId, subtitle: item.message ?? item.state.rawValue, trailing: item.state.rawValue, state: item.state)
+    private func healthCard(_ item: ProviderHealth, tenantLabel: String? = nil) -> some View {
+        OperationsCard(title: item.providerId, subtitle: item.message ?? item.state.rawValue, trailing: item.state.rawValue, state: item.state, tenantLabel: tenantLabel)
     }
 
-    private func alertCard(_ item: ProviderEvent) -> some View {
-        OperationsCard(title: item.message, subtitle: "\(item.providerId) · \(item.resourceId ?? item.instanceId.uuidString)", trailing: item.severity, state: item.severity.lowercased() == "critical" ? .unavailable : .degraded)
+    private func alertCard(_ item: ProviderEvent, tenantLabel: String? = nil) -> some View {
+        OperationsCard(title: item.message, subtitle: "\(item.providerId) · \(item.resourceId ?? item.instanceId.uuidString)", trailing: item.severity, state: item.severity.lowercased() == "critical" ? .unavailable : .degraded, tenantLabel: tenantLabel)
     }
 
-    private func assetCard(_ item: ProviderResource) -> some View {
-        OperationsCard(title: item.name, subtitle: "\(item.providerId) · \(item.resourceType) · \(item.resourceId)", trailing: item.state ?? item.resourceType, state: resourceHealthState(item.state))
+    private func assetCard(_ item: ProviderResource, tenantLabel: String? = nil) -> some View {
+        OperationsCard(title: item.name, subtitle: "\(item.providerId) · \(item.resourceType) · \(item.resourceId)", trailing: item.state ?? item.resourceType, state: resourceHealthState(item.state), tenantLabel: tenantLabel)
     }
 
-    private func diagnosticCard(_ item: ProviderDiagnostic) -> some View {
-        OperationsCard(title: item.displayName, subtitle: "\(item.endpoint) · TLS \(item.tlsMode.rawValue) · \(item.capabilities.count) capabilities", trailing: item.providerId, state: item.state)
+    private func diagnosticCard(_ item: ProviderDiagnostic, tenantLabel: String? = nil) -> some View {
+        OperationsCard(title: item.displayName, subtitle: "\(item.endpoint) · TLS \(item.tlsMode.rawValue) · \(item.capabilities.count) capabilities", trailing: item.providerId, state: item.state, tenantLabel: tenantLabel)
     }
 
     /// Phase 4 "by asset" rollup: the same `workspace.snapshot.assets` regrouped by canonical host
@@ -920,12 +935,24 @@ private struct OperationsCard: View {
     let subtitle: String
     let trailing: String
     let state: ProviderHealthState
+    var tenantLabel: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
             Circle().fill(color).frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.subheadline.bold()).lineLimit(2)
+                HStack(spacing: 6) {
+                    Text(title).font(.subheadline.bold()).lineLimit(2)
+                    if let tenantLabel {
+                        Text(tenantLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                            .lineLimit(1)
+                    }
+                }
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer(minLength: 8)
