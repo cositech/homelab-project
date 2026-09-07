@@ -54,6 +54,7 @@ import com.homelab.app.domain.action.ActionAuditRecord
 import com.homelab.app.domain.action.ActionExecutionState
 import com.homelab.app.domain.action.DurableActionQueueEntry
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.ui.components.ServiceIcon
 import com.homelab.app.util.ServiceType
 import java.time.Instant
@@ -83,12 +84,12 @@ fun ActionHistoryScreen(
     val defaultTenantLabel = stringResource(R.string.home_default_badge)
     val tenantLabelByTenantRef = remember(tenantSelection, uiState.auditRecords, uiState.pendingEntries, defaultTenantLabel) {
         val distinctTenantRefs = uiState.auditRecords.map { it.tenantRef }.toSet() +
-            uiState.pendingEntries.map { it.request.tenantRef }.toSet()
+            uiState.pendingEntries.map { Tenant.refOrDefault(it.request.tenantRef) }.toSet()
         if (!tenantSelection.allTenantsMode || distinctTenantRefs.size <= 1) {
             emptyMap()
         } else {
             val tenantById = tenantSelection.tenants.associateBy { it.id }
-            distinctTenantRefs.filterNotNull().associateWith { tenantRef ->
+            distinctTenantRefs.associateWith { tenantRef ->
                 tenantById[tenantRef]?.let { if (it.isDefault) defaultTenantLabel else it.name } ?: tenantRef
             }
         }
@@ -168,7 +169,7 @@ fun ActionHistoryScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(uiState.pendingEntries, key = { it.request.idempotencyKey }) { entry ->
-                            PendingEntryRow(entry, uiState.instancesById, formatter, tenantLabelByTenantRef[entry.request.tenantRef])
+                            PendingEntryRow(entry, uiState.instancesById, formatter, tenantLabelByTenantRef[Tenant.refOrDefault(entry.request.tenantRef)])
                         }
                     }
                 }

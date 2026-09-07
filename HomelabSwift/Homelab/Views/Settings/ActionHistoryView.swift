@@ -22,7 +22,7 @@ struct ActionHistoryView: View {
     /// is needed here, just a tenantRef -> display-name lookup (same gating rule as
     /// `OperationsView.tenantLabelByInstanceId`).
     private var tenantLabelByTenantRef: [String: String] {
-        let distinctTenantRefs = Set(auditRecords.map(\.tenantRef)).union(pendingEntries.compactMap(\.request.tenantRef))
+        let distinctTenantRefs = Set(auditRecords.map(\.tenantRef)).union(pendingEntries.map { Tenant.refOrDefault($0.request.tenantRef) })
         guard tenantStore.selection.allTenantsMode, distinctTenantRefs.count > 1 else { return [:] }
         let tenantById = Dictionary(uniqueKeysWithValues: tenantStore.selection.tenants.map { ($0.id, $0) })
         var result: [String: String] = [:]
@@ -70,7 +70,7 @@ struct ActionHistoryView: View {
                         ScrollView {
                             LazyVStack(spacing: 8) {
                                 ForEach(pendingEntries, id: \.request.idempotencyKey) { entry in
-                                    PendingEntryRow(entry: entry, instancesById: servicesStore.instancesById, localizer: localizer, tenantLabel: entry.request.tenantRef.flatMap { tenantLabelByTenantRef[$0] })
+                                    PendingEntryRow(entry: entry, instancesById: servicesStore.instancesById, localizer: localizer, tenantLabel: tenantLabelByTenantRef[Tenant.refOrDefault(entry.request.tenantRef)])
                                 }
                             }
                             .padding(16)

@@ -681,7 +681,7 @@ struct OperationsView: View {
                         empty("No matching operations data")
                     } else {
                         ForEach(results.health, id: \.instanceId) { healthCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
-                        ForEach(results.alerts, id: \.eventId) { alertCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
+                        ForEach(Array(results.alerts.enumerated()), id: \.offset) { _, alert in alertCard(alert, tenantLabel: tenantLabels[alert.instanceId]) }
                         ForEach(Array(results.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset, tenantLabel: tenantLabels[asset.instanceId]) }
                         ForEach(results.diagnostics, id: \.instanceId) { diagnosticCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
                     }
@@ -690,7 +690,7 @@ struct OperationsView: View {
                     ForEach(workspace.snapshot.health, id: \.instanceId) { healthCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
                 } else if section == .alerts {
                     if workspace.snapshot.alerts.isEmpty { empty("No active alerts") }
-                    ForEach(workspace.snapshot.alerts, id: \.eventId) { alertCard($0, tenantLabel: tenantLabels[$0.instanceId]) }
+                    ForEach(Array(workspace.snapshot.alerts.enumerated()), id: \.offset) { _, alert in alertCard(alert, tenantLabel: tenantLabels[alert.instanceId]) }
                 } else if section == .assets {
                     if workspace.snapshot.assets.isEmpty { empty("No assets discovered") }
                     ForEach(Array(workspace.snapshot.assets.enumerated()), id: \.offset) { _, asset in assetCard(asset, tenantLabel: tenantLabels[asset.instanceId]) }
