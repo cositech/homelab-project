@@ -65,6 +65,11 @@ struct TenantsView: View {
             Button(localizer.t.delete, role: .destructive) {
                 if let tenant = tenantPendingDelete {
                     tenantStore.removeTenant(id: tenant.id)
+                    // Unlike a Site (an independent object a deleted tenant's instances just
+                    // lazily lose access to), a Customer record has no meaning apart from the
+                    // tenant it describes - leaving it behind would grow the registry with
+                    // metadata nothing can ever reach again.
+                    customerStore.removeCustomer(tenantRef: tenant.id)
                 }
             }
         } message: {
@@ -244,11 +249,10 @@ private struct CustomerFormView: View {
                 }
             }
             .onAppear {
-                if let existing = customerStore.registry.customer(forTenant: tenantId) {
-                    accountName = existing.accountName
-                    contact = existing.contact ?? ""
-                    notes = existing.notes ?? ""
-                }
+                let existing = customerStore.registry.customer(forTenant: tenantId)
+                accountName = existing?.accountName ?? ""
+                contact = existing?.contact ?? ""
+                notes = existing?.notes ?? ""
             }
         }
     }

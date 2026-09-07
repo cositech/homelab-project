@@ -136,7 +136,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun removeTenant(id: String) {
-        viewModelScope.launch { tenantStore.removeTenant(id) }
+        viewModelScope.launch {
+            tenantStore.removeTenant(id)
+            // Unlike a Site (an independent object a deleted tenant's instances just lazily lose
+            // access to), a Customer record has no meaning apart from the tenant it describes -
+            // leaving it behind would grow the registry with metadata nothing can ever reach again.
+            customerStore.removeCustomer(id)
+        }
     }
 
     fun setActiveTenant(id: String) {

@@ -46,6 +46,10 @@ data class OperationsUiState(
     // "By Site" tab can resolve an AssetObservation.instanceId back to a siteRef without a second
     // fetch.
     val siteRefByInstanceId: Map<String, String?> = emptyMap(),
+    // Which tenant each instance behind this snapshot belongs to - built once per refresh the same
+    // way, so the "By Customer" rollup can resolve a health/alert record's instanceId back to a
+    // tenantRef without a second fetch.
+    val tenantRefByInstanceId: Map<String, String> = emptyMap(),
     val isRefreshing: Boolean = false,
     val error: String? = null
 )
@@ -55,6 +59,7 @@ class OperationsViewModel @Inject constructor(
     private val servicesRepository: ServicesRepository,
     private val tenantStore: TenantStore,
     private val siteStore: com.homelab.app.data.local.SiteStore,
+    private val customerStore: com.homelab.app.data.local.CustomerStore,
     private val proxmoxRepository: ProxmoxRepository,
     private val proxmoxBackupServerRepository: ProxmoxBackupServerRepository,
     private val uptimeKumaRepository: UptimeKumaRepository,
@@ -70,6 +75,9 @@ class OperationsViewModel @Inject constructor(
 
     val siteRegistry: StateFlow<com.homelab.app.domain.model.SiteRegistry> = siteStore.registry
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.homelab.app.domain.model.SiteRegistry.INITIAL)
+
+    val customerRegistry: StateFlow<com.homelab.app.domain.model.CustomerRegistry> = customerStore.registry
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.homelab.app.domain.model.CustomerRegistry.INITIAL)
 
     init {
         viewModelScope.launch {
@@ -103,6 +111,7 @@ class OperationsViewModel @Inject constructor(
                 _uiState.value = OperationsUiState(
                     snapshot = buildSnapshot(instances, reachability),
                     siteRefByInstanceId = instances.associate { it.id to it.siteRef },
+                    tenantRefByInstanceId = instances.associate { it.id to it.tenantRef },
                     isRefreshing = false
                 )
             } catch (error: CancellationException) {
