@@ -54,6 +54,7 @@ import com.homelab.app.domain.action.ActionAuditRecord
 import com.homelab.app.domain.action.ActionExecutionState
 import com.homelab.app.domain.action.DurableActionQueueEntry
 import com.homelab.app.domain.model.ServiceInstance
+import com.homelab.app.domain.model.Tenant
 import com.homelab.app.ui.components.ServiceIcon
 import com.homelab.app.util.ServiceType
 import java.time.Instant
@@ -73,8 +74,26 @@ fun ActionHistoryScreen(
     viewModel: ActionHistoryViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val tenantSelection by viewModel.tenantSelection.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val formatter = rememberActionHistoryFormatter()
+    // Only in all-tenants mode, and only when more than one tenant is actually present among the
+    // records on screen right now - unlike Health/Alerts/Assets, ActionAuditRecord/
+    // ControlledActionRequest already carry tenantRef directly, so no instanceId indirection is
+    // needed here, just a tenantRef -> display-name lookup.
+    val defaultTenantLabel = stringResource(R.string.home_default_badge)
+    val tenantLabelByTenantRef = remember(tenantSelection, uiState.auditRecords, uiState.pendingEntries, defaultTenantLabel) {
+        val distinctTenantRefs = uiState.auditRecords.map { it.tenantRef }.toSet() +
+            uiState.pendingEntries.map { Tenant.refOrDefault(it.request.tenantRef) }.toSet()
+        if (!tenantSelection.allTenantsMode || distinctTenantRefs.size <= 1) {
+            emptyMap()
+        } else {
+            val tenantById = tenantSelection.tenants.associateBy { it.id }
+            distinctTenantRefs.associateWith { tenantRef ->
+                tenantById[tenantRef]?.let { if (it.isDefault) defaultTenantLabel else it.name } ?: tenantRef
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -136,7 +155,7 @@ fun ActionHistoryScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(uiState.auditRecords, key = { it.auditId }) { record ->
-                            AuditRecordRow(record, uiState.instancesById, formatter)
+                            AuditRecordRow(record, uiState.instancesById, formatter, tenantLabelByTenantRef[record.tenantRef])
                         }
                     }
                 }
@@ -150,7 +169,7 @@ fun ActionHistoryScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(uiState.pendingEntries, key = { it.request.idempotencyKey }) { entry ->
-                            PendingEntryRow(entry, uiState.instancesById, formatter)
+                            PendingEntryRow(entry, uiState.instancesById, formatter, tenantLabelByTenantRef[Tenant.refOrDefault(entry.request.tenantRef)])
                         }
                     }
                 }
@@ -197,11 +216,12 @@ private fun stateColor(state: ActionExecutionState): androidx.compose.ui.graphic
 private fun AuditRecordRow(
     record: ActionAuditRecord,
     instancesById: Map<String, ServiceInstance>,
-    formatter: DateTimeFormatter
+    formatter: DateTimeFormatter,
+    tenantLabel: String? = null
 ) {
     val (label, type) = instanceLabelFor(record.providerRef, instancesById)
     ActionHistoryRowCard(stateColor = stateColor(record.state)) {
-        RowHeader(label = label, type = type, action = record.action, risk = record.risk.name)
+        RowHeader(label = label, type = type, action = record.action, risk = record.risk.name, tenantLabel = tenantLabel)
         Text(
             text = record.targetRef,
             style = MaterialTheme.typography.bodySmall,
@@ -241,11 +261,12 @@ private fun AuditRecordRow(
 private fun PendingEntryRow(
     entry: DurableActionQueueEntry,
     instancesById: Map<String, ServiceInstance>,
-    formatter: DateTimeFormatter
+    formatter: DateTimeFormatter,
+    tenantLabel: String? = null
 ) {
     val (label, type) = instanceLabelFor(entry.request.providerRef, instancesById)
     ActionHistoryRowCard(stateColor = stateColor(entry.state)) {
-        RowHeader(label = label, type = type, action = entry.request.action, risk = entry.request.risk.name)
+        RowHeader(label = label, type = type, action = entry.request.action, risk = entry.request.risk.name, tenantLabel = tenantLabel)
         Text(
             text = entry.request.targetRef,
             style = MaterialTheme.typography.bodySmall,
@@ -284,7 +305,7 @@ private fun PendingEntryRow(
 }
 
 @Composable
-private fun RowHeader(label: String, type: ServiceType?, action: String, risk: String) {
+private fun RowHeader(label: String, type: ServiceType?, action: String, risk: String, tenantLabel: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -294,13 +315,31 @@ private fun RowHeader(label: String, type: ServiceType?, action: String, risk: S
             ServiceIcon(type = type, size = 28.dp, cornerRadius = 8.dp)
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                tenantLabel?.let {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest
+                    ) {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
             Text(
                 text = action,
                 style = MaterialTheme.typography.labelSmall,
