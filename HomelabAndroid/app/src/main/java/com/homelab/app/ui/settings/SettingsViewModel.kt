@@ -31,7 +31,8 @@ class SettingsViewModel @Inject constructor(
     private val localPreferencesRepository: LocalPreferencesRepository,
     private val appIconManager: AppIconManager,
     private val tenantStore: com.homelab.app.data.local.TenantStore,
-    private val siteStore: com.homelab.app.data.local.SiteStore
+    private val siteStore: com.homelab.app.data.local.SiteStore,
+    private val customerStore: com.homelab.app.data.local.CustomerStore
 ) : ViewModel() {
 
     data class UpdateBannerState(
@@ -101,6 +102,13 @@ class SettingsViewModel @Inject constructor(
             com.homelab.app.domain.model.SiteRegistry.INITIAL
         )
 
+    val customerRegistry: StateFlow<com.homelab.app.domain.model.CustomerRegistry> = customerStore.registry
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            com.homelab.app.domain.model.CustomerRegistry.INITIAL
+        )
+
     val isPinSet: StateFlow<Boolean> = localPreferencesRepository.appPin
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
         .let { flow ->
@@ -145,6 +153,10 @@ class SettingsViewModel @Inject constructor(
 
     fun removeSite(id: String) {
         viewModelScope.launch { siteStore.removeSite(id) }
+    }
+
+    fun setCustomer(tenantRef: String, accountName: String, contact: String?, notes: String?) {
+        viewModelScope.launch { customerStore.setCustomer(tenantRef, accountName, contact, notes) }
     }
 
     fun setThemeMode(mode: ThemeMode) {

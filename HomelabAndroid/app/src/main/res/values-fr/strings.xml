@@ -277,6 +277,10 @@
     <string name="sites_add_site">Ajouter un site</string>
     <string name="sites_empty">Aucun site pour l\'instant</string>
     <string name="sites_none">Aucun site</string>
+    <string name="customer_info_title">Infos client</string>
+    <string name="customer_account_name">Nom du compte</string>
+    <string name="customer_contact">Contact</string>
+    <string name="customer_notes">Notes</string>
     <string name="settings_action_history_title">Historique des actions</string>
     <string name="action_history_tab_history">Historique</string>
     <string name="action_history_tab_pending">En attente</string>
