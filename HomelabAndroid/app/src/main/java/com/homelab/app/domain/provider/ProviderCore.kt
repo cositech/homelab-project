@@ -177,7 +177,8 @@ object ProviderRegistry {
                     ProviderCapability.HEALTH,
                     ProviderCapability.RESOURCES,
                     ProviderCapability.EVENTS,
-                    ProviderCapability.METRICS
+                    ProviderCapability.METRICS,
+                    ProviderCapability.WRITE_ACTIONS
                 )
                 ServiceType.PROMETHEUS -> setOf(
                     ProviderCapability.HEALTH,

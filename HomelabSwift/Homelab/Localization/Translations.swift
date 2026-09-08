@@ -1686,6 +1686,14 @@ struct Translations {
     let proxmoxConfigSaved: String
     let proxmoxConfigSaveError: String
 
+    // Proxmox Backup Server
+    let pbsSyncJobs: String
+    let pbsNoSyncJobs: String
+    let pbsClientNotConfigured: String
+    let pbsRunNow: String
+    let pbsRemoteLabel: String
+    let pbsCommentLabel: String
+
     let debugLogsEmpty: String
     let securityLockoutMessage: String
 

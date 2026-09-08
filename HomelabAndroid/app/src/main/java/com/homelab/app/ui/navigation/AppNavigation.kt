@@ -102,7 +102,7 @@ private fun dashboardRoute(type: ServiceType, instanceId: String): String {
         ServiceType.WAKAPI -> "wakapi/$instanceId/dashboard"
         ServiceType.PLEX -> "plex/$instanceId/dashboard"
         ServiceType.PROXMOX -> "proxmox/$instanceId/dashboard"
-        ServiceType.PROXMOX_BACKUP_SERVER -> Screen.Operations.route
+        ServiceType.PROXMOX_BACKUP_SERVER -> "pbs/$instanceId/sync-jobs"
         ServiceType.PROMETHEUS,
         ServiceType.GRAFANA,
         ServiceType.NETBOX,
@@ -1260,6 +1260,17 @@ fun AppNavigation() {
                 )
             ) {
                 com.homelab.app.ui.proxmox.ProxmoxBackupScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = "pbs/{instanceId}/sync-jobs",
+                arguments = listOf(
+                    androidx.navigation.navArgument("instanceId") { type = NavType.StringType }
+                )
+            ) {
+                com.homelab.app.ui.pbs.ProxmoxBackupServerSyncJobsScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

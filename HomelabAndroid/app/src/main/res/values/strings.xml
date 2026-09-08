@@ -50,7 +50,7 @@
     <string name="service_proxmox">Proxmox VE</string>
     <string name="service_proxmox_desc">Virtual infrastructure management</string>
     <string name="service_proxmox_backup_server">Proxmox Backup Server</string>
-    <string name="service_proxmox_backup_server_desc">Read-only datastore capacity and maintenance monitoring</string>
+    <string name="service_proxmox_backup_server_desc">Datastore capacity and maintenance monitoring, plus triggering sync jobs</string>
     <string name="service_prometheus">Prometheus</string>
     <string name="service_prometheus_desc">Read-only scrape target health and active alert monitoring</string>
     <string name="service_grafana">Grafana</string>
@@ -1597,6 +1597,9 @@
     <string name="proxmox_no_results">No results for "%1$s"</string>
     <string name="proxmox_favorites">Favorites</string>
     <string name="proxmox_backup_jobs">Backup Jobs</string>
+    <string name="pbs_sync_jobs">Sync Jobs</string>
+    <string name="pbs_sync_jobs_empty">No sync jobs configured</string>
+    <string name="pbs_sync_from_remote">From %1$s</string>
     <string name="proxmox_firewall">Cluster Firewall</string>
     <string name="proxmox_ha">High Availability</string>
     <string name="proxmox_cluster_resources">Cluster Resources</string>

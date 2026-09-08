@@ -57,6 +57,7 @@
 		45563EB6F51F8EF1867CF1DC /* BeszelSystemDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E9B530530A0BF0D52A289 /* BeszelSystemDetail.swift */; };
 		462FAAA3890B72AC8A953A68 /* ProxmoxModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D78FC8BBE3C34A7255D0CAC /* ProxmoxModels.swift */; };
 		47484763DF3A83E432F37FC6 /* ProxmoxBackupJobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C246817EA53ED0E3950005 /* ProxmoxBackupJobsView.swift */; };
+		27D86041B771EA9EF4362C1C /* ProxmoxBackupSyncJobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A81A5F8CEC01116EA8C408 /* ProxmoxBackupSyncJobsView.swift */; };
 		4CA71DBAD3D27E419ED0A10F /* NpmStreamForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA3C99077201F337CAC332D8 /* NpmStreamForm.swift */; };
 		4CF60BF28CB87B137D89A229 /* KomodoAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89DAA067B6D6A378553CB61 /* KomodoAPIClient.swift */; };
 		4E06A01BDB74CF4F678913CD /* AdGuardHomeDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10229F75137E8019ACE551D7 /* AdGuardHomeDashboard.swift */; };
@@ -352,6 +353,7 @@
 		A61734EE1BC78B3E2BA95622 /* TrueNASAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueNASAPIClient.swift; sourceTree = "<group>"; };
 		A69EDC601F02DCA97FEBAC18 /* NginxProxyManagerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NginxProxyManagerModels.swift; sourceTree = "<group>"; };
 		A8C246817EA53ED0E3950005 /* ProxmoxBackupJobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxmoxBackupJobsView.swift; sourceTree = "<group>"; };
+		E0A81A5F8CEC01116EA8C408 /* ProxmoxBackupSyncJobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxmoxBackupSyncJobsView.swift; sourceTree = "<group>"; };
 		AA26C2B4C3B48757F16F0E7B /* ProxmoxPoolDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxmoxPoolDetailView.swift; sourceTree = "<group>"; };
 		AB95F4E19C7D3082B4D6484C /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
 		AD139A00611FED93C43C0833 /* HealthchecksModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthchecksModels.swift; sourceTree = "<group>"; };
@@ -831,6 +833,7 @@
 			isa = PBXGroup;
 			children = (
 				A8C246817EA53ED0E3950005 /* ProxmoxBackupJobsView.swift */,
+				E0A81A5F8CEC01116EA8C408 /* ProxmoxBackupSyncJobsView.swift */,
 				944D35E4ACAB84F64B2DD3B4 /* ProxmoxCephView.swift */,
 				30C39BB672913A3C03C2CF06 /* ProxmoxClusterResourcesView.swift */,
 				915D9BA2E760A11C22688E74 /* ProxmoxConsoleView.swift */,
@@ -1593,6 +1596,7 @@
 				B51871199ACBFB2987E2C165 /* PortainerModels.swift in Sources */,
 				C16864C9507D1F8FCE4858F0 /* ProxmoxAPIClient.swift in Sources */,
 				47484763DF3A83E432F37FC6 /* ProxmoxBackupJobsView.swift in Sources */,
+				27D86041B771EA9EF4362C1C /* ProxmoxBackupSyncJobsView.swift in Sources */,
 				A4503BD3109674FD3018F51C /* ProxmoxCephView.swift in Sources */,
 				8FFDF0EE5740DBE97A232906 /* ProxmoxClusterResourcesView.swift in Sources */,
 				928B90DF3E307BB08C536CB9 /* ProxmoxConsoleView.swift in Sources */,

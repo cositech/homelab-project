@@ -39,7 +39,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
 - [x] Serialized execution, idempotency and bounded append-only mobile audit history
 - [x] Proxmox VE guest lifecycle reference migration
 - [x] Durable queue recovery and retry policy
-- [ ] Remaining provider actions migrated by risk class
+- [x] Remaining provider actions migrated by risk class
   - [x] Portainer container lifecycle and removal
   - [x] Portainer container rename and stack Compose updates
   - [x] Healthchecks check lifecycle, creation, editing and integration channels
@@ -59,25 +59,33 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] qBittorrent torrent and transfer lifecycle actions
   - [x] PatchMon monitored-host removal
   - [x] Radarr, Sonarr, Lidarr, Jellyseerr, Prowlarr, Gluetun and FlareSolverr media-service actions
-  - [ ] Proxmox VE non-lifecycle mutations — every one now routes through the coordinator on both
+  - [x] Proxmox VE non-lifecycle mutations — every one now routes through the coordinator on both
     clients (snapshot create/delete/rollback, storage-content delete, firewall enable/disable,
     backup-job trigger, guest clone/migrate — the last one across both its call sites, including
     the easy-to-miss "deploy from template" flow in iOS's `ProxmoxDashboard.swift`), each with its
     own risk tier (low: backup-job trigger, firewall enable; medium: snapshot create/delete, clone;
     high: snapshot rollback, storage-content delete, firewall disable, migrate) and fallback-replay
-    suppression added to every endpoint touched (13 total). Only a Proxmox Backup Server
-    backup-job-trigger mutation remains, and it doesn't exist as a mutation on either client yet —
-    PBS support is read-only today, so closing this needs new API client work, not just rewiring.
-    The already-migrated lifecycle mutations (start/stop/shutdown/reboot) still lack fallback-replay
-    suppression, a separate pre-existing gap not introduced by these slices. Full history of what
-    landed in each slice (including two real pre-existing bugs these migrations surfaced and fixed
-    along the way) is in the `phase3-proxmox-gap` memory, not repeated here.
+    suppression added to every endpoint touched (13 total). The already-migrated lifecycle
+    mutations (start/stop/shutdown/reboot) still lack fallback-replay suppression, a separate
+    pre-existing gap not introduced by these slices. Full history of what landed in each slice
+    (including two real pre-existing bugs these migrations surfaced and fixed along the way) is in
+    the `phase3-proxmox-gap` memory, not repeated here.
+  - [x] Proxmox Backup Server sync-job trigger — the last Phase 3 gap, closed. PBS was read-only
+    through Phase 2 (no `writeActions`, both clients statically audited to reject any mutating
+    HTTP method); this adds exactly one mutation — triggering a configured sync job to run now
+    (`POST /api2/json/admin/sync/{id}`, low risk, no confirmation, mirroring the PVE
+    backup-job-trigger precedent including its ambiguous-transport-failure handling) — and grants
+    `writeActions` for that mutation alone. A new dedicated Sync Jobs screen on both platforms
+    (PBS previously had no per-instance dashboard, only aggregate cards in Operations) lists
+    configured jobs with a "run now" button. `scripts/phase2-pbs-audit.sh` now asserts this is the
+    *only* mutating call either client makes to PBS, so any further PBS mutation needs a
+    deliberate, reviewed change to that audit rather than slipping in unnoticed.
   - [x] Every other provider audited — the integrations without a controlled-action surface
     (Uptime Kuma, Gitea, OPNsense, Beszel, Maltrail, Jellystat, Plex, UniFi, TrueNAS, Wakapi and
     the Phase-2 read-only observability providers) expose no mutating endpoints in this app, so
     there is nothing further to migrate
 
-Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place, and every provider's write surface now routes through the coordinator except the one Proxmox Backup Server backup-job-trigger mutation, which doesn't exist as a mutation on either client yet; `scripts/phase3-controlled-actions-audit.sh` asserts every migrated Proxmox action group by name (not just one coordinator call per file) — the gate closes once the PBS mutation is built and routed the same way.
+Exit gate: policy and audit contract tests, one Android/iOS reference-provider migration, recovery tests, security invariants, CodeQL and dependency review pass. The framework, tests and audit script are in place, and every provider's write surface now routes through the coordinator, including Proxmox Backup Server's sync-job trigger, the last gap; `scripts/phase3-controlled-actions-audit.sh` asserts every migrated Proxmox action group by name (not just one coordinator call per file), and `scripts/phase2-pbs-audit.sh` asserts PBS's mutation surface is exactly the one sync-job-trigger endpoint.
 
 ## Phase 4 — Correlation and MSP mode
 

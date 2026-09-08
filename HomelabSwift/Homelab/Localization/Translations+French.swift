@@ -1617,6 +1617,13 @@ extension Translations {
         proxmoxConfigEditProtection: "Protection",
         proxmoxConfigSaved: "Configuration enregistrée",
         proxmoxConfigSaveError: "Échec de l'enregistrement de la configuration",
+
+        pbsSyncJobs: "Tâches de synchronisation",
+        pbsNoSyncJobs: "Aucune tâche de synchronisation configurée",
+        pbsClientNotConfigured: "Client PBS non configuré.",
+        pbsRunNow: "Exécuter maintenant",
+        pbsRemoteLabel: "Distant",
+        pbsCommentLabel: "Commentaire",
         debugLogsEmpty: "Aucun log pour l'instant",
         securityLockoutMessage: "Trop de tentatives. Attendez %d secondes.",
 
