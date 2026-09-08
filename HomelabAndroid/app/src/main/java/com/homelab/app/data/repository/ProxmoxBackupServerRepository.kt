@@ -159,10 +159,10 @@ class ProxmoxBackupServerRepository @Inject constructor(
     suspend fun triggerSyncJob(instanceId: String, jobId: String): String {
         val instance = requireInstance(instanceId)
         val client = tlsClientSelector.forInstance(instanceId)
-        val encodedId = URLEncoder.encode(jobId, "UTF-8")
+        val encodedId = URLEncoder.encode(jobId, "UTF-8").replace("+", "%20")
         val root = fetch(
             instance.url,
-            "/api2/json/admin/sync/$encodedId/run",
+            "/api2/json/admin/sync/$encodedId",
             instance.username.orEmpty(),
             instance.password.orEmpty(),
             client,

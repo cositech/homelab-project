@@ -1599,6 +1599,7 @@
     <string name="proxmox_backup_jobs">Backup Jobs</string>
     <string name="pbs_sync_jobs">Sync Jobs</string>
     <string name="pbs_sync_jobs_empty">No sync jobs configured</string>
+    <string name="pbs_sync_from_remote">From %1$s</string>
     <string name="proxmox_firewall">Cluster Firewall</string>
     <string name="proxmox_ha">High Availability</string>
     <string name="proxmox_cluster_resources">Cluster Resources</string>

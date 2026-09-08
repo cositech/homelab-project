@@ -73,7 +73,7 @@ Exit gate: operations contract tests, Android/iOS compilation and unit tests, se
   - [x] Proxmox Backup Server sync-job trigger — the last Phase 3 gap, closed. PBS was read-only
     through Phase 2 (no `writeActions`, both clients statically audited to reject any mutating
     HTTP method); this adds exactly one mutation — triggering a configured sync job to run now
-    (`POST /api2/json/admin/sync/{id}/run`, low risk, no confirmation, mirroring the PVE
+    (`POST /api2/json/admin/sync/{id}`, low risk, no confirmation, mirroring the PVE
     backup-job-trigger precedent including its ambiguous-transport-failure handling) — and grants
     `writeActions` for that mutation alone. A new dedicated Sync Jobs screen on both platforms
     (PBS previously had no per-instance dashboard, only aggregate cards in Operations) lists

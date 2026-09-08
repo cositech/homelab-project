@@ -1622,6 +1622,8 @@ extension Translations {
         pbsNoSyncJobs: "Aucune tâche de synchronisation configurée",
         pbsClientNotConfigured: "Client PBS non configuré.",
         pbsRunNow: "Exécuter maintenant",
+        pbsRemoteLabel: "Distant",
+        pbsCommentLabel: "Commentaire",
         debugLogsEmpty: "Aucun log pour l'instant",
         securityLockoutMessage: "Trop de tentatives. Attendez %d secondes.",
 

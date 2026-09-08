@@ -108,6 +108,7 @@ fun ProxmoxBackupServerSyncJobsScreen(
                                         color = serviceColor,
                                         isDark = isDark,
                                         isTriggering = triggeringJobId == job.id,
+                                        isAnyTriggering = triggeringJobId != null,
                                         onRunNow = { viewModel.triggerSyncJob(job.id) }
                                     )
                                 }
@@ -131,6 +132,7 @@ private fun SyncJobCard(
     color: Color,
     isDark: Boolean,
     isTriggering: Boolean,
+    isAnyTriggering: Boolean,
     onRunNow: () -> Unit
 ) {
     val cardColor = color.copy(alpha = if (isDark) 0.07f else 0.08f)
@@ -156,7 +158,10 @@ private fun SyncJobCard(
                     )
                     if (!job.remote.isNullOrBlank()) {
                         Text(
-                            text = "From ${job.remote}${job.remoteStore?.let { "/$it" } ?: ""}",
+                            text = stringResource(
+                                R.string.pbs_sync_from_remote,
+                                job.remoteStore?.let { "${job.remote}/$it" } ?: job.remote
+                            ),
                             fontSize = 11.sp,
                             color = Color.Gray
                         )
@@ -170,7 +175,7 @@ private fun SyncJobCard(
                 Icon(Icons.Default.Schedule, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = job.schedule ?: "No schedule",
+                    text = job.schedule ?: stringResource(R.string.proxmox_no_schedule),
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
@@ -201,7 +206,7 @@ private fun SyncJobCard(
 
             Button(
                 onClick = onRunNow,
-                enabled = !isTriggering,
+                enabled = !isAnyTriggering,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = color),
                 contentPadding = PaddingValues(vertical = 6.dp),
@@ -216,7 +221,7 @@ private fun SyncJobCard(
                 } else {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Run Now", fontSize = 12.sp)
+                    Text(stringResource(R.string.proxmox_run_now), fontSize = 12.sp)
                 }
             }
         }

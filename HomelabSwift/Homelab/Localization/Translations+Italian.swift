@@ -1620,6 +1620,8 @@ extension Translations {
         pbsNoSyncJobs: "Nessun job di sincronizzazione configurato",
         pbsClientNotConfigured: "Client PBS non configurato.",
         pbsRunNow: "Esegui ora",
+        pbsRemoteLabel: "Remoto",
+        pbsCommentLabel: "Commento",
         debugLogsEmpty: "Nessun log presente",
         securityLockoutMessage: "Troppi tentativi. Attendi %d secondi.",
 

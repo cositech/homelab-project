@@ -27,6 +27,6 @@ Read-only:
 
 Mutating (Phase-3 controlled action, `sync-job.trigger`):
 
-- `POST /api2/json/admin/sync/{id}/run` — a single attempt against the primary URL only (no fallback retry), since retrying an ambiguous failure could fire a second, overlapping sync run for the same job.
+- `POST /api2/json/admin/sync/{id}` — a single attempt against the primary URL only (no fallback retry), since retrying an ambiguous failure could fire a second, overlapping sync run for the same job.
 
 Requests use `Authorization: PBSAPIToken=TOKENID:TOKENSECRET` and never place credentials in URLs or normalized provider records.

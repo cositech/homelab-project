@@ -94,6 +94,7 @@ struct ProxmoxBackupSyncJobsView: View {
                         .font(.body.bold())
                         .foregroundStyle(AppTheme.running)
                 }
+                .accessibilityLabel(localizer.t.pbsRunNow)
                 .disabled(triggeringJobId != nil)
                 .buttonStyle(.plain)
             }
@@ -102,10 +103,10 @@ struct ProxmoxBackupSyncJobsView: View {
                 detailRow(icon: "externaldrive.fill", label: localizer.t.proxmoxStorage, value: job.store)
                 if let remote = job.remote, !remote.isEmpty {
                     let remoteValue = job.remoteStore.map { "\(remote)/\($0)" } ?? remote
-                    detailRow(icon: "network", label: "Remote", value: remoteValue)
+                    detailRow(icon: "network", label: localizer.t.pbsRemoteLabel, value: remoteValue)
                 }
                 if let comment = job.comment, !comment.isEmpty {
-                    detailRow(icon: "text.alignleft", label: "Comment", value: comment)
+                    detailRow(icon: "text.alignleft", label: localizer.t.pbsCommentLabel, value: comment)
                 }
             }
             .padding(8)

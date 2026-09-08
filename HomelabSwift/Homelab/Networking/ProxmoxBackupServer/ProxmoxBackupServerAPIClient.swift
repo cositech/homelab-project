@@ -180,7 +180,7 @@ actor ProxmoxBackupServerAPIClient {
     func triggerSyncJob(jobId: String) async throws -> String {
         let encodedId = jobId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? jobId
         let response: PBSAPIResponse<String> = try await request(
-            path: "/api2/json/admin/sync/\(encodedId)/run",
+            path: "/api2/json/admin/sync/\(encodedId)",
             method: "POST",
             allowFallback: false
         )

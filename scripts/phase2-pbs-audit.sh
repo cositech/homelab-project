@@ -58,10 +58,14 @@ require_pattern 'XCTAssertTrue\(ProviderRegistry\.descriptor\(for: \.proxmoxBack
 require_pattern '/api2/json/admin/sync/' "$ANDROID_CLIENT"
 require_pattern '/api2/json/admin/sync/' "$IOS_CLIENT"
 
-android_mutations="$(grep -Ec '\.(post|put|patch|delete)\(' "$ANDROID_CLIENT")"
-test "$android_mutations" -eq 1 || fail "$ANDROID_CLIENT has $android_mutations post/put/patch/delete call(s), expected exactly 1 (the sync-job trigger)"
+# Every Android call site shares one low-level `fetch(...)` helper, so counting the helper's own
+# `.post(` line would stay at 1 forever even if a second call site started passing
+# `method = "POST"` into it - count call sites (the `method = "..."` argument), not the builder
+# verb, so a future mutation actually trips this.
+android_mutations="$(grep -Ec 'method = "(POST|PUT|PATCH|DELETE)"' "$ANDROID_CLIENT")"
+test "$android_mutations" -eq 1 || fail "$ANDROID_CLIENT has $android_mutations mutating call site(s), expected exactly 1 (the sync-job trigger)"
 ios_mutations="$(grep -Ec 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' "$IOS_CLIENT")"
-test "$ios_mutations" -eq 1 || fail "$IOS_CLIENT has $ios_mutations POST/PUT/PATCH/DELETE call(s), expected exactly 1 (the sync-job trigger)"
+test "$ios_mutations" -eq 1 || fail "$IOS_CLIENT has $ios_mutations mutating call site(s), expected exactly 1 (the sync-job trigger)"
 
 reject_pattern '(tokenSecret|password|authorization).*attributes' "$ANDROID_OPERATIONS"
 reject_pattern '(tokenSecret|password|authorization).*attributes' "$IOS_OPERATIONS"

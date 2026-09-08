@@ -1691,6 +1691,8 @@ struct Translations {
     let pbsNoSyncJobs: String
     let pbsClientNotConfigured: String
     let pbsRunNow: String
+    let pbsRemoteLabel: String
+    let pbsCommentLabel: String
 
     let debugLogsEmpty: String
     let securityLockoutMessage: String
