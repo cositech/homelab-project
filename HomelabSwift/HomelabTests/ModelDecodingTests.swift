@@ -68,7 +68,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertFalse(ProviderRegistry.descriptor(for: .uptimeKuma).capabilities.contains(.writeActions))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.resources))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.metrics))
-        XCTAssertFalse(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.writeActions))
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.writeActions))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .prometheus).capabilities.contains(.events))
         XCTAssertFalse(ProviderRegistry.descriptor(for: .prometheus).capabilities.contains(.writeActions))
         XCTAssertTrue(ProviderRegistry.descriptor(for: .grafana).capabilities.contains(.resources))
@@ -2883,6 +2883,27 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(request.confirmed)
         XCTAssertTrue(
             ProviderRegistry.descriptor(for: .adguardHome).capabilities.contains(.writeActions)
+        )
+    }
+
+    func testPbsSyncJobActionsHaveStableRiskClassificationAndIdentity() {
+        XCTAssertEqual(ProxmoxBackupServerControlledSyncJobAction.trigger.risk, .low)
+
+        let request = ProxmoxBackupServerControlledSyncJobAction.trigger.request(
+            instanceId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            jobId: "sync-job-1",
+            confirmed: false,
+            requestId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            requestedAt: Date(timeIntervalSince1970: 1),
+            idempotencyKey: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        )
+
+        XCTAssertEqual(request.providerRef, "proxmox-backup-server:00000000-0000-0000-0000-000000000001")
+        XCTAssertEqual(request.action, "sync-job.trigger")
+        XCTAssertEqual(request.targetRef, "sync-job/sync-job-1")
+        XCTAssertFalse(request.confirmed)
+        XCTAssertTrue(
+            ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities.contains(.writeActions)
         )
     }
 

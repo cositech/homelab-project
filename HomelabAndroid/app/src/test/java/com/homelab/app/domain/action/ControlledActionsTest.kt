@@ -27,6 +27,7 @@ import com.homelab.app.data.repository.DockhandStackAction
 import com.homelab.app.domain.provider.ProviderCapability
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
+import com.homelab.app.ui.pbs.ProxmoxBackupServerSyncJobAction
 import com.homelab.app.ui.proxmox.ProxmoxBackupJobAction
 import com.homelab.app.ui.proxmox.ProxmoxCloneMigrateAction
 import com.homelab.app.ui.proxmox.ProxmoxFirewallAction
@@ -1654,5 +1655,28 @@ class ControlledActionsTest {
         )) {
             assertTrue(ProviderCapability.WRITE_ACTIONS in ProviderRegistry.capabilities(type))
         }
+    }
+
+    @Test
+    fun `pbs sync job actions have stable risk classification and identity`() {
+        assertEquals(ActionRisk.LOW, ProxmoxBackupServerSyncJobAction.TRIGGER.risk)
+
+        val request = ProxmoxBackupServerSyncJobAction.TRIGGER.controlledRequest(
+            instanceId = "instance-1",
+            jobId = "sync-job-1",
+            confirmed = false,
+            requestId = "request-pbs",
+            requestedAt = "1970-01-01T00:00:01Z",
+            idempotencyKey = "0123456789abcdef"
+        )
+
+        assertEquals("proxmox-backup-server:instance-1", request.providerRef)
+        assertEquals("sync-job.trigger", request.action)
+        assertEquals("sync-job/sync-job-1", request.targetRef)
+        assertFalse(request.confirmed)
+        assertTrue(
+            ProviderCapability.WRITE_ACTIONS in
+                ProviderRegistry.capabilities(ServiceType.PROXMOX_BACKUP_SERVER)
+        )
     }
 }

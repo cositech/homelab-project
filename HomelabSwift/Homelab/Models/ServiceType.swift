@@ -229,7 +229,7 @@ public enum ServiceType: String, CaseIterable, Identifiable, Codable, Hashable, 
         case .flaresolverr:       return t.serviceFlaresolverrDesc
         case .wakapi:             return t.serviceWakapiDesc
         case .proxmox:            return t.serviceProxmoxDesc
-        case .proxmoxBackupServer: return "Read-only datastore capacity and maintenance monitoring"
+        case .proxmoxBackupServer: return "Datastore capacity and maintenance monitoring, plus triggering sync jobs"
         case .prometheus:         return "Read-only scrape target and active alert monitoring"
         case .grafana:            return "Read-only dashboard and data source inventory"
         case .netbox:             return "Read-only device and virtual machine inventory"
@@ -634,7 +634,7 @@ enum ProviderRegistry {
             case .pterodactyl, .calagopus, .craftyController:
                 capabilities = [.health, .writeActions]
             case .proxmoxBackupServer:
-                capabilities = [.health, .resources, .events, .metrics]
+                capabilities = [.health, .resources, .events, .metrics, .writeActions]
             case .prometheus:
                 capabilities = [.health, .resources, .events, .metrics]
             case .grafana:
@@ -854,6 +854,37 @@ enum ProxmoxControlledBackupJobAction: String, CaseIterable, Equatable, Sendable
             providerRef: "proxmox:\(instanceId.uuidString.lowercased())",
             action: actionName,
             targetRef: "backup-job/\(jobId)",
+            risk: risk,
+            requestedAt: ISO8601DateFormatter().string(from: requestedAt),
+            idempotencyKey: idempotencyKey.uuidString,
+            confirmed: confirmed
+        )
+    }
+}
+
+/// A "run now" trigger for a PBS sync job (pulls backup snapshots from a remote PBS instance),
+/// not a destructive mutation - mirrors `ProxmoxControlledBackupJobAction` above as closely as
+/// possible, the PVE backup-job-trigger precedent (#75).
+enum ProxmoxBackupServerControlledSyncJobAction: String, CaseIterable, Equatable, Sendable {
+    case trigger
+
+    var actionName: String { "sync-job.\(rawValue)" }
+    var risk: ControlledActionRisk { .low }
+    var requiresConfirmation: Bool { risk != .low }
+
+    func request(
+        instanceId: UUID,
+        jobId: String,
+        confirmed: Bool,
+        requestId: UUID = UUID(),
+        requestedAt: Date = Date(),
+        idempotencyKey: UUID = UUID()
+    ) -> ControlledActionRequest {
+        ControlledActionRequest(
+            id: requestId.uuidString,
+            providerRef: "proxmox-backup-server:\(instanceId.uuidString.lowercased())",
+            action: actionName,
+            targetRef: "sync-job/\(jobId)",
             risk: risk,
             requestedAt: ISO8601DateFormatter().string(from: requestedAt),
             idempotencyKey: idempotencyKey.uuidString,

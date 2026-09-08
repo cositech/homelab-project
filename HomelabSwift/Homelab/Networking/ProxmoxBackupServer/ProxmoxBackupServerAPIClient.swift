@@ -26,6 +26,21 @@ struct ProxmoxBackupServerDashboard: Equatable, Sendable {
     let datastores: [ProxmoxBackupDatastore]
 }
 
+/// A PBS sync job pulls backup snapshots from a remote PBS instance into a local datastore.
+struct ProxmoxBackupSyncJob: Codable, Equatable, Sendable, Identifiable {
+    let id: String
+    let remote: String?
+    let remoteStore: String?
+    let store: String
+    let schedule: String?
+    let comment: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, remote, store, schedule, comment
+        case remoteStore = "remote-store"
+    }
+}
+
 private struct PBSAPIResponse<Value: Decodable & Sendable>: Decodable, Sendable {
     let data: Value
 }
@@ -153,13 +168,38 @@ actor ProxmoxBackupServerAPIClient {
         }
     }
 
-    private func request<Value: Decodable & Sendable>(path: String) async throws -> Value {
+    func getSyncJobs() async throws -> [ProxmoxBackupSyncJob] {
+        let response: PBSAPIResponse<[ProxmoxBackupSyncJob]> = try await request(path: "/api2/json/config/sync")
+        return response.data.sorted { $0.id.localizedCaseInsensitiveCompare($1.id) == .orderedAscending }
+    }
+
+    /// Triggers a sync job to run now. `allowFallback: false` forces a single attempt against the
+    /// primary URL only: retrying an ambiguous failure against the secondary URL could fire a
+    /// second, overlapping sync run for the same job - the same non-idempotency concern the PVE
+    /// backup-job-trigger mutation (`ProxmoxAPIClient.triggerBackupJob`, #75) was built around.
+    func triggerSyncJob(jobId: String) async throws -> String {
+        let encodedId = jobId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? jobId
+        let response: PBSAPIResponse<String> = try await request(
+            path: "/api2/json/admin/sync/\(encodedId)/run",
+            method: "POST",
+            allowFallback: false
+        )
+        return response.data
+    }
+
+    private func request<Value: Decodable & Sendable>(
+        path: String,
+        method: String = "GET",
+        allowFallback: Bool = true
+    ) async throws -> Value {
         guard let tokenId, let tokenSecret else { throw APIError.notConfigured }
         try Self.validateToken(tokenId: tokenId, tokenSecret: tokenSecret)
+        let effectiveFallback = allowFallback ? fallbackURL : ""
         return try await engine.request(
             baseURL: baseURL,
-            fallbackURL: fallbackURL,
+            fallbackURL: effectiveFallback,
             path: path,
+            method: method,
             headers: [
                 "Accept": "application/json",
                 "Authorization": "PBSAPIToken=\(tokenId):\(tokenSecret)"

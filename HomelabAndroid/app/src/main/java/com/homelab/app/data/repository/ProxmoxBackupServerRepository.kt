@@ -6,6 +6,7 @@ import com.homelab.app.domain.provider.ProviderHealth
 import com.homelab.app.domain.provider.ProviderHealthState
 import com.homelab.app.domain.provider.ProviderRegistry
 import com.homelab.app.util.ServiceType
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -20,8 +21,10 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 data class ProxmoxBackupDatastore(
     val store: String,
@@ -41,6 +44,16 @@ data class ProxmoxBackupDatastore(
 data class ProxmoxBackupServerDashboard(
     val version: String?,
     val datastores: List<ProxmoxBackupDatastore>
+)
+
+/** A PBS sync job pulls backup snapshots from a remote PBS instance into a local datastore. */
+data class ProxmoxBackupSyncJob(
+    val id: String,
+    val remote: String?,
+    val remoteStore: String?,
+    val store: String,
+    val schedule: String?,
+    val comment: String?
 )
 
 @Singleton
@@ -123,6 +136,41 @@ class ProxmoxBackupServerRepository @Inject constructor(
         )
     }
 
+    suspend fun getSyncJobs(instanceId: String): List<ProxmoxBackupSyncJob> {
+        val instance = requireInstance(instanceId)
+        val client = tlsClientSelector.forInstance(instanceId)
+        val root = requestWithFallback(
+            instance.url,
+            instance.fallbackUrl,
+            "/api2/json/config/sync",
+            instance.username.orEmpty(),
+            instance.password.orEmpty(),
+            client
+        )
+        return root.dataArray().mapNotNull(::parseSyncJob).sortedBy { it.id.lowercase() }
+    }
+
+    /**
+     * Triggers a sync job to run now. A single attempt against the primary URL only, never the
+     * fallback: retrying an ambiguous failure against the secondary URL could fire a second,
+     * overlapping sync run for the same job - the same non-idempotency concern the PVE
+     * backup-job-trigger mutation (#75) was built around.
+     */
+    suspend fun triggerSyncJob(instanceId: String, jobId: String): String {
+        val instance = requireInstance(instanceId)
+        val client = tlsClientSelector.forInstance(instanceId)
+        val encodedId = URLEncoder.encode(jobId, "UTF-8")
+        val root = fetch(
+            instance.url,
+            "/api2/json/admin/sync/$encodedId/run",
+            instance.username.orEmpty(),
+            instance.password.orEmpty(),
+            client,
+            method = "POST"
+        )
+        return root.string("data").orEmpty()
+    }
+
     private suspend fun requireInstance(instanceId: String): ServiceInstance {
         val instance = serviceInstancesRepository.getInstance(instanceId)
             ?: throw IllegalStateException("PBS instance not found")
@@ -166,19 +214,22 @@ class ProxmoxBackupServerRepository @Inject constructor(
         path: String,
         tokenId: String,
         tokenSecret: String,
-        client: OkHttpClient
+        client: OkHttpClient,
+        method: String = "GET"
     ): JsonObject = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
+        val builder = Request.Builder()
             .url(baseUrl.trimEnd('/') + path)
-            .get()
             .addHeader("Accept", "application/json")
             .addHeader("Authorization", "PBSAPIToken=$tokenId:$tokenSecret")
             .addHeader("X-Homelab-Bypass", "true")
-            .build()
-        client.newCall(request).execute().use { response ->
+        when (method) {
+            "POST" -> builder.post("".toRequestBody("application/json".toMediaType()))
+            else -> builder.get()
+        }
+        client.newCall(builder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             when (response.code) {
-                in 200..299 -> json.parseToJsonElement(body).jsonObject
+                in 200..299 -> if (body.isBlank()) JsonObject(emptyMap()) else json.parseToJsonElement(body).jsonObject
                 401, 403 -> throw IllegalStateException("PBS API token rejected or missing audit permissions")
                 else -> throw IllegalStateException("PBS returned HTTP ${response.code}")
             }
@@ -195,6 +246,20 @@ class ProxmoxBackupServerRepository @Inject constructor(
             availableBytes = value.long("avail"),
             maintenance = value["maintenance-mode"]?.displayValue()
                 ?: value["maintenance"]?.displayValue()
+        )
+    }
+
+    private fun parseSyncJob(element: JsonElement): ProxmoxBackupSyncJob? {
+        val value = element as? JsonObject ?: return null
+        val id = value.string("id") ?: return null
+        val store = value.string("store") ?: return null
+        return ProxmoxBackupSyncJob(
+            id = id,
+            remote = value.string("remote"),
+            remoteStore = value.string("remote-store"),
+            store = store,
+            schedule = value.string("schedule"),
+            comment = value.string("comment")
         )
     }
 

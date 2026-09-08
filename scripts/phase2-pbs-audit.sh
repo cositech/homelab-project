@@ -47,11 +47,22 @@ require_pattern '0\.85' "$ANDROID_OPERATIONS"
 require_pattern '0\.95' "$ANDROID_OPERATIONS"
 require_pattern '0\.85' "$IOS_OPERATIONS"
 require_pattern '0\.95' "$IOS_OPERATIONS"
-require_pattern 'WRITE_ACTIONS !in pbs' 'HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt'
-require_pattern 'proxmoxBackupServer.*writeActions' 'HomelabSwift/HomelabTests/ModelDecodingTests.swift'
+require_pattern 'WRITE_ACTIONS in pbs' 'HomelabAndroid/app/src/test/java/com/homelab/app/domain/provider/ProviderCoreTest.kt'
+require_pattern 'XCTAssertTrue\(ProviderRegistry\.descriptor\(for: \.proxmoxBackupServer\)\.capabilities\.contains\(\.writeActions\)\)' 'HomelabSwift/HomelabTests/ModelDecodingTests.swift'
 
-reject_pattern '\.(post|put|patch|delete)\(' "$ANDROID_CLIENT"
-reject_pattern 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' "$IOS_CLIENT"
+# PBS gained exactly one mutation (Phase 3's PBS sync-job-trigger slice): triggering a sync job to
+# run now, routed through the controlled-action coordinator like every other Phase 3 mutation.
+# Assert the endpoint exists and that it's the ONLY mutating call in each client - any other
+# POST/PUT/PATCH/DELETE would be scope creep past what's been reviewed and gated behind
+# WRITE_ACTIONS, defeating the point of this audit.
+require_pattern '/api2/json/admin/sync/' "$ANDROID_CLIENT"
+require_pattern '/api2/json/admin/sync/' "$IOS_CLIENT"
+
+android_mutations="$(grep -Ec '\.(post|put|patch|delete)\(' "$ANDROID_CLIENT")"
+test "$android_mutations" -eq 1 || fail "$ANDROID_CLIENT has $android_mutations post/put/patch/delete call(s), expected exactly 1 (the sync-job trigger)"
+ios_mutations="$(grep -Ec 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' "$IOS_CLIENT")"
+test "$ios_mutations" -eq 1 || fail "$IOS_CLIENT has $ios_mutations POST/PUT/PATCH/DELETE call(s), expected exactly 1 (the sync-job trigger)"
+
 reject_pattern '(tokenSecret|password|authorization).*attributes' "$ANDROID_OPERATIONS"
 reject_pattern '(tokenSecret|password|authorization).*attributes' "$IOS_OPERATIONS"
 

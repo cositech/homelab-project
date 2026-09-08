@@ -33,7 +33,7 @@ class ProviderCoreTest {
         assertTrue(ProviderCapability.WRITE_ACTIONS !in kuma)
         assertTrue(ProviderCapability.RESOURCES in pbs)
         assertTrue(ProviderCapability.METRICS in pbs)
-        assertTrue(ProviderCapability.WRITE_ACTIONS !in pbs)
+        assertTrue(ProviderCapability.WRITE_ACTIONS in pbs)
         assertTrue(ProviderCapability.EVENTS in prometheus)
         assertTrue(ProviderCapability.WRITE_ACTIONS !in prometheus)
         assertTrue(ProviderCapability.RESOURCES in grafana)

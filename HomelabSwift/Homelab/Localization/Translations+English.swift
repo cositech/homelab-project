@@ -1615,6 +1615,11 @@ extension Translations {
         proxmoxConfigEditProtection: "Protection",
         proxmoxConfigSaved: "Configuration saved",
         proxmoxConfigSaveError: "Failed to save configuration",
+
+        pbsSyncJobs: "Sync Jobs",
+        pbsNoSyncJobs: "No sync jobs configured",
+        pbsClientNotConfigured: "PBS client not configured.",
+        pbsRunNow: "Run Now",
         debugLogsEmpty: "No logs yet",
         securityLockoutMessage: "Too many attempts. Wait %d seconds.",
 

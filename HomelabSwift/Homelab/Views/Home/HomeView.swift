@@ -330,7 +330,7 @@ struct HomeView: View {
         case .wakapi:            WakapiDashboard(instanceId: route.instanceId)
         case .proxmox:           ProxmoxDashboard(instanceId: route.instanceId)
         case .proxmoxBackupServer:
-                                 OperationsView()
+                                 ProxmoxBackupSyncJobsView(instanceId: route.instanceId)
         case .prometheus, .grafana, .netbox, .zammad, .pegaprox, .opnsense, .oneuptime:
                                  OperationsView()
         case .truenas:           TrueNASDashboard(instanceId: route.instanceId)

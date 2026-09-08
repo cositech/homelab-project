@@ -690,4 +690,41 @@ grep -Fq 'the coordinator stamps the target instance tenant onto an unscoped req
 grep -Fq 'an unresolvable target tenant is rejected fail-closed' "$android_tests"
 grep -Fq 'testCoordinatorTenantScopeStampsAndGatesRequests' "$swift_tests"
 
+# Proxmox Backup Server sync-job trigger: the last remaining Phase 3 gap - a low-risk "run now"
+# action, same enum-by-name reasoning as the PVE action groups above. PBS gained WRITE_ACTIONS for
+# this one mutation only; scripts/phase2-pbs-audit.sh asserts it's the only mutating call in
+# either client.
+android_pbs_repository="HomelabAndroid/app/src/main/java/com/homelab/app/data/repository/ProxmoxBackupServerRepository.kt"
+android_pbs_view_model="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pbs/ProxmoxBackupServerViewModel.kt"
+android_pbs_ui="HomelabAndroid/app/src/main/java/com/homelab/app/ui/pbs/ProxmoxBackupServerSyncJobsScreen.kt"
+swift_pbs_api="HomelabSwift/Homelab/Networking/ProxmoxBackupServer/ProxmoxBackupServerAPIClient.swift"
+swift_pbs_ui="HomelabSwift/Homelab/Views/Proxmox/ProxmoxBackupSyncJobsView.swift"
+
+for required_file in "$android_pbs_repository" "$android_pbs_view_model" "$android_pbs_ui" "$swift_pbs_api" "$swift_pbs_ui"; do
+  test -s "$required_file"
+done
+
+for pattern in 'fun getSyncJobs' 'fun triggerSyncJob' '/api2/json/config/sync' '/api2/json/admin/sync/'; do
+  grep -Fq "$pattern" "$android_pbs_repository"
+done
+for pattern in 'enum class ProxmoxBackupServerSyncJobAction' 'sync-job.trigger' 'ActionRisk.LOW'; do
+  grep -Fq "$pattern" "$android_pbs_view_model"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.capabilities(ServiceType.PROXMOX_BACKUP_SERVER)' 'ActionFailureDisposition.NON_RETRYABLE' 'pbs-sync-job-outcome-indeterminate'; do
+  grep -Fq "$pattern" "$android_pbs_view_model"
+done
+grep -Fq 'ProxmoxBackupServerViewModel' "$android_pbs_ui"
+
+for pattern in 'func getSyncJobs' 'func triggerSyncJob' '/api2/json/config/sync' '/api2/json/admin/sync/'; do
+  grep -Fq "$pattern" "$swift_pbs_api"
+done
+for pattern in 'enum ProxmoxBackupServerControlledSyncJobAction' 'sync-job.\(rawValue)' 'ControlledActionRisk { .low }'; do
+  grep -Fq "$pattern" "$swift_core"
+done
+for pattern in 'controlledActionCoordinator.execute' 'ProviderRegistry.descriptor(for: .proxmoxBackupServer).capabilities' 'ProxmoxBackupServerControlledSyncJobAction' 'isAmbiguousProxmoxTransportFailure' 'pbs-sync-job-outcome-indeterminate' '.nonRetryable'; do
+  grep -Fq "$pattern" "$swift_pbs_ui"
+done
+grep -Fq 'pbs sync job actions have stable risk classification and identity' "$android_tests"
+grep -Fq 'testPbsSyncJobActionsHaveStableRiskClassificationAndIdentity' "$swift_tests"
+
 echo "Phase 3 controlled actions audit passed"
